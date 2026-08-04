@@ -98,6 +98,7 @@ class CaptureOverlay:
     HANDLE_RADIUS = 4
     HIT_MARGIN = 8
     BLUE = "#168cff"
+    DIM_AMOUNT = 0.45
     CURSORS = {
         "n": "sb_v_double_arrow", "s": "sb_v_double_arrow",
         "e": "sb_h_double_arrow", "w": "sb_h_double_arrow",
@@ -113,9 +114,10 @@ class CaptureOverlay:
         x1, y1, x2, y2 = bbox; self.win.geometry(f"{x2-x1}x{y2-y1}{x1:+d}{y1:+d}")
         self.canvas = tk.Canvas(self.win, highlightthickness=0, cursor="crosshair")
         self.canvas.pack(fill="both", expand=True)
-        self.photo = ImageTk.PhotoImage(image); self.canvas.create_image(0, 0, anchor="nw", image=self.photo)
-        self.shades = [self.canvas.create_rectangle(0, 0, image.width, image.height, fill="black", stipple="gray50", outline="") for _ in range(4)]
-        for item in self.shades[1:]: self.canvas.coords(item,0,0,0,0)
+        self.dimmed = self.dim_image(image)
+        self.dimmed_photo = ImageTk.PhotoImage(self.dimmed); self.canvas.create_image(0, 0, anchor="nw", image=self.dimmed_photo)
+        self.selection_photo = None
+        self.selection_image = self.canvas.create_image(0, 0, anchor="nw", state="hidden")
         self.info = self.canvas.create_text(12, 12, anchor="nw", fill="white", text="拖动选择区域；Enter/双击完成，Esc/右键取消", font=("Microsoft YaHei UI", 11, "bold"))
         self.canvas.bind("<ButtonPress-1>", self.press); self.canvas.bind("<B1-Motion>", self.drag)
         self.canvas.bind("<ButtonRelease-1>", self.release); self.canvas.bind("<Double-Button-1>", self.double_click); self.canvas.bind("<Motion>", self.hover)
@@ -136,6 +138,11 @@ class CaptureOverlay:
     def normalize(raw):
         x1, y1, x2, y2 = raw
         return (int(min(x1, x2)), int(min(y1, y2)), int(max(x1, x2)), int(max(y1, y2)))
+
+    @classmethod
+    def dim_image(cls, image):
+        source=image.convert("RGB")
+        return Image.blend(source,Image.new("RGB",source.size,"black"),cls.DIM_AMOUNT)
 
     @staticmethod
     def resize_result(rect, axes, x, y):
@@ -206,7 +213,9 @@ class CaptureOverlay:
         if hasattr(self, "selection"): self.canvas.coords(self.selection, *box)
         else:self.selection=self.canvas.create_rectangle(*box,outline=self.BLUE,width=2)
         x1,y1,x2,y2=box; w,h=x2-x1,y2-y1
-        for item,coords in zip(self.shades,[(0,0,self.image.width,y1),(0,y2,self.image.width,self.image.height),(0,y1,x1,y2),(x2,y1,self.image.width,y2)]):self.canvas.coords(item,*coords)
+        if w>0 and h>0:
+            self.selection_photo=ImageTk.PhotoImage(self.image.crop(box)); self.canvas.coords(self.selection_image,x1,y1); self.canvas.itemconfigure(self.selection_image,image=self.selection_photo,state="normal")
+        else:self.canvas.itemconfigure(self.selection_image,state="hidden")
         for item,(x,y) in zip(self.handles,self.points()):
             r=self.HANDLE_RADIUS; self.canvas.coords(item,x-r,y-r,x+r,y+r); self.canvas.itemconfigure(item,state="normal"); self.canvas.tag_raise(item)
         label=f"{w} × {h}"; lx=max(2,min(x1,self.image.width-80)); ly=y1-26 if y1>=28 else min(self.image.height-24,y1+8)
@@ -248,8 +257,7 @@ class CaptureOverlay:
         if hasattr(self,"selection"): self.canvas.delete(self.selection); del self.selection
         for item in self.handles:self.canvas.itemconfigure(item,state="hidden")
         for item in (self.size_bg,self.size_text):self.canvas.itemconfigure(item,state="hidden")
-        self.canvas.coords(self.shades[0],0,0,self.image.width,self.image.height)
-        for item in self.shades[1:]:self.canvas.coords(item,0,0,0,0)
+        self.canvas.itemconfigure(self.selection_image,state="hidden"); self.selection_photo=None
         self.buttons.place_forget(); self.canvas.itemconfigure(self.info,text="拖动选择区域；Enter/双击完成，Esc/右键取消"); self.set_cursor("new")
     def double_click(self,e):
         if self.rect and self.rect[0]<e.x<self.rect[2] and self.rect[1]<e.y<self.rect[3]:self.finish()
@@ -399,6 +407,9 @@ def main():
     dpi_aware(); p=argparse.ArgumentParser(); p.add_argument("--workspace",type=Path); p.add_argument("--task"); p.add_argument("--repository",type=Path); p.add_argument("--check",action="store_true"); p.add_argument("--overlay-check",action="store_true"); a=p.parse_args()
     try:
         if a.overlay_check:
+            dimmed=CaptureOverlay.dim_image(Image.new("RGB",(2,2),(200,100,50)))
+            assert all(dimmed.getpixel((x,y)) == dimmed.getpixel((0,0)) for x in range(2) for y in range(2))
+            assert dimmed.getpixel((0,0)) == (110,55,27)
             assert CaptureOverlay.normalize((40,30,10,5)) == (10,5,40,30)
             assert CaptureOverlay.resize_result((10,10,100,100),"e",120,50) == ((10,10,120,100),"e")
             assert CaptureOverlay.resize_result((10,10,100,100),"e",5,50) == ((5,10,10,100),"w")
