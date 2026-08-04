@@ -1,4 +1,4 @@
 interface:
-  display_name: "GreenValley 手册编写"
-  short_description: "规划、截图、编写和校验多语言 GreenValley 各产品用户手册"
+  display_name: "\u0047\u0072\u0065\u0065\u006e\u0056\u0061\u006c\u006c\u0065\u0079 \u624b\u518c\u7f16\u5199"
+  short_description: "\u89c4\u5212\u3001\u622a\u56fe\u3001\u7f16\u5199\u548c\u6821\u9a8c\u591a\u8bed\u8a00 \u0047\u0072\u0065\u0065\u006e\u0056\u0061\u006c\u006c\u0065\u0079 \u5404\u4ea7\u54c1\u7528\u6237\u624b\u518c"
   default_prompt: "Use $greenvalley-manual to inspect the configured workspace and continue the manual-authoring task from its current phase."
