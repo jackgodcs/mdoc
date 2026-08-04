@@ -51,9 +51,9 @@ Generate source-locale content first, rewrite locales that require localized UI 
 
 ## Screenshot Workflow
 
-Read `references/screenshot-workflow.md`. Keep `screenshots.yaml` as the machine state source and generate one concise Markdown screenshot workbook for each locale that requires independent captures. Store workbooks and original captures under the bound manual repository's `.work/greenvalley-manual/<task-id>/` directory.
+Read `references/screenshot-workflow.md`. Keep `screenshots.yaml` as the machine state source. Use `scripts/screenshot_state.py sync <process-workspace> <task-id>` to generate the task-local manifest and launcher, then open `.work/greenvalley-manual/<task-id>/open-screenshot-assistant.cmd`. Do not generate Markdown screenshot workbooks.
 
-Use `scripts/screenshot_workbook.py sync <process-workspace> <task-id>` to scan target PNG paths, synchronize capture existence, refresh workbook progress and cards, preserve user-note blocks, and invalidate stale visual acceptance. Capture completion means only that the target PNG exists; never inspect image content during sync. Run screenshot content review only when explicitly requested. A user may instead explicitly accept all current screenshots after visually reviewing the workbooks; record that aggregate acceptance in `state.yaml` without changing individual `review.status` values. Never fabricate software screenshots.
+The assistant lists independent locales and screenshot requirements, previews existing target PNGs, captures a region from its current monitor by default, confirms replacement, and synchronizes state. Capture completion means only that the target PNG exists; never inspect image content during ordinary sync. Run screenshot content review only when explicitly requested. A user may explicitly accept all current screenshots after visually reviewing them in the assistant; record aggregate acceptance in `state.yaml` without changing individual `review.status` values. Never fabricate software screenshots.
 
 ## Staging, Publishing, and Safety
 
@@ -79,4 +79,5 @@ Run configuration, structure, Markdown/resource, and content-quality checks desc
 - `assets/examples/`: complete neutral examples that must pass schemas.
 - `schemas/`: machine-readable configuration schemas.
 - `scripts/validate_config.py`: schema and cross-file validation entry point.
-- `scripts/screenshot_workbook.py`: screenshot workbook generation, file-existence synchronization, and aggregate visual-acceptance fingerprints.
+- `scripts/screenshot_state.py`: manifest, file-existence synchronization, exceptions, and aggregate visual-acceptance fingerprints.
+- `scripts/screenshot_assistant.py`: task-aware human screenshot GUI.

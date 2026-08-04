@@ -2,22 +2,22 @@
 
 Support manual, assisted, and automated capture; assisted is the recommended default.
 
-## State and workbooks
+## State and assistant files
 
-Keep `screenshots.yaml` as the machine state source. Generate one `screenshot-workbook.<locale>.md` for each locale that requires independent captures under `.work/greenvalley-manual/<task-id>/` in the bound manual repository. Do not generate a workbook for a locale whose screenshots are copied from another locale.
+Keep `screenshots.yaml` as the only authoritative screenshot state. `screenshot-assistant.json` is a generated read model and `screenshot-assistant.local.json` stores only GUI preferences and local notes. Generate `open-screenshot-assistant.cmd` under `.work/greenvalley-manual/<task-id>/`. Do not generate Markdown screenshot workbooks.
 
-The workbook is the human capture interface. Put common rules, progress, and pending navigation at the top. Group cards by screenshot ID prefix and keep each card concise: ID/title, required flag, capture status, review status, target file, task-specific steps, expected state, optional warning, image link, and a preserved user-notes block.
+The GUI is the human capture interface. It switches independent locales, lists/filter screenshot items, shows concise requirements, previews the current target PNG, and records exception states.
 
 ## Capture synchronization
 
-Run `scripts/screenshot_workbook.py sync <process-workspace> <task-id>`. It must:
+Run `scripts/screenshot_state.py sync <process-workspace> <task-id>`. It must:
 
 - scan only the declared target `.png` path for each locale;
 - treat file existence as captured without reading image contents;
 - set ordinary missing captures back to pending and remove stale file mappings;
 - preserve explicit `not-applicable`, `waived`, and `blocked` decisions while the target file is absent;
 - prefer an actual target PNG over an earlier exception status;
-- refresh workbook progress and cards while preserving user-note blocks;
+- refresh the generated GUI manifest while preserving local preferences;
 - leave every individual `review.status` unchanged;
 - never copy captures into the formal manual.
 
@@ -29,7 +29,11 @@ Capture statuses are `pending`, `captured`, `needs-retake`, `approved`, `not-app
 
 ## Review and acceptance
 
-Content review is independent and runs only when requested. It may update individual `review.status` values. Alternatively, after the user visually checks the workbooks, record aggregate acceptance in `state.yaml`; do not mark unreviewed individual screenshots approved. Either independent approval or current aggregate user acceptance permits publishing. Required missing screenshots still need an explicit waiver.
+Content review is independent and runs only when requested. It may update individual `review.status` values. Alternatively, after the user visually checks the previews in the assistant, record aggregate acceptance in `state.yaml`; do not mark unreviewed individual screenshots approved. Either independent approval or current aggregate user acceptance permits publishing. Required missing screenshots still need an explicit waiver.
+
+## GUI capture behavior
+
+The assistant captures the monitor containing its window by default; the user may choose the whole virtual desktop. It hides itself before freezing the desktop, supports mixed-DPI and negative monitor coordinates, and saves the selected physical-pixel rectangle directly to the declared PNG target. Existing targets always require overwrite confirmation. Saving uses a temporary PNG followed by atomic replacement. A task-local lock prevents two assistant instances from updating the same task.
 
 Aggregate acceptance must fingerprint all effective required captures and exception decisions. If a required file is replaced, added, deleted, or renamed, or a waiver/applicability decision changes, synchronization marks aggregate acceptance `stale`. Publishing then requires one renewed aggregate confirmation.
 

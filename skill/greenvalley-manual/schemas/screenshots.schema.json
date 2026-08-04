@@ -72,13 +72,33 @@
               "locales": {
                 "type": "object",
                 "additionalProperties": {
-                  "enum": [
-                    "pending",
-                    "captured",
-                    "not-applicable",
-                    "waived",
-                    "blocked"
-                  ]
+                  "type": "object",
+                  "required": ["status"],
+                  "properties": {
+                    "status": {
+                      "enum": ["pending", "captured", "needs-retake", "not-applicable", "waived", "blocked"]
+                    },
+                    "reason": {"type": "string"},
+                    "updated_at": {"type": "string"}
+                  }
+                }
+              },
+              "files": {
+                "type": "object",
+                "additionalProperties": {"type": "string"}
+              },
+              "history": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["locale", "from", "to", "changed_at"],
+                  "properties": {
+                    "locale": {"type": "string"},
+                    "from": {"type": "string"},
+                    "to": {"type": "string"},
+                    "reason": {"type": "string"},
+                    "changed_at": {"type": "string"}
+                  }
                 }
               }
             }

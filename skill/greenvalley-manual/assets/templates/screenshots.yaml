@@ -4,5 +4,4 @@ defaults:
   preserve_original: true
   filename_language: en
   sensitive_information: reject
-  workbook: per_independent_locale
 screenshots: []

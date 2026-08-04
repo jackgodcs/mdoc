@@ -119,6 +119,13 @@ def validate_task(task_dir: Path, errors: list[str], warnings: list[str]):
         if re.search(r"(?m)^review:\s*$", source):
             errors.append(f"{screenshots}: malformed top-level review block")
         capture_statuses = re.findall(r"(?ms)^    capture:\s*\n      status:\s*([^#\n]+)", source)
+        screenshot_count = len(shot_ids)
+        capture_count = len(re.findall(r"(?m)^    capture:\s*$", source))
+        review_count = len(re.findall(r"(?m)^    review:\s*$", source))
+        if capture_count != screenshot_count:
+            errors.append(f"{screenshots}: expected {screenshot_count} capture blocks, found {capture_count}")
+        if review_count != screenshot_count:
+            errors.append(f"{screenshots}: expected {screenshot_count} review blocks, found {review_count}")
         allowed_capture = {"pending", "captured", "needs-retake", "approved", "not-applicable", "waived", "blocked"}
         for value in capture_statuses:
             if value.strip() not in allowed_capture: errors.append(f"{screenshots}: invalid capture status: {value.strip()}")

@@ -7,7 +7,7 @@
 3. Create or resume a task using one of: create_module, add_feature, update_feature, add_locale.
 4. Propose and approve structure.
 5. Propose and approve screenshot tasks.
-6. Generate locale workbooks and capture required screenshots. Capture completion is target-PNG existence only.
+6. Generate the screenshot-assistant manifest and launcher, then capture required screenshots in the GUI. Capture completion is target-PNG existence only.
 7. Generate manuals in staging.
 8. Validate staging and create a publish plan. Before publishing, either complete independent screenshot review or record the user's aggregate visual acceptance of the current capture fingerprint.
 9. Apply minimal changes to the formal manual repository.
@@ -28,4 +28,4 @@ The GitHub repository jackgodcs/greenvalley-manual on main is the single source 
 
 Treat $CODEX_HOME/skills/greenvalley-manual as an installed runtime copy. Do not use it as the durable maintenance source. After GitHub-backed changes are validated and committed, synchronize skill/greenvalley-manual from the checkout into the installed directory. If the installed copy has uncommitted divergence, reconcile it back into the checkout and GitHub before replacing it.
 
-Git tracks the skill source and portable process assets only. Do not track formal manual Markdown, formal screenshots, staging manuals, source packages, local repository bindings, *.local.yaml, capture workbooks, captures, credentials, or other machine-specific paths.
+Git tracks the skill source and portable process assets only. Do not track formal manual Markdown, formal screenshots, staging manuals, source packages, local repository bindings, *.local.yaml, screenshot-assistant local files, captures, credentials, or other machine-specific paths.
