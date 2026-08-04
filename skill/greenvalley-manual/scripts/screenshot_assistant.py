@@ -80,6 +80,44 @@ def center_on_parent(dialog: tk.Toplevel, parent: tk.Misc) -> None:
     dialog.geometry(f"{width}x{height}{x:+d}{y:+d}")
 
 
+def window_snapshot(bbox: tuple[int, int, int, int], excluded: set[int] | None = None) -> list[dict]:
+    if sys.platform != "win32": return []
+    excluded=excluded or set(); user32=ctypes.windll.user32; kernel32=ctypes.windll.kernel32
+    class RECT(ctypes.Structure): _fields_=[("left",ctypes.c_long),("top",ctypes.c_long),("right",ctypes.c_long),("bottom",ctypes.c_long)]
+    ignored={"Progman","WorkerW","Shell_TrayWnd","#32768","tooltips_class32","SysShadow","MSCTFIME UI","IME"}
+    dwmapi=getattr(ctypes.windll,"dwmapi",None); records=[]; left,top,right,bottom=bbox
+    def text(hwnd):
+        length=user32.GetWindowTextLengthW(hwnd); buffer=ctypes.create_unicode_buffer(length+1); user32.GetWindowTextW(hwnd,buffer,length+1); return buffer.value.strip()
+    def class_name(hwnd):
+        buffer=ctypes.create_unicode_buffer(256); user32.GetClassNameW(hwnd,buffer,256); return buffer.value
+    def process_name(hwnd):
+        pid=ctypes.c_ulong(); user32.GetWindowThreadProcessId(hwnd,ctypes.byref(pid)); handle=kernel32.OpenProcess(0x1000,False,pid.value)
+        if not handle:return ""
+        try:
+            size=ctypes.c_ulong(1024); buffer=ctypes.create_unicode_buffer(size.value)
+            return Path(buffer.value).stem if kernel32.QueryFullProcessImageNameW(handle,0,buffer,ctypes.byref(size)) else ""
+        finally:kernel32.CloseHandle(handle)
+    def callback(hwnd,lparam):
+        hwnd=int(hwnd)
+        if hwnd in excluded or not user32.IsWindowVisible(hwnd) or user32.IsIconic(hwnd):return True
+        cls=class_name(hwnd)
+        if cls in ignored or user32.GetWindowLongW(hwnd,-20)&0x20:return True
+        rect=RECT(); ok=False
+        if dwmapi:
+            try:ok=dwmapi.DwmGetWindowAttribute(hwnd,9,ctypes.byref(rect),ctypes.sizeof(rect))==0
+            except Exception:ok=False
+        if not ok and not user32.GetWindowRect(hwnd,ctypes.byref(rect)):return True
+        if rect.right-rect.left<32 or rect.bottom-rect.top<32:return True
+        clipped=(max(left,rect.left),max(top,rect.top),min(right,rect.right),min(bottom,rect.bottom))
+        if clipped[2]<=clipped[0] or clipped[3]<=clipped[1]:return True
+        title=text(hwnd) or process_name(hwnd) or cls
+        local=(clipped[0]-left,clipped[1]-top,clipped[2]-left,clipped[3]-top)
+        records.append({"hwnd":hwnd,"rect":local,"title":title,"clipped":clipped!=(rect.left,rect.top,rect.right,rect.bottom)})
+        return True
+    enum_proc=ctypes.WINFUNCTYPE(ctypes.c_bool,ctypes.c_void_p,ctypes.c_void_p)(callback); user32.EnumWindows(enum_proc,0)
+    return records
+
+
 class InstanceLock:
     def __init__(self, path: Path): self.path, self.owned = path, False
     def acquire(self) -> bool:
@@ -157,9 +195,10 @@ class CaptureOverlay:
         "move": "fleur", "new": "crosshair",
     }
 
-    def __init__(self, parent: tk.Tk, image: Image.Image, bbox: tuple[int, int, int, int], done):
+    def __init__(self, parent: tk.Tk, image: Image.Image, bbox: tuple[int, int, int, int], done, windows=None):
         self.parent, self.image, self.bbox, self.done = parent, image, bbox, done
         self.start = self.rect = self.mode = self.drag_rect = self.resize_axes = None
+        self.windows=windows or []; self.hover_candidate=self.preview_window=None; self.hover_job=None
         self.win = tk.Toplevel(parent); self.win.overrideredirect(True); self.win.attributes("-topmost", True)
         x1, y1, x2, y2 = bbox; self.win.geometry(f"{x2-x1}x{y2-y1}{x1:+d}{y1:+d}")
         self.canvas = tk.Canvas(self.win, highlightthickness=0, cursor="crosshair")
@@ -168,7 +207,12 @@ class CaptureOverlay:
         self.dimmed_photo = ImageTk.PhotoImage(self.dimmed); self.canvas.create_image(0, 0, anchor="nw", image=self.dimmed_photo)
         self.selection_photo = None
         self.selection_image = self.canvas.create_image(0, 0, anchor="nw", state="hidden")
-        self.info = self.canvas.create_text(12, 12, anchor="nw", fill="white", text="拖动选择区域；Enter/双击完成，Esc/右键取消", font=("Microsoft YaHei UI", 11, "bold"))
+        self.preview_photo = None
+        self.preview_image = self.canvas.create_image(0, 0, anchor="nw", state="hidden")
+        self.preview_rect = self.canvas.create_rectangle(0, 0, 0, 0, outline=self.BLUE, width=2, state="hidden")
+        self.preview_bg = self.canvas.create_rectangle(0, 0, 0, 0, fill="white", outline="#b5b5b5", state="hidden")
+        self.preview_text = self.canvas.create_text(0, 0, anchor="nw", fill="#222222", font=("Microsoft YaHei UI", 9), state="hidden")
+        self.info = self.canvas.create_text(12, 12, anchor="nw", fill="white", text="悬停选择窗口，或拖动自由框选；Esc/右键取消", font=("Microsoft YaHei UI", 11, "bold"))
         self.canvas.bind("<ButtonPress-1>", self.press); self.canvas.bind("<B1-Motion>", self.drag)
         self.canvas.bind("<ButtonRelease-1>", self.release); self.canvas.bind("<Double-Button-1>", self.double_click); self.canvas.bind("<Motion>", self.hover)
         self.canvas.bind("<Button-3>", lambda e: self.cancel()); self.win.bind("<Escape>", lambda e: self.cancel())
@@ -226,13 +270,42 @@ class CaptureOverlay:
         if x1<x<x2 and y1<y<y2:return "move"
         return "new"
 
+    def window_at(self,x,y):
+        return next((item for item in self.windows if item["rect"][0]<=x<item["rect"][2] and item["rect"][1]<=y<item["rect"][3]),None)
+
     def set_cursor(self, mode):
         try:self.canvas.config(cursor=self.CURSORS.get(mode,"crosshair"))
         except tk.TclError:self.canvas.config(cursor="crosshair")
 
     def hover(self,e):
         if self.start:return
-        mode=self.hit_test(e.x,e.y); self.set_cursor(mode); self.highlight(mode)
+        if self.rect:
+            mode=self.hit_test(e.x,e.y); self.set_cursor(mode); self.highlight(mode); return
+        candidate=self.window_at(e.x,e.y)
+        if candidate is self.hover_candidate:return
+        self.hover_candidate=candidate
+        if self.hover_job:self.win.after_cancel(self.hover_job); self.hover_job=None
+        if candidate:self.hover_job=self.win.after(80,lambda hwnd=candidate["hwnd"]:self.stabilize_window(hwnd))
+        else:self.hide_preview()
+
+    def stabilize_window(self,hwnd):
+        self.hover_job=None
+        if self.hover_candidate and self.hover_candidate["hwnd"]==hwnd:self.show_preview(self.hover_candidate)
+
+    def show_preview(self,item):
+        self.preview_window=item; x1,y1,x2,y2=item["rect"]; w,h=x2-x1,y2-y1
+        self.preview_photo=ImageTk.PhotoImage(self.image.crop(item["rect"])); self.canvas.coords(self.preview_image,x1,y1); self.canvas.itemconfigure(self.preview_image,image=self.preview_photo,state="normal")
+        self.canvas.coords(self.preview_rect,x1,y1,x2,y2); self.canvas.itemconfigure(self.preview_rect,state="normal")
+        title=item["title"]; title=title if len(title)<=40 else title[:39]+"…"; label=f"{title}\n{w} × {h}"+(" · 已裁剪" if item["clipped"] else "")
+        lx=max(2,min(x1,self.image.width-300)); ly=y1-44 if y1>=46 else min(self.image.height-42,y1+4)
+        self.canvas.coords(self.preview_text,lx+7,ly+3); self.canvas.itemconfigure(self.preview_text,text=label,state="normal"); self.canvas.update_idletasks(); bounds=self.canvas.bbox(self.preview_text); self.canvas.coords(self.preview_bg,bounds[0]-5,bounds[1]-3,bounds[2]+5,bounds[3]+3); self.canvas.itemconfigure(self.preview_bg,state="normal")
+        for element in (self.preview_image,self.preview_rect,self.preview_bg,self.preview_text):self.canvas.tag_raise(element)
+        self.canvas.itemconfigure(self.info,text="单击选择窗口；双击完成；拖动可自由框选"); self.set_cursor("new")
+
+    def hide_preview(self):
+        self.canvas.itemconfigure(self.preview_image,image="",state="hidden")
+        for item in (self.preview_rect,self.preview_bg,self.preview_text):self.canvas.itemconfigure(item,state="hidden")
+        self.preview_window=None; self.preview_photo=None
 
     def highlight(self,mode):
         active={"nw":{0},"n":{1},"ne":{2},"e":{3},"se":{4},"s":{5},"sw":{6},"w":{7}}.get(mode,set())
@@ -241,13 +314,18 @@ class CaptureOverlay:
             r=self.HANDLE_RADIUS+(2 if index in active else 0); self.canvas.coords(item,x-r,y-r,x+r,y+r)
 
     def press(self, e):
+        if not self.rect and self.preview_window and self.preview_window["rect"][0]<=e.x<self.preview_window["rect"][2] and self.preview_window["rect"][1]<=e.y<self.preview_window["rect"][3]:
+            self.mode="window"; self.start=(e.x,e.y); self.drag_rect=self.preview_window["rect"]; self.resize_axes=None; return
         self.mode=self.hit_test(e.x,e.y); self.start=(e.x,e.y); self.drag_rect=self.rect; self.resize_axes=self.mode
         if self.mode=="new":self.rect=None; self.drag_rect=(e.x,e.y,e.x,e.y)
         self.set_cursor(self.mode)
     def drag(self, e):
         if not self.start:return
         x1,y1,x2,y2=self.drag_rect; mx,my=e.x,e.y
-        if self.mode=="new":raw=(self.start[0],self.start[1],mx,my)
+        if self.mode=="window":
+            if max(abs(mx-self.start[0]),abs(my-self.start[1]))<=4:return
+            self.hide_preview(); self.mode="new"; self.drag_rect=(self.start[0],self.start[1],self.start[0],self.start[1]); raw=(self.start[0],self.start[1],mx,my)
+        elif self.mode=="new":raw=(self.start[0],self.start[1],mx,my)
         elif self.mode=="move":
             dx,dy=mx-self.start[0],my-self.start[1]; w,h=x2-x1,y2-y1
             nx=max(0,min(self.image.width-w,x1+dx)); ny=max(0,min(self.image.height-h,y1+dy)); raw=(nx,ny,nx+w,ny+h)
@@ -256,6 +334,8 @@ class CaptureOverlay:
         self.draw_box(raw)
         if self.mode!="move":self.show_lens(mx,my,self.mode)
     def release(self, e):
+        if self.mode=="window" and self.preview_window:
+            selected=self.preview_window["rect"]; self.hide_preview(); self.draw_box(selected)
         self.hide_lens(); self.start=self.drag_rect=self.resize_axes=None
         if self.rect:self.set_cursor(self.hit_test(e.x,e.y))
     def draw_box(self, raw):
@@ -304,11 +384,14 @@ class CaptureOverlay:
         step=10 if e.state & 1 else 1; dx=(-step if e.keysym=="Left" else step if e.keysym=="Right" else 0); dy=(-step if e.keysym=="Up" else step if e.keysym=="Down" else 0); x1,y1,x2,y2=self.rect; w,h=x2-x1,y2-y1; nx=max(0,min(self.image.width-w,x1+dx)); ny=max(0,min(self.image.height-h,y1+dy)); self.draw_box((nx,ny,nx+w,ny+h))
     def reset(self):
         self.rect=self.start=self.mode=self.drag_rect=self.resize_axes=None; self.hide_lens()
+        if self.hover_job:self.win.after_cancel(self.hover_job); self.hover_job=None
         if hasattr(self,"selection"): self.canvas.delete(self.selection); del self.selection
         for item in self.handles:self.canvas.itemconfigure(item,state="hidden")
         for item in (self.size_bg,self.size_text):self.canvas.itemconfigure(item,state="hidden")
         self.canvas.itemconfigure(self.selection_image,state="hidden"); self.selection_photo=None
-        self.buttons.place_forget(); self.canvas.itemconfigure(self.info,text="拖动选择区域；Enter/双击完成，Esc/右键取消"); self.set_cursor("new")
+        self.hover_candidate=None; self.hide_preview(); self.buttons.place_forget(); self.canvas.itemconfigure(self.info,text="悬停选择窗口，或拖动自由框选；Esc/右键取消"); self.set_cursor("new")
+        x,y=self.canvas.winfo_pointerx()-self.canvas.winfo_rootx(),self.canvas.winfo_pointery()-self.canvas.winfo_rooty(); candidate=self.window_at(x,y)
+        if candidate:self.hover_candidate=candidate; self.hover_job=self.win.after(80,lambda hwnd=candidate["hwnd"]:self.stabilize_window(hwnd))
     def double_click(self,e):
         if self.rect and self.rect[0]<e.x<self.rect[2] and self.rect[1]<e.y<self.rect[3]:self.finish()
     def finish(self):
@@ -429,9 +512,11 @@ class Assistant:
         self.capture_context={"source":source,"foreground":payload.get("foreground",0),"window_state":state_before,"visible":visible}
         self.root.withdraw(); self.root.after(delay,lambda:self.start_capture(bbox,target))
     def start_capture(self,bbox,target):
-        try: image=ImageGrab.grab(bbox=bbox,all_screens=True)
+        try:
+            image=ImageGrab.grab(bbox=bbox,all_screens=True)
+            windows=window_snapshot(bbox,{int(self.root.winfo_id())})
         except Exception as e:self.activate_assistant(); self.capture_in_progress=False; messagebox.showerror("截图失败",str(e),parent=self.root); return
-        CaptureOverlay(self.root,image,bbox,lambda result:self.finish_capture(result,target))
+        CaptureOverlay(self.root,image,bbox,lambda result:self.finish_capture(result,target),windows)
     def finish_capture(self,image,target):
         context=self.capture_context or {}; self.capture_context=None
         if image is None:self.restore_after_cancel(context); self.capture_in_progress=False; return
@@ -522,6 +607,8 @@ def main():
             assert CaptureOverlay.resize_result((10,10,100,100),"e",5,50) == ((5,10,10,100),"w")
             assert CaptureOverlay.resize_result((10,10,100,100),"se",5,4) == ((5,4,10,10),"nw")
             modifiers,key=GlobalHotkey.decode_lparam(); assert modifiers & GlobalHotkey.MOD_CONTROL and modifiers & GlobalHotkey.MOD_SHIFT and modifiers & GlobalHotkey.MOD_NOREPEAT and key==0x5A
+            windows=[{"rect":(10,10,100,100),"title":"back"},{"rect":(20,20,80,80),"title":"front"}]
+            assert next(item for item in windows if item["rect"][0]<=30<item["rect"][2] and item["rect"][1]<=30<item["rect"][3])["title"]=="back"
             print("overlay checks passed"); return 0
         workspace, task_id = a.workspace, a.task
         if not workspace:
