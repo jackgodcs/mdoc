@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "decisions"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "decisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "topic",
+          "value",
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "enum": [
+              "confirmed",
+              "superseded"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

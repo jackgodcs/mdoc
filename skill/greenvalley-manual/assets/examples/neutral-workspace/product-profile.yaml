@@ -1,0 +1,26 @@
+schema_version: 1
+product:
+  id: example-product
+  display_name: Example Product
+manual_layout:
+  content_directory: Main
+  image_directory: images
+  summary_file: Summary.md
+  module_index_file: Index.md
+locales:
+  source: zh
+  targets:
+    - locale: en
+      strategy: rewrite
+    - locale: ja
+      strategy: copy
+      copy_from: en
+writing:
+  image_markup_style: existing
+  localized_ui_labels: true
+structure:
+  summary_depth: leaf_pages
+policies:
+  preserve_existing_content: true
+  deletion_requires_confirmation: true
+

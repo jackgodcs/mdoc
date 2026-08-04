@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "status",
+    "changes",
+    "scope_checks"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "status": {
+      "enum": [
+        "draft",
+        "approved",
+        "applied"
+      ]
+    },
+    "changes": {
+      "type": "object",
+      "required": [
+        "add",
+        "update",
+        "delete"
+      ],
+      "properties": {
+        "add": {
+          "type": "array"
+        },
+        "update": {
+          "type": "array"
+        },
+        "delete": {
+          "type": "array"
+        }
+      }
+    },
+    "scope_checks": {
+      "type": "object"
+    }
+  }
+}

@@ -1,0 +1,22 @@
+schema_version: 1
+task:
+  id: example-module
+  operation: create_module
+interaction:
+  mode: review
+capture:
+  mode: assisted
+target:
+  summary_parent: 示例父级
+  document_path: Category/ExampleModule
+  image_path: Category/ExampleModule
+module:
+  title:
+    source: 示例模块
+    translations:
+      en: Example Module
+      ja: Example Module
+scope:
+  api_appendix: separate_task
+  example_path_style: placeholder
+

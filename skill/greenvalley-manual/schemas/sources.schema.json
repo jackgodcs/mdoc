@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "sources"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "purpose",
+          "snapshot",
+          "trust"
+        ],
+        "properties": {
+          "snapshot": {
+            "type": "object",
+            "required": [
+              "policy"
+            ],
+            "properties": {
+              "policy": {
+                "enum": [
+                  "none",
+                  "selected",
+                  "full"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "GreenValley 手册编写"
+  short_description: "规划、截图、编写和校验多语言 GreenValley 各产品用户手册"
+  default_prompt: "Use $greenvalley-manual to inspect the configured workspace and continue the manual-authoring task from its current phase."

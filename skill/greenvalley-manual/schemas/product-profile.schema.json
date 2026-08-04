@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "product",
+    "manual_layout",
+    "locales",
+    "policies"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "product": {
+      "type": "object",
+      "required": [
+        "id",
+        "display_name"
+      ]
+    },
+    "manual_layout": {
+      "type": "object",
+      "required": [
+        "content_directory",
+        "image_directory",
+        "summary_file",
+        "module_index_file"
+      ]
+    },
+    "locales": {
+      "type": "object",
+      "required": [
+        "source",
+        "targets"
+      ]
+    },
+    "policies": {
+      "type": "object",
+      "required": [
+        "preserve_existing_content",
+        "deletion_requires_confirmation"
+      ],
+      "properties": {
+        "preserve_existing_content": {
+          "const": true
+        },
+        "deletion_requires_confirmation": {
+          "const": true
+        }
+      }
+    }
+  }
+}

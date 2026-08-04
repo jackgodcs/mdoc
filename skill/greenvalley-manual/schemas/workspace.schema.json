@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "workspace",
+    "product",
+    "repository",
+    "manual",
+    "tasks"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "workspace": {
+      "type": "object",
+      "required": [
+        "id"
+      ]
+    },
+    "product": {
+      "type": "object",
+      "required": [
+        "profile"
+      ]
+    },
+    "repository": {
+      "type": "object",
+      "required": [
+        "root"
+      ]
+    },
+    "manual": {
+      "type": "object",
+      "required": [
+        "active_version"
+      ]
+    },
+    "tasks": {
+      "type": "object",
+      "required": [
+        "root"
+      ]
+    },
+    "defaults": {
+      "type": "object",
+      "properties": {
+        "interaction_mode": {
+          "enum": [
+            "guided",
+            "review",
+            "automation"
+          ]
+        },
+        "screenshot_capture_mode": {
+          "enum": [
+            "manual",
+            "assisted",
+            "automated"
+          ]
+        }
+      }
+    }
+  }
+}

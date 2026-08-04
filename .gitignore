@@ -1,0 +1,7 @@
+**/workspace.local.yaml
+**/task.local.yaml
+**/staging/
+**/sources/snapshots/
+*.log
+__pycache__/
+

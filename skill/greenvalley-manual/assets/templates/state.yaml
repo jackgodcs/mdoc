@@ -1,0 +1,14 @@
+schema_version: 1
+phase: workspace_configuration
+task_status: draft
+checks:
+  workspace: pending
+  task: pending
+  structure: pending
+  screenshot_plan: pending
+  screenshots: pending
+  writing: not_started
+  validation: not_started
+  delivery: not_started
+blockers: []
+

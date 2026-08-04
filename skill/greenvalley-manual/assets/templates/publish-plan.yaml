@@ -1,0 +1,10 @@
+schema_version: 1
+status: draft
+changes:
+  add: []
+  update: []
+  delete: []
+scope_checks:
+  unrelated_changes: unknown
+  existing_files_deleted: 0
+
