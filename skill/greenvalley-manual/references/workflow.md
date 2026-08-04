@@ -22,6 +22,10 @@ Workspace configuration is confirmed only when new or invalid. Structure, screen
 
 Use draft, generated, validation_failed, ready_for_review, and accepted. Do not set accepted without explicit user confirmation.
 
-## Local Git
+## Source control and installation
 
-Local Git tracks the skill source and process assets only. Do not track formal manual Markdown, formal screenshots, staging manuals, source packages, or local path files. Commit meaningful process milestones; never configure or push a remote unless requested.
+The GitHub repository jackgodcs/greenvalley-manual on main is the single source of truth. Use the local checkout as the maintenance workspace and pull with --ff-only before editing. Make skill changes under skill/greenvalley-manual, validate them there, commit meaningful milestones, and push to main.
+
+Treat $CODEX_HOME/skills/greenvalley-manual as an installed runtime copy. Do not use it as the durable maintenance source. After GitHub-backed changes are validated and committed, synchronize skill/greenvalley-manual from the checkout into the installed directory. If the installed copy has uncommitted divergence, reconcile it back into the checkout and GitHub before replacing it.
+
+Git tracks the skill source and portable process assets only. Do not track formal manual Markdown, formal screenshots, staging manuals, source packages, local repository bindings, *.local.yaml, capture workbooks, captures, credentials, or other machine-specific paths.

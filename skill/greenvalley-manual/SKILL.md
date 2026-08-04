@@ -7,6 +7,10 @@ description: Plan, capture, write, localize, validate, and publish multilingual 
 
 Use a configuration-driven workflow with explicit confirmation gates. Keep the skill product-neutral; load all product names, paths, locales, repository rules, and task state from the bound workspace.
 
+## Source and Installation
+
+Treat the GitHub repository jackgodcs/greenvalley-manual on branch main as the single source of truth for this skill and its process assets. Use a Git checkout, normally D:/codex.projects/userdocs/greenvalley-manual, as the maintenance workspace. Treat $CODEX_HOME/skills/greenvalley-manual as an installed runtime copy only; do not maintain long-lived changes there. Make changes under skill/greenvalley-manual in the checkout, validate and commit them, push them to GitHub, then install or synchronize that directory into $CODEX_HOME/skills/greenvalley-manual. Before new maintenance work, pull main with fast-forward-only semantics. Never copy local-only workspace bindings, *.local.yaml, captures, or formal manual artifacts into the GitHub source repository.
+
 ## Start or Resume
 
 1. Locate the project binding file or ask for the process workspace location.
