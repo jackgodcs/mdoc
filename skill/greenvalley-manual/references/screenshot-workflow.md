@@ -41,6 +41,10 @@ During initial selection and edge or corner resizing, show a Canvas-based magnif
 
 Use `Ctrl+Shift+Z` as the screenshot shortcut to avoid conflicts with common communication applications.
 
+On Windows, register `Ctrl+Shift+Z` with `RegisterHotKey` and `MOD_NOREPEAT` while the assistant is running. Receive `WM_HOTKEY` on a background message thread and marshal capture requests to the Tk main thread through a queue. Registration failure or unexpected thread exit degrades to the toolbar and window-local shortcut without automatic retry. Always call `UnregisterHotKey` during normal shutdown; Windows reclaims the registration if the process terminates unexpectedly.
+
+For a global trigger, record the current foreground window and pointer location, hide the assistant without activating it, wait 120 milliseconds for key release, and capture the pointer's monitor when the scope is Current Monitor. Successful capture restores and activates the assistant for the next requirement. Cancellation restores the assistant's prior visible, minimized, or hidden state without activation and attempts to return focus to the recorded foreground window. Use a shared busy flag, modal guard, and 300-millisecond deduplication window for global, local, and toolbar triggers.
+
 Task dialogs opened by the assistant must be centered over the assistant window using absolute screen coordinates, including when the window is on a secondary monitor.
 
 Aggregate acceptance must fingerprint all effective required captures and exception decisions. If a required file is replaced, added, deleted, or renamed, or a waiver/applicability decision changes, synchronization marks aggregate acceptance `stale`. Publishing then requires one renewed aggregate confirmation.

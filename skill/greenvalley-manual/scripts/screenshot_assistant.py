@@ -6,9 +6,11 @@ import argparse
 import ctypes
 import json
 import os
+import queue
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import tkinter as tk
 from pathlib import Path
@@ -47,6 +49,16 @@ def monitor_for_window(root: tk.Tk) -> tuple[int, int, int, int]:
         return (0, 0, root.winfo_screenwidth(), root.winfo_screenheight())
     r = info.rcMonitor
     return (r.left, r.top, r.right, r.bottom)
+
+
+def monitor_for_point(x: int, y: int) -> tuple[int, int, int, int]:
+    if sys.platform != "win32": return virtual_screen()
+    class POINT(ctypes.Structure): _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+    class RECT(ctypes.Structure): _fields_ = [("left", ctypes.c_long), ("top", ctypes.c_long), ("right", ctypes.c_long), ("bottom", ctypes.c_long)]
+    class INFO(ctypes.Structure): _fields_ = [("cbSize", ctypes.c_ulong), ("rcMonitor", RECT), ("rcWork", RECT), ("dwFlags", ctypes.c_ulong)]
+    user32=ctypes.windll.user32; monitor=user32.MonitorFromPoint(POINT(x,y),2); info=INFO(ctypes.sizeof(INFO))
+    if not user32.GetMonitorInfoW(monitor,ctypes.byref(info)): return virtual_screen()
+    r=info.rcMonitor; return (r.left,r.top,r.right,r.bottom)
 
 
 def virtual_screen() -> tuple[int, int, int, int]:
@@ -92,6 +104,44 @@ class InstanceLock:
         if self.owned:
             try: self.path.unlink()
             except OSError: pass
+
+
+class GlobalHotkey:
+    WM_HOTKEY = 0x0312
+    WM_QUIT = 0x0012
+    MOD_CONTROL = 0x0002
+    MOD_SHIFT = 0x0004
+    MOD_NOREPEAT = 0x4000
+    VK_Z = 0x5A
+
+    def __init__(self, events: queue.Queue):
+        self.events=events; self.thread=None; self.thread_id=0
+
+    def start(self):
+        if sys.platform != "win32": self.events.put(("hotkey-status","unsupported")); return
+        self.thread=threading.Thread(target=self.run,name="greenvalley-global-hotkey",daemon=True); self.thread.start()
+
+    def run(self):
+        user32=ctypes.windll.user32; kernel32=ctypes.windll.kernel32; self.thread_id=kernel32.GetCurrentThreadId()
+        registered=bool(user32.RegisterHotKey(None,1,self.MOD_CONTROL|self.MOD_SHIFT|self.MOD_NOREPEAT,self.VK_Z))
+        self.events.put(("hotkey-status","registered" if registered else "failed"))
+        if not registered:return
+        class POINT(ctypes.Structure): _fields_=[("x",ctypes.c_long),("y",ctypes.c_long)]
+        class MSG(ctypes.Structure): _fields_=[("hwnd",ctypes.c_void_p),("message",ctypes.c_uint),("wParam",ctypes.c_size_t),("lParam",ctypes.c_ssize_t),("time",ctypes.c_ulong),("pt",POINT),("lPrivate",ctypes.c_ulong)]
+        msg=MSG()
+        try:
+            while user32.GetMessageW(ctypes.byref(msg),None,0,0)>0:
+                if msg.message==self.WM_HOTKEY:
+                    pt=POINT(); user32.GetCursorPos(ctypes.byref(pt)); self.events.put(("capture",{"foreground":int(user32.GetForegroundWindow() or 0),"cursor":(pt.x,pt.y),"time":time.monotonic()}))
+        finally:
+            user32.UnregisterHotKey(None,1); self.events.put(("hotkey-status","stopped"))
+
+    @classmethod
+    def decode_lparam(cls):
+        return cls.MOD_CONTROL|cls.MOD_SHIFT|cls.MOD_NOREPEAT,cls.VK_Z
+
+    def stop(self):
+        if self.thread_id and self.thread and self.thread.is_alive(): ctypes.windll.user32.PostThreadMessageW(self.thread_id,self.WM_QUIT,0,0); self.thread.join(timeout=1)
 
 
 class CaptureOverlay:
@@ -274,8 +324,9 @@ class Assistant:
         if not self.lock.acquire(): raise RuntimeError("此任务的截图助手已经在运行。")
         self.root.protocol("WM_DELETE_WINDOW", self.close); self.root.title(f"GreenValley 截图助手 — {task_id}")
         self.root.geometry("1180x760"); self.root.minsize(900, 600)
-        self.preview_photo = None; self.visible = []
-        self.load_local(); self.build(); self.refresh()
+        self.preview_photo = None; self.visible = []; self.capture_in_progress=False; self.last_capture_request=0.0; self.capture_context=None; self.modal_count=0
+        self.events=queue.Queue(); self.hotkey=GlobalHotkey(self.events)
+        self.load_local(); self.build(); self.refresh(); self.hotkey.start(); self.root.after(50,self.poll_events)
         if check:
             original = self.locale_var.get()
             for locale in self.manifest["locales"]:
@@ -302,13 +353,25 @@ class Assistant:
         req = ttk.LabelFrame(right, text="截图要求", padding=8); prev = ttk.LabelFrame(right, text="图片预览", padding=8); right.add(req, weight=1); right.add(prev, weight=3)
         self.requirements = tk.Text(req, height=10, wrap="word", state="disabled", font=("Microsoft YaHei UI",10)); self.requirements.pack(fill="both", expand=True)
         bar=ttk.Frame(prev); bar.pack(fill="x")
-        ttk.Button(bar,text="截图 Ctrl+Shift+Z",command=self.capture).pack(side="left"); ttk.Button(bar,text="打开图片",command=self.open_image).pack(side="left",padx=4); ttk.Button(bar,text="打开目录",command=self.open_folder).pack(side="left")
+        ttk.Button(bar,text="截图 Ctrl+Shift+Z",command=lambda:self.request_capture("local")).pack(side="left"); ttk.Button(bar,text="打开图片",command=self.open_image).pack(side="left",padx=4); ttk.Button(bar,text="打开目录",command=self.open_folder).pack(side="left")
         ttk.Button(bar,text="异常状态…",command=self.exception).pack(side="left",padx=4); ttk.Checkbutton(bar,text="保存后自动下一项",variable=self.auto_var).pack(side="right")
         ttk.Radiobutton(bar,text="当前屏幕",variable=self.scope_var,value="current_monitor").pack(side="right"); ttk.Radiobutton(bar,text="全部屏幕",variable=self.scope_var,value="all_monitors").pack(side="right")
         self.preview = ttk.Label(prev, text="尚未截图", anchor="center"); self.preview.pack(fill="both", expand=True, pady=(8,0))
         self.status = ttk.Label(self.root, anchor="w", padding=(8,2)); self.status.pack(fill="x")
         self.tree.bind("<<TreeviewSelect>>", self.show_selected); self.locale_box.bind("<<ComboboxSelected>>", self.locale_changed)
-        self.root.bind("<F5>",lambda e:self.refresh()); self.root.bind("<Control-Shift-Z>",lambda e:self.capture()); self.root.bind("<Control-o>",lambda e:self.open_image()); self.root.bind("<Control-Shift-O>",lambda e:self.open_folder()); self.root.bind("<Control-Return>",lambda e:self.accept_all())
+        self.root.bind("<F5>",lambda e:self.refresh()); self.root.bind("<Control-Shift-Z>",lambda e:self.request_capture("local")); self.root.bind("<Control-o>",lambda e:self.open_image()); self.root.bind("<Control-Shift-O>",lambda e:self.open_folder()); self.root.bind("<Control-Return>",lambda e:self.accept_all())
+    def poll_events(self):
+        try:
+            while True:
+                kind,payload=self.events.get_nowait()
+                if kind=="capture":self.request_capture("global",payload)
+                elif payload=="registered":self.hotkey_text="全局截图快捷键：Ctrl+Shift+Z"
+                elif payload=="failed":self.hotkey_text="全局快捷键注册失败，工具栏截图仍可用"
+                elif payload=="stopped":self.hotkey_text="全局截图快捷键已停止，重启截图助手可恢复"
+                else:self.hotkey_text="当前系统不支持全局截图快捷键"
+                if kind=="hotkey-status":self.update_status()
+        except queue.Empty:pass
+        if self.root.winfo_exists():self.root.after(50,self.poll_events)
     def refresh(self):
         self.manifest = state.synchronize(self.workspace, self.task_id, Path(__file__).resolve().parent.parent)
         labels = [f"{x['label']} ({x['id']})" for x in self.manifest["locales"]]; ids=[x["id"] for x in self.manifest["locales"]]
@@ -327,7 +390,7 @@ class Assistant:
         choose=selected if selected and self.tree.exists(selected) else (self.visible[0]["id"] if self.visible else None)
         if choose: self.tree.selection_set(choose); self.tree.focus(choose); self.show_selected()
         else: self.clear_details()
-        complete=sum(x["locales"][locale]["status"] in state.COMPLETE_STATUSES for x in self.manifest["screenshots"] if x["required"]); total=sum(x["required"] for x in self.manifest["screenshots"]); self.status.config(text=f"{locale}: 必需截图 {complete}/{total}；总体验收：{self.manifest['acceptance']['status']}")
+        self.update_status()
         self.save_local()
         if len(self.visible) != len(self.manifest["screenshots"]):
             raise RuntimeError("左侧截图列表不完整")
@@ -350,30 +413,64 @@ class Assistant:
         try:
             im=Image.open(path); self.root.update_idletasks(); w=max(300,self.preview.winfo_width()-20); h=max(220,self.preview.winfo_height()-20); im.thumbnail((w,h),Image.Resampling.LANCZOS); self.preview_photo=ImageTk.PhotoImage(im.copy()); self.preview.config(image=self.preview_photo,text="")
         except Exception as e: self.preview.config(image="",text=f"无法预览：{e}")
-    def capture(self):
-        shot=self.selected();
+    def update_status(self):
+        if not hasattr(self,"manifest"):return
+        locale=self.locale_var.get(); complete=sum(x["locales"][locale]["status"] in state.COMPLETE_STATUSES for x in self.manifest["screenshots"] if x["required"]); total=sum(x["required"] for x in self.manifest["screenshots"]); hotkey=getattr(self,"hotkey_text","正在注册全局快捷键…"); self.status.config(text=f"{locale}: 必需截图 {complete}/{total}；总体验收：{self.manifest['acceptance']['status']}；{hotkey}")
+    def request_capture(self,source,payload=None):
+        now=time.monotonic()
+        if self.capture_in_progress or self.modal_count or now-self.last_capture_request<0.3:return
+        shot=self.selected()
         if not shot:return
-        target=Path(shot["locales"][self.locale_var.get()]["absolute_target"]); bbox=virtual_screen() if self.scope_var.get()=="all_monitors" else monitor_for_window(self.root)
-        self.root.withdraw(); self.root.after(250,lambda:self.start_capture(bbox,target))
+        self.last_capture_request=now; self.capture_in_progress=True
+        target=Path(shot["locales"][self.locale_var.get()]["absolute_target"]); state_before=self.root.state(); visible=state_before not in {"withdrawn","iconic"}
+        if source=="global":
+            payload=payload or {}; cursor=payload.get("cursor",(0,0)); bbox=virtual_screen() if self.scope_var.get()=="all_monitors" else monitor_for_point(*cursor); delay=120
+        else:bbox=virtual_screen() if self.scope_var.get()=="all_monitors" else monitor_for_window(self.root); delay=250; payload={"foreground":0}
+        self.capture_context={"source":source,"foreground":payload.get("foreground",0),"window_state":state_before,"visible":visible}
+        self.root.withdraw(); self.root.after(delay,lambda:self.start_capture(bbox,target))
     def start_capture(self,bbox,target):
         try: image=ImageGrab.grab(bbox=bbox,all_screens=True)
-        except Exception as e: self.root.deiconify(); messagebox.showerror("截图失败",str(e)); return
+        except Exception as e:self.activate_assistant(); self.capture_in_progress=False; messagebox.showerror("截图失败",str(e),parent=self.root); return
         CaptureOverlay(self.root,image,bbox,lambda result:self.finish_capture(result,target))
     def finish_capture(self,image,target):
-        self.root.deiconify(); self.root.lift();
-        if image is None:return
-        if target.exists() and not messagebox.askyesno("覆盖截图",f"目标文件已存在，是否覆盖？\n{target}"): return
-        target.parent.mkdir(parents=True,exist_ok=True); fd,tmp=tempfile.mkstemp(prefix=target.stem+".",suffix=".png",dir=target.parent); os.close(fd)
-        try: image.save(tmp,"PNG"); os.replace(tmp,target)
-        finally:
-            if os.path.exists(tmp): os.unlink(tmp)
-        current=self.selected_id(); self.refresh()
-        if self.auto_var.get() and current:
-            children=self.tree.get_children();
-            if children:
-                try:i=children.index(current); nxt=children[min(i+1,len(children)-1)]
-                except ValueError:nxt=children[0]
-                self.tree.selection_set(nxt); self.tree.focus(nxt); self.tree.see(nxt); self.show_selected()
+        context=self.capture_context or {}; self.capture_context=None
+        if image is None:self.restore_after_cancel(context); self.capture_in_progress=False; return
+        self.activate_assistant()
+        if target.exists():
+            self.modal_count+=1
+            try:overwrite=messagebox.askyesno("覆盖截图",f"目标文件已存在，是否覆盖？\n{target}",parent=self.root)
+            finally:self.modal_count-=1
+            if not overwrite:self.capture_in_progress=False; return
+        try:
+            target.parent.mkdir(parents=True,exist_ok=True); fd,tmp=tempfile.mkstemp(prefix=target.stem+".",suffix=".png",dir=target.parent); os.close(fd)
+            try:image.save(tmp,"PNG"); os.replace(tmp,target)
+            finally:
+                if os.path.exists(tmp):os.unlink(tmp)
+            current=self.selected_id(); self.refresh()
+            if self.auto_var.get() and current:
+                children=self.tree.get_children()
+                if children:
+                    try:i=children.index(current); nxt=children[min(i+1,len(children)-1)]
+                    except ValueError:nxt=children[0]
+                    self.tree.selection_set(nxt); self.tree.focus(nxt); self.tree.see(nxt); self.show_selected()
+        except Exception as error:
+            messagebox.showerror("截图保存失败",str(error),parent=self.root)
+        finally:self.capture_in_progress=False
+    def activate_assistant(self):
+        self.root.deiconify(); self.root.lift(); self.root.focus_force()
+        if sys.platform=="win32":
+            try:ctypes.windll.user32.SetForegroundWindow(self.root.winfo_id())
+            except Exception:pass
+    def restore_after_cancel(self,context):
+        if context.get("source")!="global":self.activate_assistant(); return
+        if context.get("visible"):
+            self.root.deiconify(); self.root.lower()
+        elif context.get("window_state")=="iconic":self.root.iconify()
+        else:self.root.withdraw()
+        foreground=context.get("foreground",0)
+        if sys.platform=="win32" and foreground and ctypes.windll.user32.IsWindow(foreground):
+            try:ctypes.windll.user32.SetForegroundWindow(foreground)
+            except Exception:pass
     def open_image(self):
         shot=self.selected();
         if shot:
@@ -386,21 +483,31 @@ class Assistant:
     def exception(self):
         shot=self.selected();
         if not shot:return
+        self.modal_count+=1
         win=tk.Toplevel(self.root); win.title("设置截图状态"); win.transient(self.root); win.withdraw(); choice=tk.StringVar(value="blocked")
+        closed=False
+        def close_dialog():
+            nonlocal closed
+            if closed:return
+            closed=True; self.modal_count=max(0,self.modal_count-1); win.destroy()
+        win.protocol("WM_DELETE_WINDOW",close_dialog)
         for label,value in [("受阻","blocked"),("不适用","not-applicable"),("豁免","waived"),("恢复待截图","pending")]: ttk.Radiobutton(win,text=label,variable=choice,value=value).pack(anchor="w",padx=15,pady=3)
         ttk.Label(win,text="原因（异常状态必填）").pack(anchor="w",padx=15,pady=(8,2)); entry=ttk.Entry(win,width=55); entry.pack(padx=15); entry.focus_set()
         def save():
-            try: state.set_locale_status(self.workspace,self.task_id,shot["id"],self.locale_var.get(),choice.get(),entry.get()); win.destroy(); self.refresh()
+            try: state.set_locale_status(self.workspace,self.task_id,shot["id"],self.locale_var.get(),choice.get(),entry.get()); close_dialog(); self.refresh()
             except Exception as e: messagebox.showerror("无法保存",str(e),parent=win)
         ttk.Button(win,text="保存",command=save).pack(pady=12)
         center_on_parent(win,self.root); win.deiconify(); win.grab_set(); win.lift(); entry.focus_set()
     def accept_all(self):
-        if not messagebox.askyesno("接受全部截图","确认已目视核对当前所有必需截图，并接受它们用于发布？"):return
-        try: state.accept(self.workspace,self.task_id); self.refresh(); prompt=f"使用 $greenvalley-manual 继续 {self.task_id}，截图已完成并已由用户目视接受，请同步状态并继续后续流程。"; self.root.clipboard_clear(); self.root.clipboard_append(prompt); messagebox.showinfo("已接受","已记录总体验收，并将继续任务提示复制到剪贴板。")
-        except Exception as e: messagebox.showerror("无法接受",str(e))
+        self.modal_count+=1
+        try:
+            if not messagebox.askyesno("接受全部截图","确认已目视核对当前所有必需截图，并接受它们用于发布？",parent=self.root):return
+            try: state.accept(self.workspace,self.task_id); self.refresh(); prompt=f"使用 $greenvalley-manual 继续 {self.task_id}，截图已完成并已由用户目视接受，请同步状态并继续后续流程。"; self.root.clipboard_clear(); self.root.clipboard_append(prompt); messagebox.showinfo("已接受","已记录总体验收，并将继续任务提示复制到剪贴板。",parent=self.root)
+            except Exception as e: messagebox.showerror("无法接受",str(e),parent=self.root)
+        finally:self.modal_count=max(0,self.modal_count-1)
     def close(self):
         try:self.save_local()
-        finally:self.lock.release(); self.root.destroy()
+        finally:self.hotkey.stop(); self.lock.release(); self.root.destroy()
 
 
 def main():
@@ -414,6 +521,7 @@ def main():
             assert CaptureOverlay.resize_result((10,10,100,100),"e",120,50) == ((10,10,120,100),"e")
             assert CaptureOverlay.resize_result((10,10,100,100),"e",5,50) == ((5,10,10,100),"w")
             assert CaptureOverlay.resize_result((10,10,100,100),"se",5,4) == ((5,4,10,10),"nw")
+            modifiers,key=GlobalHotkey.decode_lparam(); assert modifiers & GlobalHotkey.MOD_CONTROL and modifiers & GlobalHotkey.MOD_SHIFT and modifiers & GlobalHotkey.MOD_NOREPEAT and key==0x5A
             print("overlay checks passed"); return 0
         workspace, task_id = a.workspace, a.task
         if not workspace:
