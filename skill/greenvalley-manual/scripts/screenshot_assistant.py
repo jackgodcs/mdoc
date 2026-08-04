@@ -169,13 +169,13 @@ class Assistant:
         req = ttk.LabelFrame(right, text="截图要求", padding=8); prev = ttk.LabelFrame(right, text="图片预览", padding=8); right.add(req, weight=1); right.add(prev, weight=3)
         self.requirements = tk.Text(req, height=10, wrap="word", state="disabled", font=("Microsoft YaHei UI",10)); self.requirements.pack(fill="both", expand=True)
         bar=ttk.Frame(prev); bar.pack(fill="x")
-        ttk.Button(bar,text="截图 Ctrl+Shift+A",command=self.capture).pack(side="left"); ttk.Button(bar,text="打开图片",command=self.open_image).pack(side="left",padx=4); ttk.Button(bar,text="打开目录",command=self.open_folder).pack(side="left")
+        ttk.Button(bar,text="截图 Ctrl+Shift+Z",command=self.capture).pack(side="left"); ttk.Button(bar,text="打开图片",command=self.open_image).pack(side="left",padx=4); ttk.Button(bar,text="打开目录",command=self.open_folder).pack(side="left")
         ttk.Button(bar,text="异常状态…",command=self.exception).pack(side="left",padx=4); ttk.Checkbutton(bar,text="保存后自动下一项",variable=self.auto_var).pack(side="right")
         ttk.Radiobutton(bar,text="当前屏幕",variable=self.scope_var,value="current_monitor").pack(side="right"); ttk.Radiobutton(bar,text="全部屏幕",variable=self.scope_var,value="all_monitors").pack(side="right")
         self.preview = ttk.Label(prev, text="尚未截图", anchor="center"); self.preview.pack(fill="both", expand=True, pady=(8,0))
         self.status = ttk.Label(self.root, anchor="w", padding=(8,2)); self.status.pack(fill="x")
         self.tree.bind("<<TreeviewSelect>>", self.show_selected); self.locale_box.bind("<<ComboboxSelected>>", self.locale_changed)
-        self.root.bind("<F5>",lambda e:self.refresh()); self.root.bind("<Control-Shift-A>",lambda e:self.capture()); self.root.bind("<Control-o>",lambda e:self.open_image()); self.root.bind("<Control-Shift-O>",lambda e:self.open_folder()); self.root.bind("<Control-Return>",lambda e:self.accept_all())
+        self.root.bind("<F5>",lambda e:self.refresh()); self.root.bind("<Control-Shift-Z>",lambda e:self.capture()); self.root.bind("<Control-o>",lambda e:self.open_image()); self.root.bind("<Control-Shift-O>",lambda e:self.open_folder()); self.root.bind("<Control-Return>",lambda e:self.accept_all())
     def refresh(self):
         self.manifest = state.synchronize(self.workspace, self.task_id, Path(__file__).resolve().parent.parent)
         labels = [f"{x['label']} ({x['id']})" for x in self.manifest["locales"]]; ids=[x["id"] for x in self.manifest["locales"]]

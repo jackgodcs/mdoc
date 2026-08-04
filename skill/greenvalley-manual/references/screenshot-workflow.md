@@ -35,6 +35,8 @@ Content review is independent and runs only when requested. It may update indivi
 
 The assistant captures the monitor containing its window by default; the user may choose the whole virtual desktop. It hides itself before freezing the desktop, supports mixed-DPI and negative monitor coordinates, and saves the selected physical-pixel rectangle directly to the declared PNG target. Existing targets always require overwrite confirmation. Saving uses a temporary PNG followed by atomic replacement. A task-local lock prevents two assistant instances from updating the same task.
 
+Use `Ctrl+Shift+Z` as the screenshot shortcut to avoid conflicts with common communication applications.
+
 Aggregate acceptance must fingerprint all effective required captures and exception decisions. If a required file is replaced, added, deleted, or renamed, or a waiver/applicability decision changes, synchronization marks aggregate acceptance `stale`. Publishing then requires one renewed aggregate confirmation.
 
 Never fabricate application screenshots. Use localized live interfaces for each locale that requires them. Preserve originals and create annotated copies separately. Pause for authentication, licenses, customer data, ambiguous dialogs, destructive actions, or unexpected application state.
