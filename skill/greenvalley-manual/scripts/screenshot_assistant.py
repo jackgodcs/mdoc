@@ -57,6 +57,17 @@ def virtual_screen() -> tuple[int, int, int, int]:
     return (x, y, x + u.GetSystemMetrics(78), y + u.GetSystemMetrics(79))
 
 
+def center_on_parent(dialog: tk.Toplevel, parent: tk.Misc) -> None:
+    """Center a laid-out dialog over its parent using screen coordinates."""
+    parent.update_idletasks(); dialog.update_idletasks()
+    width, height = dialog.winfo_reqwidth(), dialog.winfo_reqheight()
+    # geometry() and winfo_x/y use top-level window coordinates.  Mixing them
+    # with winfo_rootx/y introduces the Windows non-client border offset.
+    x = parent.winfo_x() + (parent.winfo_width() - width) // 2
+    y = parent.winfo_y() + (parent.winfo_height() - height) // 2
+    dialog.geometry(f"{width}x{height}{x:+d}{y:+d}")
+
+
 class InstanceLock:
     def __init__(self, path: Path): self.path, self.owned = path, False
     def acquire(self) -> bool:
@@ -253,13 +264,14 @@ class Assistant:
     def exception(self):
         shot=self.selected();
         if not shot:return
-        win=tk.Toplevel(self.root); win.title("设置截图状态"); win.transient(self.root); win.grab_set(); choice=tk.StringVar(value="blocked")
+        win=tk.Toplevel(self.root); win.title("设置截图状态"); win.transient(self.root); win.withdraw(); choice=tk.StringVar(value="blocked")
         for label,value in [("受阻","blocked"),("不适用","not-applicable"),("豁免","waived"),("恢复待截图","pending")]: ttk.Radiobutton(win,text=label,variable=choice,value=value).pack(anchor="w",padx=15,pady=3)
         ttk.Label(win,text="原因（异常状态必填）").pack(anchor="w",padx=15,pady=(8,2)); entry=ttk.Entry(win,width=55); entry.pack(padx=15); entry.focus_set()
         def save():
             try: state.set_locale_status(self.workspace,self.task_id,shot["id"],self.locale_var.get(),choice.get(),entry.get()); win.destroy(); self.refresh()
             except Exception as e: messagebox.showerror("无法保存",str(e),parent=win)
         ttk.Button(win,text="保存",command=save).pack(pady=12)
+        center_on_parent(win,self.root); win.deiconify(); win.grab_set(); win.lift(); entry.focus_set()
     def accept_all(self):
         if not messagebox.askyesno("接受全部截图","确认已目视核对当前所有必需截图，并接受它们用于发布？"):return
         try: state.accept(self.workspace,self.task_id); self.refresh(); prompt=f"使用 $greenvalley-manual 继续 {self.task_id}，截图已完成并已由用户目视接受，请同步状态并继续后续流程。"; self.root.clipboard_clear(); self.root.clipboard_append(prompt); messagebox.showinfo("已接受","已记录总体验收，并将继续任务提示复制到剪贴板。")
