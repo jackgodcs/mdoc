@@ -64,16 +64,21 @@ def shot_blocks(source: str) -> list[tuple[int, int, str]]:
 
 
 def replace_capture(block: str, status: str, file_map: dict[str, str], locale_statuses: dict[str, str]) -> str:
+    block = re.sub(
+        r"(?ms)^locales:[ \t]*\n(?:        .*\n?)*^review:[ \t]*\n((?:      .*\n?)*)",
+        r"    review:\n\1",
+        block,
+    )
     block = re.sub(r"(?ms)(^    capture:\s*\n      status:\s*)[^#\n]+", rf"\g<1>{status}", block, count=1)
-    match = re.search(r"(?ms)^      files:\s*(?:\{\}\s*|\n(?:        .*\n?)*)", block)
+    match = re.search(r"(?m)^      files:[ \t]*(?:\{\}[ \t]*\n?|\n(?:        .*\n?)*)", block)
     replacement = "      files:\n" + "".join(f"        {locale}: {path}\n" for locale, path in file_map.items()) if file_map else "      files: {}\n"
     block = block[:match.start()] + replacement + block[match.end():] if match else block
     locale_block = "      locales:\n" + "".join(f"        {locale}: {value}\n" for locale, value in locale_statuses.items())
-    locale_match = re.search(r"(?ms)^      locales:\s*\n(?:        .*\n?)*", block)
+    locale_match = re.search(r"(?m)^      locales:[ \t]*\n(?:        .*\n?)*", block)
     if locale_match:
         block = block[:locale_match.start()] + locale_block + block[locale_match.end():]
     else:
-        files_match = re.search(r"(?ms)^      files:\s*(?:\{\}\s*|\n(?:        .*\n?)*)", block)
+        files_match = re.search(r"(?m)^      files:[ \t]*(?:\{\}[ \t]*\n?|\n(?:        .*\n?)*)", block)
         if files_match:
             block = block[:files_match.end()] + locale_block + block[files_match.end():]
     return block

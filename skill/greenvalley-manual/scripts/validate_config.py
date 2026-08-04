@@ -114,6 +114,10 @@ def validate_task(task_dir: Path, errors: list[str], warnings: list[str]):
         source = text(screenshots)
         shot_ids = list_item_values(source, "id")
         for value in duplicates(shot_ids): errors.append(f"{screenshots}: duplicate screenshot id: {value}")
+        if re.search(r"(?m)^locales:\s*$", source):
+            errors.append(f"{screenshots}: malformed top-level locales block")
+        if re.search(r"(?m)^review:\s*$", source):
+            errors.append(f"{screenshots}: malformed top-level review block")
         capture_statuses = re.findall(r"(?ms)^    capture:\s*\n      status:\s*([^#\n]+)", source)
         allowed_capture = {"pending", "captured", "needs-retake", "approved", "not-applicable", "waived", "blocked"}
         for value in capture_statuses:
