@@ -35,6 +35,10 @@ Content review is independent and runs only when requested. It may update indivi
 
 The assistant captures the monitor containing its window by default; the user may choose the whole virtual desktop. It hides itself before freezing the desktop, supports mixed-DPI and negative monitor coordinates, and saves the selected physical-pixel rectangle directly to the declared PNG target. Existing targets always require overwrite confirmation. Saving uses a temporary PNG followed by atomic replacement. A task-local lock prevents two assistant instances from updating the same task.
 
+After an initial drag, the frozen capture overlay keeps the selection editable until explicit completion. Show four corner and four edge handles at all times. Each edge and corner supports directional resizing, the selection interior supports movement, and crossing an opposite edge reverses the active resize direction without ending the drag. Mouse release preserves the current selection; only Finish, Enter, or a double-click inside the selection captures it.
+
+During initial selection and edge or corner resizing, show a Canvas-based magnifier sampled from the original frozen image: 31 by 31 physical pixels, enlarged 6 times with nearest-neighbor scaling. Include a center crosshair, the active horizontal or vertical boundary, pointer coordinates, and selection dimensions. Place it near the pointer with right-bottom, left-bottom, right-top, then left-top fallback. Hide it while moving the whole selection and after mouse release. Overlay shading, borders, handles, labels, controls, and the magnifier must never be included in the saved PNG.
+
 Use `Ctrl+Shift+Z` as the screenshot shortcut to avoid conflicts with common communication applications.
 
 Task dialogs opened by the assistant must be centered over the assistant window using absolute screen coordinates, including when the window is on a secondary monitor.

@@ -95,50 +95,164 @@ class InstanceLock:
 
 
 class CaptureOverlay:
+    HANDLE_RADIUS = 4
+    HIT_MARGIN = 8
+    BLUE = "#168cff"
+    CURSORS = {
+        "n": "sb_v_double_arrow", "s": "sb_v_double_arrow",
+        "e": "sb_h_double_arrow", "w": "sb_h_double_arrow",
+        "nw": "size_nw_se", "se": "size_nw_se",
+        "ne": "size_ne_sw", "sw": "size_ne_sw",
+        "move": "fleur", "new": "crosshair",
+    }
+
     def __init__(self, parent: tk.Tk, image: Image.Image, bbox: tuple[int, int, int, int], done):
         self.parent, self.image, self.bbox, self.done = parent, image, bbox, done
-        self.start = self.rect = self.mode = None
+        self.start = self.rect = self.mode = self.drag_rect = self.resize_axes = None
         self.win = tk.Toplevel(parent); self.win.overrideredirect(True); self.win.attributes("-topmost", True)
         x1, y1, x2, y2 = bbox; self.win.geometry(f"{x2-x1}x{y2-y1}{x1:+d}{y1:+d}")
         self.canvas = tk.Canvas(self.win, highlightthickness=0, cursor="crosshair")
         self.canvas.pack(fill="both", expand=True)
         self.photo = ImageTk.PhotoImage(image); self.canvas.create_image(0, 0, anchor="nw", image=self.photo)
-        self.shade = self.canvas.create_rectangle(0, 0, image.width, image.height, fill="black", stipple="gray50", outline="")
+        self.shades = [self.canvas.create_rectangle(0, 0, image.width, image.height, fill="black", stipple="gray50", outline="") for _ in range(4)]
+        for item in self.shades[1:]: self.canvas.coords(item,0,0,0,0)
         self.info = self.canvas.create_text(12, 12, anchor="nw", fill="white", text="拖动选择区域；Enter/双击完成，Esc/右键取消", font=("Microsoft YaHei UI", 11, "bold"))
         self.canvas.bind("<ButtonPress-1>", self.press); self.canvas.bind("<B1-Motion>", self.drag)
-        self.canvas.bind("<ButtonRelease-1>", self.release); self.canvas.bind("<Double-Button-1>", lambda e: self.finish())
+        self.canvas.bind("<ButtonRelease-1>", self.release); self.canvas.bind("<Double-Button-1>", self.double_click); self.canvas.bind("<Motion>", self.hover)
         self.canvas.bind("<Button-3>", lambda e: self.cancel()); self.win.bind("<Escape>", lambda e: self.cancel())
         self.win.bind("<Return>", lambda e: self.finish()); self.win.bind("<Key>", self.key); self.win.focus_force()
         self.buttons = ttk.Frame(self.win); ttk.Button(self.buttons,text="重新选择",command=self.reset).pack(side="left"); ttk.Button(self.buttons,text="取消",command=self.cancel).pack(side="left",padx=4); ttk.Button(self.buttons,text="完成",command=self.finish).pack(side="left")
+        self.handles = [self.canvas.create_oval(0, 0, 0, 0, fill=self.BLUE, outline="white", width=1, state="hidden") for _ in range(8)]
+        self.size_bg = self.canvas.create_rectangle(0, 0, 0, 0, fill="white", outline="#b5b5b5", state="hidden")
+        self.size_text = self.canvas.create_text(0, 0, anchor="nw", fill="#222222", font=("Microsoft YaHei UI", 9), state="hidden")
+        self.lens_bg = self.canvas.create_rectangle(0, 0, 0, 0, fill="#202020", outline=self.BLUE, width=2, state="hidden")
+        self.lens_item = self.canvas.create_image(0, 0, anchor="nw", state="hidden")
+        self.lens_h = self.canvas.create_line(0, 0, 0, 0, fill=self.BLUE, width=1, state="hidden")
+        self.lens_v = self.canvas.create_line(0, 0, 0, 0, fill=self.BLUE, width=1, state="hidden")
+        self.lens_text = self.canvas.create_text(0, 0, anchor="nw", fill="white", font=("Consolas", 9), state="hidden")
+        self.lens_photo = None
+
+    @staticmethod
+    def normalize(raw):
+        x1, y1, x2, y2 = raw
+        return (int(min(x1, x2)), int(min(y1, y2)), int(max(x1, x2)), int(max(y1, y2)))
+
+    @staticmethod
+    def resize_result(rect, axes, x, y):
+        x1,y1,x2,y2=rect; raw=[x1,y1,x2,y2]
+        if "w" in axes:raw[0]=x
+        if "e" in axes:raw[2]=x
+        if "n" in axes:raw[1]=y
+        if "s" in axes:raw[3]=y
+        horizontal = "w" if (("w" in axes and x < x2) or ("e" in axes and x < x1)) else "e"
+        vertical = "n" if (("n" in axes and y < y2) or ("s" in axes and y < y1)) else "s"
+        mode = horizontal if axes in {"w","e"} else (vertical if axes in {"n","s"} else vertical+horizontal)
+        return CaptureOverlay.normalize(raw), mode
+
+    def points(self):
+        x1, y1, x2, y2 = self.rect; mx, my = (x1+x2)//2, (y1+y2)//2
+        return [(x1,y1),(mx,y1),(x2,y1),(x2,my),(x2,y2),(mx,y2),(x1,y2),(x1,my)]
+
+    def hit_test(self, x, y):
+        if not self.rect: return "new"
+        x1,y1,x2,y2=self.rect; m=self.HIT_MARGIN
+        near_l,near_r,near_t,near_b=abs(x-x1)<=m,abs(x-x2)<=m,abs(y-y1)<=m,abs(y-y2)<=m
+        within_x=x1-m<=x<=x2+m; within_y=y1-m<=y<=y2+m
+        if near_l and near_t:return "nw"
+        if near_r and near_t:return "ne"
+        if near_r and near_b:return "se"
+        if near_l and near_b:return "sw"
+        if near_t and within_x:return "n"
+        if near_b and within_x:return "s"
+        if near_l and within_y:return "w"
+        if near_r and within_y:return "e"
+        if x1<x<x2 and y1<y<y2:return "move"
+        return "new"
+
+    def set_cursor(self, mode):
+        try:self.canvas.config(cursor=self.CURSORS.get(mode,"crosshair"))
+        except tk.TclError:self.canvas.config(cursor="crosshair")
+
+    def hover(self,e):
+        if self.start:return
+        mode=self.hit_test(e.x,e.y); self.set_cursor(mode); self.highlight(mode)
+
+    def highlight(self,mode):
+        active={"nw":{0},"n":{1},"ne":{2},"e":{3},"se":{4},"s":{5},"sw":{6},"w":{7}}.get(mode,set())
+        if not self.rect:return
+        for index,(item,(x,y)) in enumerate(zip(self.handles,self.points())):
+            r=self.HANDLE_RADIUS+(2 if index in active else 0); self.canvas.coords(item,x-r,y-r,x+r,y+r)
+
     def press(self, e):
-        if self.rect and self.rect[0] <= e.x <= self.rect[2] and self.rect[1] <= e.y <= self.rect[3]:
-            margin=8; edges=(abs(e.x-self.rect[0])<margin,abs(e.x-self.rect[2])<margin,abs(e.y-self.rect[1])<margin,abs(e.y-self.rect[3])<margin)
-            self.mode=("resize",edges) if any(edges) else ("move",self.rect); self.start=(e.x,e.y)
-        else: self.mode=("new",None); self.start=(e.x,e.y); self.rect=None
+        self.mode=self.hit_test(e.x,e.y); self.start=(e.x,e.y); self.drag_rect=self.rect; self.resize_axes=self.mode
+        if self.mode=="new":self.rect=None; self.drag_rect=(e.x,e.y,e.x,e.y)
+        self.set_cursor(self.mode)
     def drag(self, e):
         if not self.start:return
-        if self.mode[0]=="new": self.draw_box((self.start[0],self.start[1],e.x,e.y))
-        elif self.mode[0]=="move":
-            dx,dy=e.x-self.start[0],e.y-self.start[1]; old=self.mode[1]; self.draw_box((old[0]+dx,old[1]+dy,old[2]+dx,old[3]+dy))
+        x1,y1,x2,y2=self.drag_rect; mx,my=e.x,e.y
+        if self.mode=="new":raw=(self.start[0],self.start[1],mx,my)
+        elif self.mode=="move":
+            dx,dy=mx-self.start[0],my-self.start[1]; w,h=x2-x1,y2-y1
+            nx=max(0,min(self.image.width-w,x1+dx)); ny=max(0,min(self.image.height-h,y1+dy)); raw=(nx,ny,nx+w,ny+h)
         else:
-            l,r,t,b=self.mode[1]; x1,y1,x2,y2=self.rect
-            self.draw_box((e.x if l else x1,e.y if t else y1,e.x if r else x2,e.y if b else y2))
-    def release(self, e): self.draw(e.x, e.y)
-    def draw(self, x, y):
-        if self.start and self.mode and self.mode[0]=="new": self.draw_box((self.start[0],self.start[1],x,y))
+            raw,self.mode=self.resize_result(self.drag_rect,self.resize_axes,mx,my)
+        self.draw_box(raw)
+        if self.mode!="move":self.show_lens(mx,my,self.mode)
+    def release(self, e):
+        self.hide_lens(); self.start=self.drag_rect=self.resize_axes=None
+        if self.rect:self.set_cursor(self.hit_test(e.x,e.y))
     def draw_box(self, raw):
-        x1,y1,x2,y2=raw; box=(max(0,min(x1,x2)),max(0,min(y1,y2)),min(self.image.width,max(x1,x2)),min(self.image.height,max(y1,y2))); self.rect=box
+        box=self.normalize(raw); box=(max(0,box[0]),max(0,box[1]),min(self.image.width,box[2]),min(self.image.height,box[3])); self.rect=box
         if hasattr(self, "selection"): self.canvas.coords(self.selection, *box)
-        else: self.selection = self.canvas.create_rectangle(*box, outline="#00b7ff", width=2)
-        self.canvas.itemconfigure(self.info, text=f"{box[2]-box[0]} × {box[3]-box[1]} px   Enter/双击完成；Esc取消")
-        self.buttons.place(x=max(0,min(box[0],self.image.width-230)),y=max(0,box[1]-38))
+        else:self.selection=self.canvas.create_rectangle(*box,outline=self.BLUE,width=2)
+        x1,y1,x2,y2=box; w,h=x2-x1,y2-y1
+        for item,coords in zip(self.shades,[(0,0,self.image.width,y1),(0,y2,self.image.width,self.image.height),(0,y1,x1,y2),(x2,y1,self.image.width,y2)]):self.canvas.coords(item,*coords)
+        for item,(x,y) in zip(self.handles,self.points()):
+            r=self.HANDLE_RADIUS; self.canvas.coords(item,x-r,y-r,x+r,y+r); self.canvas.itemconfigure(item,state="normal"); self.canvas.tag_raise(item)
+        label=f"{w} × {h}"; lx=max(2,min(x1,self.image.width-80)); ly=y1-26 if y1>=28 else min(self.image.height-24,y1+8)
+        self.canvas.coords(self.size_bg,lx,ly,lx+76,ly+22); self.canvas.coords(self.size_text,lx+7,ly+3); self.canvas.itemconfigure(self.size_text,text=label,state="normal"); self.canvas.itemconfigure(self.size_bg,state="normal")
+        self.canvas.tag_raise(self.selection)
+        for item in self.handles:self.canvas.tag_raise(item)
+        self.canvas.tag_raise(self.size_bg); self.canvas.tag_raise(self.size_text)
+        self.canvas.itemconfigure(self.info,text="拖动边框或控制点调整；拖动内部平移；Enter/双击完成")
+        by=y1-42 if y1>=46 else min(self.image.height-34,y2+8); self.buttons.place(x=max(0,min(x1,self.image.width-230)),y=by)
+
+    def show_lens(self,x,y,mode):
+        sample=31; half=sample//2; left,top=x-half,y-half
+        patch=Image.new("RGB",(sample,sample),(0,0,0)); crop_box=(max(0,left),max(0,top),min(self.image.width,left+sample),min(self.image.height,top+sample))
+        if crop_box[2]>crop_box[0] and crop_box[3]>crop_box[1]:patch.paste(self.image.crop(crop_box),(crop_box[0]-left,crop_box[1]-top))
+        zoom=patch.resize((186,186),Image.Resampling.NEAREST); self.lens_photo=ImageTk.PhotoImage(zoom)
+        width,height=196,222; gap=24; candidates=[(x+gap,y+gap),(x-width-gap,y+gap),(x+gap,y-height-gap),(x-width-gap,y-height-gap)]
+        fitting=[(cx,cy) for cx,cy in candidates if 0<=cx<=self.image.width-width and 0<=cy<=self.image.height-height]
+        def overlap(candidate):
+            if not self.rect:return 0
+            cx,cy=candidate; x1,y1,x2,y2=self.rect
+            return max(0,min(cx+width,x2)-max(cx,x1))*max(0,min(cy+height,y2)-max(cy,y1))
+        lx,ly=min(fitting,key=overlap) if fitting else (max(0,min(self.image.width-width,x+gap)),max(0,min(self.image.height-height,y+gap)))
+        self.canvas.coords(self.lens_bg,lx,ly,lx+width,ly+height); self.canvas.coords(self.lens_item,lx+5,ly+5); self.canvas.itemconfigure(self.lens_item,image=self.lens_photo,state="normal")
+        center=lx+5+93; middle=ly+5+93
+        self.canvas.coords(self.lens_h,lx+5,middle,lx+191,middle); self.canvas.coords(self.lens_v,center,ly+5,center,ly+191)
+        self.canvas.itemconfigure(self.lens_h,state="normal" if any(c in mode for c in "ns") or mode=="new" else "hidden")
+        self.canvas.itemconfigure(self.lens_v,state="normal" if any(c in mode for c in "ew") or mode=="new" else "hidden")
+        w,h=(self.rect[2]-self.rect[0],self.rect[3]-self.rect[1]) if self.rect else (0,0); self.canvas.coords(self.lens_text,lx+7,ly+194); self.canvas.itemconfigure(self.lens_text,text=f"坐标: {x}, {y}   选区: {w} × {h}",state="normal")
+        self.canvas.itemconfigure(self.lens_bg,state="normal")
+        for item in (self.lens_bg,self.lens_item,self.lens_h,self.lens_v,self.lens_text):self.canvas.tag_raise(item)
+
+    def hide_lens(self):
+        for item in (self.lens_bg,self.lens_item,self.lens_h,self.lens_v,self.lens_text):self.canvas.itemconfigure(item,state="hidden")
     def key(self,e):
         if not self.rect or e.keysym not in {"Left","Right","Up","Down"}:return
-        step=10 if e.state & 1 else 1; dx=(-step if e.keysym=="Left" else step if e.keysym=="Right" else 0); dy=(-step if e.keysym=="Up" else step if e.keysym=="Down" else 0); x1,y1,x2,y2=self.rect; self.draw_box((x1+dx,y1+dy,x2+dx,y2+dy))
+        step=10 if e.state & 1 else 1; dx=(-step if e.keysym=="Left" else step if e.keysym=="Right" else 0); dy=(-step if e.keysym=="Up" else step if e.keysym=="Down" else 0); x1,y1,x2,y2=self.rect; w,h=x2-x1,y2-y1; nx=max(0,min(self.image.width-w,x1+dx)); ny=max(0,min(self.image.height-h,y1+dy)); self.draw_box((nx,ny,nx+w,ny+h))
     def reset(self):
-        self.rect=self.start=self.mode=None
+        self.rect=self.start=self.mode=self.drag_rect=self.resize_axes=None; self.hide_lens()
         if hasattr(self,"selection"): self.canvas.delete(self.selection); del self.selection
-        self.buttons.place_forget(); self.canvas.itemconfigure(self.info,text="拖动选择区域；Enter/双击完成，Esc/右键取消")
+        for item in self.handles:self.canvas.itemconfigure(item,state="hidden")
+        for item in (self.size_bg,self.size_text):self.canvas.itemconfigure(item,state="hidden")
+        self.canvas.coords(self.shades[0],0,0,self.image.width,self.image.height)
+        for item in self.shades[1:]:self.canvas.coords(item,0,0,0,0)
+        self.buttons.place_forget(); self.canvas.itemconfigure(self.info,text="拖动选择区域；Enter/双击完成，Esc/右键取消"); self.set_cursor("new")
+    def double_click(self,e):
+        if self.rect and self.rect[0]<e.x<self.rect[2] and self.rect[1]<e.y<self.rect[3]:self.finish()
     def finish(self):
         if not self.rect or self.rect[2]-self.rect[0] < 2 or self.rect[3]-self.rect[1] < 2: return
         cropped = self.image.crop(self.rect); self.win.destroy(); self.done(cropped)
@@ -282,8 +396,14 @@ class Assistant:
 
 
 def main():
-    dpi_aware(); p=argparse.ArgumentParser(); p.add_argument("--workspace",type=Path); p.add_argument("--task"); p.add_argument("--repository",type=Path); p.add_argument("--check",action="store_true"); a=p.parse_args()
+    dpi_aware(); p=argparse.ArgumentParser(); p.add_argument("--workspace",type=Path); p.add_argument("--task"); p.add_argument("--repository",type=Path); p.add_argument("--check",action="store_true"); p.add_argument("--overlay-check",action="store_true"); a=p.parse_args()
     try:
+        if a.overlay_check:
+            assert CaptureOverlay.normalize((40,30,10,5)) == (10,5,40,30)
+            assert CaptureOverlay.resize_result((10,10,100,100),"e",120,50) == ((10,10,120,100),"e")
+            assert CaptureOverlay.resize_result((10,10,100,100),"e",5,50) == ((5,10,10,100),"w")
+            assert CaptureOverlay.resize_result((10,10,100,100),"se",5,4) == ((5,4,10,10),"nw")
+            print("overlay checks passed"); return 0
         workspace, task_id = a.workspace, a.task
         if not workspace:
             found=state.discover((a.repository or Path.cwd()).resolve()); workspace=Path(found["workspace"])
