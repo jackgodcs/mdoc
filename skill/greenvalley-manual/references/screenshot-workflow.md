@@ -6,7 +6,7 @@ Support manual, assisted, and automated capture; assisted is the recommended def
 
 Keep `screenshots.yaml` as the only authoritative screenshot state. `screenshot-assistant.json` is a generated read model and `screenshot-assistant.local.json` stores only GUI preferences and local notes. Generate `open-screenshot-assistant.cmd` under `.work/greenvalley-manual/<task-id>/`. Do not generate Markdown screenshot workbooks.
 
-The GUI is the human capture interface. It switches independent locales, lists/filter screenshot items, shows concise requirements, previews the current target PNG, and records exception states.
+The GUI is the human capture interface. For every independent locale, the left pane always shows the task's complete screenshot list in the same manifest order. Locale-specific completion and exception states are shown in the status column and must never hide list items. The GUI also shows concise requirements, previews the current target PNG, and records exception states.
 
 ## Capture synchronization
 

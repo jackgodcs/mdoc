@@ -22,10 +22,6 @@ STATUS_LABELS = {
     "pending": "待截图", "captured": "已截图", "needs-retake": "需重拍",
     "blocked": "受阻", "not-applicable": "不适用", "waived": "豁免",
 }
-FILTERS = [("待截图", "pending"), ("全部", "all"), ("已截图", "captured"),
-           ("必需", "required"), ("可选", "optional"), ("异常", "exception")]
-
-
 def dpi_aware() -> None:
     if sys.platform == "win32":
         try:
@@ -147,20 +143,24 @@ class Assistant:
         self.root.geometry("1180x760"); self.root.minsize(900, 600)
         self.preview_photo = None; self.visible = []
         self.load_local(); self.build(); self.refresh()
-        if check: self.root.after(300, self.close)
+        if check:
+            original = self.locale_var.get()
+            for locale in self.manifest["locales"]:
+                self.locale_var.set(locale["id"]); self.populate_list()
+            self.locale_var.set(original); self.populate_list()
+            self.root.after(300, self.close)
     def load_local(self):
         try: self.local = json.loads(self.paths["local"].read_text(encoding="utf-8"))
         except Exception: self.local = {"schema_version":1, "preferences":{}, "notes":{}}
         p = self.local.setdefault("preferences", {})
-        self.locale_var = tk.StringVar(value=p.get("selected_locale", "zh")); self.filter_var = tk.StringVar(value=p.get("filter", "pending"))
+        self.locale_var = tk.StringVar(value=p.get("selected_locale", "zh"))
         self.scope_var = tk.StringVar(value=p.get("capture_scope", "current_monitor")); self.auto_var = tk.BooleanVar(value=p.get("auto_advance", True))
     def save_local(self):
-        self.local["preferences"] = {"selected_locale":self.locale_var.get(), "filter":self.filter_var.get(), "capture_scope":self.scope_var.get(), "auto_advance":self.auto_var.get()}
+        self.local["preferences"] = {"selected_locale":self.locale_var.get(), "capture_scope":self.scope_var.get(), "auto_advance":self.auto_var.get()}
         state.atomic_json(self.paths["local"], self.local)
     def build(self):
         top = ttk.Frame(self.root, padding=8); top.pack(fill="x")
         ttk.Label(top, text="语言").pack(side="left"); self.locale_box = ttk.Combobox(top, textvariable=self.locale_var, state="readonly", width=14); self.locale_box.pack(side="left", padx=(5,12))
-        ttk.Label(top, text="筛选").pack(side="left"); self.filter_box = ttk.Combobox(top, state="readonly", width=12, values=[x[0] for x in FILTERS]); self.filter_box.pack(side="left", padx=5)
         ttk.Button(top, text="刷新 F5", command=self.refresh).pack(side="left", padx=5)
         ttk.Button(top, text="接受当前全部截图", command=self.accept_all).pack(side="right")
         pane = ttk.Panedwindow(self.root, orient="horizontal"); pane.pack(fill="both", expand=True, padx=8, pady=(0,8))
@@ -175,30 +175,29 @@ class Assistant:
         self.preview = ttk.Label(prev, text="尚未截图", anchor="center"); self.preview.pack(fill="both", expand=True, pady=(8,0))
         self.status = ttk.Label(self.root, anchor="w", padding=(8,2)); self.status.pack(fill="x")
         self.tree.bind("<<TreeviewSelect>>", self.show_selected); self.locale_box.bind("<<ComboboxSelected>>", self.locale_changed)
-        self.filter_box.bind("<<ComboboxSelected>>", self.filter_changed); self.root.bind("<F5>",lambda e:self.refresh()); self.root.bind("<Control-Shift-A>",lambda e:self.capture()); self.root.bind("<Control-o>",lambda e:self.open_image()); self.root.bind("<Control-Shift-O>",lambda e:self.open_folder()); self.root.bind("<Control-Return>",lambda e:self.accept_all())
+        self.root.bind("<F5>",lambda e:self.refresh()); self.root.bind("<Control-Shift-A>",lambda e:self.capture()); self.root.bind("<Control-o>",lambda e:self.open_image()); self.root.bind("<Control-Shift-O>",lambda e:self.open_folder()); self.root.bind("<Control-Return>",lambda e:self.accept_all())
     def refresh(self):
         self.manifest = state.synchronize(self.workspace, self.task_id, Path(__file__).resolve().parent.parent)
         labels = [f"{x['label']} ({x['id']})" for x in self.manifest["locales"]]; ids=[x["id"] for x in self.manifest["locales"]]
         self.locale_box["values"] = labels
         current=self.locale_var.get(); idx=ids.index(current) if current in ids else 0; self.locale_box.current(idx); self.locale_var.set(ids[idx])
-        f=self.filter_var.get(); self.filter_box.current(next((i for i,x in enumerate(FILTERS) if x[1]==f),0)); self.apply_filter()
-    def filter_changed(self,e=None): self.filter_var.set(FILTERS[self.filter_box.current()][1]); self.apply_filter()
+        self.populate_list()
     def locale_changed(self,e=None):
         index=self.locale_box.current()
         if index >= 0: self.locale_var.set(self.manifest["locales"][index]["id"])
-        self.apply_filter()
-    def apply_filter(self):
-        locale=self.locale_var.get(); mode=self.filter_var.get(); selected=self.selected_id(); self.tree.delete(*self.tree.get_children()); self.visible=[]
+        self.populate_list()
+    def populate_list(self):
+        locale=self.locale_var.get(); selected=self.selected_id(); self.tree.delete(*self.tree.get_children()); self.visible=[]
         for shot in self.manifest["screenshots"]:
             s=shot["locales"][locale]["status"]
-            ok=mode=="all" or (mode=="pending" and s in {"pending","needs-retake","blocked"}) or mode==s or (mode=="required" and shot["required"]) or (mode=="optional" and not shot["required"]) or (mode=="exception" and s in state.EXCEPTION_STATUSES)
-            if ok:
-                title=f"{shot['id']}  {shot['filename']}"; self.tree.insert("","end",iid=shot["id"],text=title,values=(STATUS_LABELS.get(s,s),)); self.visible.append(shot)
+            title=f"{shot['id']}  {shot['filename']}"; self.tree.insert("","end",iid=shot["id"],text=title,values=(STATUS_LABELS.get(s,s),)); self.visible.append(shot)
         choose=selected if selected and self.tree.exists(selected) else (self.visible[0]["id"] if self.visible else None)
         if choose: self.tree.selection_set(choose); self.tree.focus(choose); self.show_selected()
         else: self.clear_details()
         complete=sum(x["locales"][locale]["status"] in state.COMPLETE_STATUSES for x in self.manifest["screenshots"] if x["required"]); total=sum(x["required"] for x in self.manifest["screenshots"]); self.status.config(text=f"{locale}: 必需截图 {complete}/{total}；总体验收：{self.manifest['acceptance']['status']}")
         self.save_local()
+        if len(self.visible) != len(self.manifest["screenshots"]):
+            raise RuntimeError("左侧截图列表不完整")
     def selected_id(self):
         s=self.tree.selection(); return s[0] if s else None
     def selected(self): return next((x for x in self.manifest["screenshots"] if x["id"]==self.selected_id()),None)
