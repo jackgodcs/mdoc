@@ -47,7 +47,9 @@ Generate source-locale content first, rewrite locales that require localized UI 
 
 ## Screenshot Workflow
 
-Read `references/screenshot-workflow.md`. Generate machine-readable tasks in `screenshots.yaml`, including page IDs, entry steps, preconditions, expected state, locale policy, sensitivity constraints, capture status, and review status. Never fabricate software screenshots.
+Read `references/screenshot-workflow.md`. Keep `screenshots.yaml` as the machine state source and generate one concise Markdown screenshot workbook for each locale that requires independent captures. Store workbooks and original captures under the bound manual repository's `.work/greenvalley-manual/<task-id>/` directory.
+
+Use `scripts/screenshot_workbook.py sync <process-workspace> <task-id>` to scan target PNG paths, synchronize capture existence, refresh workbook progress and cards, preserve user-note blocks, and invalidate stale visual acceptance. Capture completion means only that the target PNG exists; never inspect image content during sync. Run screenshot content review only when explicitly requested. A user may instead explicitly accept all current screenshots after visually reviewing the workbooks; record that aggregate acceptance in `state.yaml` without changing individual `review.status` values. Never fabricate software screenshots.
 
 ## Staging, Publishing, and Safety
 
@@ -73,3 +75,4 @@ Run configuration, structure, Markdown/resource, and content-quality checks desc
 - `assets/examples/`: complete neutral examples that must pass schemas.
 - `schemas/`: machine-readable configuration schemas.
 - `scripts/validate_config.py`: schema and cross-file validation entry point.
+- `scripts/screenshot_workbook.py`: screenshot workbook generation, file-existence synchronization, and aggregate visual-acceptance fingerprints.

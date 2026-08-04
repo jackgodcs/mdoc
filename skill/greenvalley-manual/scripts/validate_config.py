@@ -114,6 +114,10 @@ def validate_task(task_dir: Path, errors: list[str], warnings: list[str]):
         source = text(screenshots)
         shot_ids = list_item_values(source, "id")
         for value in duplicates(shot_ids): errors.append(f"{screenshots}: duplicate screenshot id: {value}")
+        capture_statuses = re.findall(r"(?ms)^    capture:\s*\n      status:\s*([^#\n]+)", source)
+        allowed_capture = {"pending", "captured", "needs-retake", "approved", "not-applicable", "waived", "blocked"}
+        for value in capture_statuses:
+            if value.strip() not in allowed_capture: errors.append(f"{screenshots}: invalid capture status: {value.strip()}")
     else:
         errors.append(f"{task_dir}: screenshots.yaml is missing")
     if structure.exists() and screenshots.exists():

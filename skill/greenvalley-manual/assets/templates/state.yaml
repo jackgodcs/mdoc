@@ -6,9 +6,9 @@ checks:
   task: pending
   structure: pending
   screenshot_plan: pending
-  screenshots: pending
+  screenshot_capture: pending
+  screenshot_review: pending
   writing: not_started
   validation: not_started
   delivery: not_started
 blockers: []
-

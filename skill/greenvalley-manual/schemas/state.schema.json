@@ -29,6 +29,29 @@
     },
     "blockers": {
       "type": "array"
+    },
+    "screenshot_acceptance": {
+      "type": "object",
+      "required": [
+        "status",
+        "method",
+        "manifest_digest"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "pending",
+            "user_accepted",
+            "stale"
+          ]
+        },
+        "method": {
+          "const": "user_visual_review"
+        },
+        "manifest_digest": {
+          "type": "string"
+        }
+      }
     }
   }
 }
