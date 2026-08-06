@@ -407,7 +407,7 @@ class Assistant:
         if not self.lock.acquire(): raise RuntimeError("此任务的截图助手已经在运行。")
         self.root.protocol("WM_DELETE_WINDOW", self.close); self.root.title(f"GreenValley 截图助手 — {task_id}")
         self.root.geometry("1180x760"); self.root.minsize(900, 600)
-        self.preview_photo = None; self.visible = []; self.capture_in_progress=False; self.last_capture_request=0.0; self.capture_context=None; self.modal_count=0
+        self.reference_photo = self.current_photo = None; self.preview_resize_job=None; self.visible = []; self.capture_in_progress=False; self.last_capture_request=0.0; self.capture_context=None; self.modal_count=0
         self.events=queue.Queue(); self.hotkey=GlobalHotkey(self.events)
         self.load_local(); self.build(); self.refresh(); self.hotkey.start(); self.root.after(50,self.poll_events)
         if check:
@@ -422,8 +422,9 @@ class Assistant:
         p = self.local.setdefault("preferences", {})
         self.locale_var = tk.StringVar(value=p.get("selected_locale", "zh"))
         self.scope_var = tk.StringVar(value=p.get("capture_scope", "current_monitor")); self.auto_var = tk.BooleanVar(value=p.get("auto_advance", True))
+        self.preview_split_ratio = max(0.2,min(0.8,float(p.get("preview_split_ratio",0.4))))
     def save_local(self):
-        self.local["preferences"] = {"selected_locale":self.locale_var.get(), "capture_scope":self.scope_var.get(), "auto_advance":self.auto_var.get()}
+        self.local["preferences"] = {"selected_locale":self.locale_var.get(), "capture_scope":self.scope_var.get(), "auto_advance":self.auto_var.get(), "preview_split_ratio":self.preview_split_ratio}
         state.atomic_json(self.paths["local"], self.local)
     def build(self):
         top = ttk.Frame(self.root, padding=8); top.pack(fill="x")
@@ -439,7 +440,13 @@ class Assistant:
         ttk.Button(bar,text="截图 Ctrl+Shift+Z",command=lambda:self.request_capture("local")).pack(side="left"); ttk.Button(bar,text="打开图片",command=self.open_image).pack(side="left",padx=4); ttk.Button(bar,text="打开目录",command=self.open_folder).pack(side="left")
         ttk.Button(bar,text="异常状态…",command=self.exception).pack(side="left",padx=4); ttk.Checkbutton(bar,text="保存后自动下一项",variable=self.auto_var).pack(side="right")
         ttk.Radiobutton(bar,text="当前屏幕",variable=self.scope_var,value="current_monitor").pack(side="right"); ttk.Radiobutton(bar,text="全部屏幕",variable=self.scope_var,value="all_monitors").pack(side="right")
-        self.preview = ttk.Label(prev, text="尚未截图", anchor="center"); self.preview.pack(fill="both", expand=True, pady=(8,0))
+        self.preview_pane=ttk.Panedwindow(prev,orient="horizontal"); self.preview_pane.pack(fill="both",expand=True,pady=(8,0))
+        reference=ttk.Frame(self.preview_pane); current=ttk.Frame(self.preview_pane); self.preview_pane.add(reference,weight=2); self.preview_pane.add(current,weight=3)
+        reference_header=ttk.Frame(reference); reference_header.pack(fill="x"); self.reference_title=ttk.Label(reference_header,text="中文参考图（zh）"); self.reference_title.pack(side="left"); self.reference_open=ttk.Button(reference_header,text="打开参考图",command=self.open_reference_image,state="disabled"); self.reference_open.pack(side="right")
+        current_header=ttk.Frame(current); current_header.pack(fill="x"); self.current_title=ttk.Label(current_header,text="当前语言截图"); self.current_title.pack(side="left")
+        self.reference_preview=ttk.Label(reference,text="中文参考图尚未截图",anchor="center"); self.reference_preview.pack(fill="both",expand=True,padx=(0,4),pady=(4,0))
+        self.current_preview=ttk.Label(current,text="当前语言截图尚未截图",anchor="center"); self.current_preview.pack(fill="both",expand=True,padx=(4,0),pady=(4,0))
+        self.preview_pane.bind("<ButtonRelease-1>",self.preview_sash_released); self.preview_pane.bind("<Configure>",self.preview_resized); self.root.after(150,self.restore_preview_split)
         self.status = ttk.Label(self.root, anchor="w", padding=(8,2)); self.status.pack(fill="x")
         self.tree.bind("<<TreeviewSelect>>", self.show_selected); self.locale_box.bind("<<ComboboxSelected>>", self.locale_changed)
         self.root.bind("<F5>",lambda e:self.refresh()); self.root.bind("<Control-Shift-Z>",lambda e:self.request_capture("local")); self.root.bind("<Control-o>",lambda e:self.open_image()); self.root.bind("<Control-Shift-O>",lambda e:self.open_folder()); self.root.bind("<Control-Return>",lambda e:self.accept_all())
@@ -481,7 +488,7 @@ class Assistant:
         s=self.tree.selection(); return s[0] if s else None
     def selected(self): return next((x for x in self.manifest["screenshots"] if x["id"]==self.selected_id()),None)
     def clear_details(self):
-        self.requirements.config(state="normal"); self.requirements.delete("1.0","end"); self.requirements.config(state="disabled"); self.preview.config(image="",text="没有符合筛选条件的截图项"); self.preview_photo=None
+        self.requirements.config(state="normal"); self.requirements.delete("1.0","end"); self.requirements.config(state="disabled"); self.reference_preview.config(image="",text="没有截图项"); self.current_preview.config(image="",text="没有截图项"); self.reference_photo=self.current_photo=None; self.reference_open.config(state="disabled")
     def show_selected(self,e=None):
         shot=self.selected(); locale=self.locale_var.get()
         if not shot:return
@@ -490,12 +497,35 @@ class Assistant:
         if shot["preconditions"]: lines += ["","准备："]+[f"  • {x}" for x in shot["preconditions"]]
         if shot["expected_state"]: lines += ["","画面必须包含："]+[f"  • {x}" for x in shot["expected_state"]]
         if d.get("reason"): lines += ["",f"原因：{d['reason']}"]
-        self.requirements.config(state="normal"); self.requirements.delete("1.0","end"); self.requirements.insert("1.0","\n".join(lines)); self.requirements.config(state="disabled"); self.update_preview(Path(d["absolute_target"]))
-    def update_preview(self,path:Path):
-        if not path.is_file(): self.preview.config(image="",text="尚未截图"); self.preview_photo=None; return
+        self.requirements.config(state="normal"); self.requirements.delete("1.0","end"); self.requirements.insert("1.0","\n".join(lines)); self.requirements.config(state="disabled"); self.update_previews(shot)
+    def preview_status(self,data):return STATUS_LABELS.get(data.get("status","pending"),data.get("status","pending"))
+    def set_preview(self,label,path,empty,slot):
+        if not path.is_file():label.config(image="",text=empty); setattr(self,slot,None); return
         try:
-            im=Image.open(path); self.root.update_idletasks(); w=max(300,self.preview.winfo_width()-20); h=max(220,self.preview.winfo_height()-20); im.thumbnail((w,h),Image.Resampling.LANCZOS); self.preview_photo=ImageTk.PhotoImage(im.copy()); self.preview.config(image=self.preview_photo,text="")
-        except Exception as e: self.preview.config(image="",text=f"无法预览：{e}")
+            with Image.open(path) as source:im=source.copy()
+            self.root.update_idletasks(); w=max(120,label.winfo_width()-16); h=max(120,label.winfo_height()-16); im.thumbnail((w,h),Image.Resampling.LANCZOS); photo=ImageTk.PhotoImage(im); setattr(self,slot,photo); label.config(image=photo,text="")
+        except Exception as error:label.config(image="",text=f"无法预览：{error}"); setattr(self,slot,None)
+    def update_previews(self,shot=None):
+        if not hasattr(self,"manifest"):return
+        shot=shot or self.selected()
+        if not shot:return
+        current=self.locale_var.get(); reference=shot["locales"].get("zh"); target=shot["locales"].get(current)
+        self.reference_title.config(text=f"中文参考图（zh）· {self.preview_status(reference) if reference else '不可用'}")
+        self.current_title.config(text=f"当前语言（{current}）· {self.preview_status(target) if target else '不可用'}")
+        reference_path=Path(reference["absolute_target"]) if reference else Path()
+        current_path=Path(target["absolute_target"]) if target else Path()
+        self.set_preview(self.reference_preview,reference_path,"中文参考图尚未截图","reference_photo"); self.set_preview(self.current_preview,current_path,f"{current} 截图尚未截图","current_photo")
+        self.reference_open.config(state="normal" if reference and reference_path.is_file() else "disabled")
+    def restore_preview_split(self):
+        self.root.update_idletasks(); width=self.preview_pane.winfo_width()
+        if width>1:self.preview_pane.sashpos(0,int(width*self.preview_split_ratio))
+    def preview_sash_released(self,event=None):
+        width=self.preview_pane.winfo_width()
+        if width>1:self.preview_split_ratio=max(0.2,min(0.8,self.preview_pane.sashpos(0)/width)); self.save_local(); self.update_previews()
+    def preview_resized(self,event=None):
+        if self.preview_resize_job:self.root.after_cancel(self.preview_resize_job)
+        self.preview_resize_job=self.root.after(120,self.finish_preview_resize)
+    def finish_preview_resize(self):self.preview_resize_job=None; self.restore_preview_split(); self.update_previews()
     def update_status(self):
         if not hasattr(self,"manifest"):return
         locale=self.locale_var.get(); complete=sum(x["locales"][locale]["status"] in state.COMPLETE_STATUSES for x in self.manifest["screenshots"] if x["required"]); total=sum(x["required"] for x in self.manifest["screenshots"]); hotkey=getattr(self,"hotkey_text","正在注册全局快捷键…"); self.status.config(text=f"{locale}: 必需截图 {complete}/{total}；总体验收：{self.manifest['acceptance']['status']}；{hotkey}")
@@ -561,6 +591,11 @@ class Assistant:
         if shot:
             p=Path(shot["locales"][self.locale_var.get()]["absolute_target"]);
             if p.exists(): os.startfile(p)
+    def open_reference_image(self):
+        shot=self.selected(); reference=shot["locales"].get("zh") if shot else None
+        if reference:
+            path=Path(reference["absolute_target"])
+            if path.is_file():os.startfile(path)
     def open_folder(self):
         shot=self.selected();
         if shot:

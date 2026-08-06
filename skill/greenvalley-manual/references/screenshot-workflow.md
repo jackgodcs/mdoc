@@ -8,6 +8,8 @@ Keep `screenshots.yaml` as the only authoritative screenshot state. `screenshot-
 
 The GUI is the human capture interface. For every independent locale, the left pane always shows the task's complete screenshot list in the same manifest order. Locale-specific completion and exception states are shown in the status column and must never hide list items. The GUI also shows concise requirements, previews the current target PNG, and records exception states.
 
+Split the image preview horizontally into a read-only Chinese reference pane and a current-locale target pane. Use an initial 40/60 width ratio, allow sash adjustment, and persist the ratio only in `screenshot-assistant.local.json`. Both panes always refer to the same screenshot ID: the left pane loads `zh`, while the right pane loads the currently selected locale. Screenshot, exception, open-image, and open-directory actions continue to target only the current locale; provide a separate read-only Open Reference Image action for the Chinese pane. Refresh and independently fit both images after selection, locale, capture, status, sash, or window-size changes.
+
 ## Capture synchronization
 
 Run `scripts/screenshot_state.py sync <process-workspace> <task-id>`. It must:

@@ -343,7 +343,7 @@ def ensure_local_files(paths: dict[str, Path], workspace: Path, task_id: str, sk
     for locale in independent_locales(workspace):
         (paths["work_root"] / "captures" / locale["id"] / "original").mkdir(parents=True, exist_ok=True)
     if not paths["local"].exists():
-        atomic_json(paths["local"], {"schema_version": 1, "preferences": {"capture_scope": "current_monitor", "auto_advance": True, "selected_locale": independent_locales(workspace)[0]["id"], "viewed_locales": []}, "notes": {}})
+        atomic_json(paths["local"], {"schema_version": 1, "preferences": {"capture_scope": "current_monitor", "auto_advance": True, "selected_locale": independent_locales(workspace)[0]["id"], "preview_split_ratio": 0.4, "viewed_locales": []}, "notes": {}})
     if skill_root:
         python = sys.executable
         assistant = skill_root / "scripts" / "screenshot_assistant.py"
