@@ -138,7 +138,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("command", choices=("apply", "check"))
     parser.add_argument("markdown_root", type=Path)
-    parser.add_argument("--scale", type=float, default=0.9)
+    parser.add_argument("--scale", type=float, default=1.0)
     parser.add_argument("--steps", type=parse_steps, default=DEFAULT_STEPS)
     args = parser.parse_args()
     root = args.markdown_root.resolve()

@@ -14,7 +14,7 @@ writing:
   image_markup_style: existing
   image_sizing:
     mode: scaled_steps
-    scale: 0.9
+    scale: 1.0
     steps: [50, 100, 200, 300, 400, 500, 600, 700, 800]
     boundary_mode: clamp
     matching: nearest
