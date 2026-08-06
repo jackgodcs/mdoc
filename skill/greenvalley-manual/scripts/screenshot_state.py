@@ -20,7 +20,9 @@ from pathlib import Path
 
 CAPTURE_STATUSES = {"pending", "captured", "needs-retake", "not-applicable", "waived", "blocked"}
 COMPLETE_STATUSES = {"captured", "not-applicable", "waived"}
-EXCEPTION_STATUSES = {"not-applicable", "waived", "blocked"}
+EXCEPTION_STATUSES = {"not-applicable", "waived", "blocked", "needs-retake"}
+MANUAL_USABLE_STATUSES = {"captured", "approved"}
+MARKDOWN_IMAGE_PATTERN = re.compile(r"!\[[^]\n]*\]\([^)]*\)|<img\b[^>]*>", re.IGNORECASE)
 LOCALE_LABELS = {"zh": "中文", "en": "English", "ja": "日本語"}
 
 
@@ -174,6 +176,20 @@ def aggregate(states: dict[str, dict]) -> str:
     return "pending"
 
 
+def synchronized_status(current: str, target_exists: bool) -> str:
+    """Resolve capture state without overriding an explicit human decision."""
+    if current in EXCEPTION_STATUSES:
+        return current
+    if target_exists:
+        return "captured"
+    return "pending"
+
+
+def manual_use_flags(status: str, target_exists: bool) -> tuple[bool, bool]:
+    usable = target_exists and status in MANUAL_USABLE_STATUSES
+    return usable, target_exists and not usable
+
+
 def render_capture(shot: dict, locales: list[str]) -> str:
     lines = ["    capture:", f"      status: {aggregate(shot['locales'])}"]
     files = {locale: shot["files"][locale] for locale in locales if locale in shot["files"]}
@@ -280,19 +296,35 @@ def manifest_records(work_root: Path, shots: list[dict], locale_ids: list[str]) 
         for locale in locale_ids:
             state = shot["locales"][locale]
             target = work_root / "captures" / locale / "original" / shot["filename"]
-            if target.is_file():
+            status = state["status"]
+            if status in {"not-applicable", "waived"}:
+                records.append({"id": shot["id"], "locale": locale, "decision": status, "reason": state.get("reason", "")})
+            elif status in {"blocked", "needs-retake"}:
+                records.append({"id": shot["id"], "locale": locale, "missing": True, "status": status, "reason": state.get("reason", "")})
+            elif target.is_file():
                 stat = target.stat()
                 records.append({"id": shot["id"], "locale": locale, "path": target.relative_to(work_root).as_posix(), "size": stat.st_size, "mtime_ns": stat.st_mtime_ns, "sha256": hashlib.sha256(target.read_bytes()).hexdigest()})
-            elif state["status"] in {"not-applicable", "waived"}:
-                records.append({"id": shot["id"], "locale": locale, "decision": state["status"], "reason": state.get("reason", "")})
             else:
-                records.append({"id": shot["id"], "locale": locale, "missing": True, "status": state["status"]})
+                records.append({"id": shot["id"], "locale": locale, "missing": True, "status": status})
     return records
 
 
 def manifest_digest(records: list[dict]) -> str:
     raw = json.dumps(records, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(raw).hexdigest()
+
+
+def manual_asset_records(shots: list[dict], locales: list[dict], work_root: Path) -> list[dict]:
+    records = []
+    for shot in shots:
+        for locale in locales:
+            locale_id = locale["id"]
+            data = shot["locales"][locale_id]
+            target = work_root / "captures" / locale_id / "original" / shot["filename"]
+            usable, _ = manual_use_flags(data["status"], target.is_file())
+            if usable:
+                records.append({"id": shot["id"], "locale": locale_id, "page_ids": shot["page_ids"], "filename": shot["filename"], "absolute_target": str(target)})
+    return records
 
 
 def update_state(path: Path, complete: bool, digest: str, accept_now: bool = False) -> None:
@@ -323,8 +355,11 @@ def build_manifest(workspace: Path, task_id: str, shots: list[dict], locales: li
             locale_id = locale["id"]
             target = paths["work_root"] / "captures" / locale_id / "original" / shot["filename"]
             state = shot["locales"][locale_id]
-            locale_data[locale_id] = {"status": state["status"], "reason": state.get("reason", ""), "target": target.relative_to(paths["work_root"]).as_posix(), "absolute_target": str(target), "exists": target.is_file()}
+            exists = target.is_file()
+            usable, reference_only = manual_use_flags(state["status"], exists)
+            locale_data[locale_id] = {"status": state["status"], "reason": state.get("reason", ""), "target": target.relative_to(paths["work_root"]).as_posix(), "absolute_target": str(target), "exists": exists, "usable_in_manual": usable, "reference_only": reference_only}
         manifest_shots.append({"id": shot["id"], "page_ids": shot["page_ids"], "filename": shot["filename"], "required": shot["required"], "entry_steps": shot["entry_steps"], "preconditions": shot["preconditions"], "expected_state": shot["expected_state"], "review_status": shot["review_status"], "locales": locale_data})
+    manual_assets = manual_asset_records(shots, locales, paths["work_root"])
     return {
         "schema_version": 1,
         "generated_at": now(),
@@ -335,6 +370,7 @@ def build_manifest(workspace: Path, task_id: str, shots: list[dict], locales: li
         "acceptance": {"status": scalar(acceptance or "", "status") or "pending", "accepted_at": scalar(acceptance or "", "accepted_at") or ""},
         "locales": locales,
         "screenshots": manifest_shots,
+        "manual_assets": manual_assets,
     }
 
 
@@ -379,17 +415,22 @@ def synchronize(workspace: Path, task_id: str, skill_root: Path | None = None) -
             target = paths["work_root"] / "captures" / locale / "original" / shot["filename"]
             state = shot["locales"][locale]
             old = state.get("status", "pending")
-            if target.is_file() and target.suffix.lower() == ".png":
-                if old != "captured":
-                    if old in EXCEPTION_STATUSES or old == "needs-retake":
-                        shot["history"].append({"locale": locale, "from": old, "to": "captured", "reason": "Target PNG exists", "changed_at": now()})
-                    shot["locales"][locale] = {"status": "captured", "updated_at": now()}
-                shot["files"][locale] = target.relative_to(paths["work_root"]).as_posix()
+            exists = target.is_file() and target.suffix.lower() == ".png"
+            resolved = synchronized_status(old, exists)
+            if exists:
+                if resolved != old:
+                    shot["locales"][locale] = {"status": resolved, "updated_at": now()}
+                if resolved in MANUAL_USABLE_STATUSES:
+                    shot["files"][locale] = target.relative_to(paths["work_root"]).as_posix()
+                else:
+                    shot["files"].pop(locale, None)
             elif old == "captured":
                 shot["history"].append({"locale": locale, "from": "captured", "to": "pending", "reason": "Target PNG is missing", "changed_at": now()})
                 shot["locales"][locale] = {"status": "pending", "updated_at": now()}
                 shot["files"].pop(locale, None)
-            elif old not in EXCEPTION_STATUSES and old != "needs-retake":
+            elif old in EXCEPTION_STATUSES:
+                shot["files"].pop(locale, None)
+            else:
                 shot["locales"][locale] = {"status": "pending"}
                 shot["files"].pop(locale, None)
     atomic_write(paths["screenshots"], update_screenshot_yaml(source, shots, locale_ids))
@@ -404,9 +445,9 @@ def synchronize(workspace: Path, task_id: str, skill_root: Path | None = None) -
 
 
 def set_locale_status(workspace: Path, task_id: str, shot_id: str, locale: str, status: str, reason: str) -> dict:
-    if status not in {"pending", "blocked", "not-applicable", "waived"}:
+    if status not in {"pending", "captured", "blocked", "needs-retake", "not-applicable", "waived"}:
         raise ValueError(f"Unsupported manual status: {status}")
-    if status != "pending" and not reason.strip():
+    if status in EXCEPTION_STATUSES and not reason.strip():
         raise ValueError("A reason is required")
     source, shots, locales, paths = load_task(workspace, task_id)
     locale_ids = [item["id"] for item in locales]
@@ -415,13 +456,18 @@ def set_locale_status(workspace: Path, task_id: str, shot_id: str, locale: str, 
     shot = next((item for item in shots if item["id"] == shot_id), None)
     if not shot:
         raise ValueError(f"Unknown screenshot: {shot_id}")
+    target = paths["work_root"] / "captures" / locale / "original" / shot["filename"]
+    if status == "captured" and not target.is_file():
+        raise ValueError("Cannot restore captured status because the target PNG is missing")
     old = shot["locales"][locale].get("status", "pending")
     if old != status:
         shot["history"].append({"locale": locale, "from": old, "to": status, "reason": reason or "Restored by user", "changed_at": now()})
     shot["locales"][locale] = {"status": status, "updated_at": now()}
     if reason:
         shot["locales"][locale]["reason"] = reason.strip()
-    if status != "captured":
+    if status in {"pending", "captured"}:
+        shot["locales"][locale].pop("reason", None)
+    if status == "pending":
         shot["files"].pop(locale, None)
     atomic_write(paths["screenshots"], update_screenshot_yaml(source, shots, locale_ids))
     return synchronize(workspace, task_id)
@@ -436,6 +482,39 @@ def accept(workspace: Path, task_id: str) -> dict:
     records = manifest_records(paths["work_root"], shots, locale_ids)
     update_state(paths["state"], True, manifest_digest(records), accept_now=True)
     return synchronize(workspace, task_id)
+
+
+def validate_markdown_usage(workspace: Path, task_id: str, locale: str, markdown_root: Path) -> list[str]:
+    manifest = synchronize(workspace, task_id)
+    if locale not in {item["id"] for item in manifest["locales"]}:
+        raise ValueError(f"Locale is not independently captured: {locale}")
+    forbidden = {shot["filename"]: shot["locales"][locale]["status"] for shot in manifest["screenshots"] if not shot["locales"][locale]["usable_in_manual"]}
+    findings = []
+    for path in markdown_root.rglob("*.md"):
+        source = read(path)
+        for filename, status in forbidden.items():
+            if any(filename.lower() in token.group(0).lower() for token in MARKDOWN_IMAGE_PATTERN.finditer(source)):
+                findings.append(f"{path}: references {filename}, but {locale} status is {status}")
+    return findings
+
+
+def apply_staging_eligibility(workspace: Path, task_id: str, locale: str) -> list[str]:
+    task_dir = (workspace / "manual-tasks" / task_id).resolve()
+    staging_root = (task_dir / "staging").resolve()
+    if staging_root.parent != task_dir or not staging_root.is_dir():
+        raise ValueError(f"Task staging directory is missing: {staging_root}")
+    manifest = synchronize(workspace, task_id)
+    if locale not in {item["id"] for item in manifest["locales"]}:
+        raise ValueError(f"Locale is not independently captured: {locale}")
+    forbidden = {shot["filename"].lower() for shot in manifest["screenshots"] if not shot["locales"][locale]["usable_in_manual"]}
+    changed = []
+    for path in staging_root.rglob("*.md"):
+        source = read(path)
+        updated = MARKDOWN_IMAGE_PATTERN.sub(lambda match: "" if any(filename in match.group(0).lower() for filename in forbidden) else match.group(0), source)
+        if updated != source:
+            atomic_write(path, updated)
+            changed.append(str(path))
+    return changed
 
 
 def discover(repository: Path) -> dict:
@@ -472,8 +551,44 @@ def main() -> int:
     status_command.add_argument("reason", nargs="?", default="")
     discover_command = commands.add_parser("discover")
     discover_command.add_argument("repository", type=Path)
+    usage_command = commands.add_parser("check-usage")
+    usage_command.add_argument("workspace", type=Path)
+    usage_command.add_argument("task_id")
+    usage_command.add_argument("locale")
+    usage_command.add_argument("markdown_root", type=Path)
+    apply_usage_command = commands.add_parser("apply-staging-eligibility")
+    apply_usage_command.add_argument("workspace", type=Path)
+    apply_usage_command.add_argument("task_id")
+    apply_usage_command.add_argument("locale")
+    commands.add_parser("self-check")
     args = parser.parse_args()
     try:
+        if args.command == "self-check":
+            for status in EXCEPTION_STATUSES:
+                assert synchronized_status(status, True) == status
+                assert synchronized_status(status, False) == status
+            assert synchronized_status("pending", True) == "captured"
+            assert synchronized_status("captured", False) == "pending"
+            assert not ({"waived", "not-applicable", "blocked", "needs-retake"} & MANUAL_USABLE_STATUSES)
+            for status in EXCEPTION_STATUSES:
+                assert manual_use_flags(status, True) == (False, True)
+            assert manual_use_flags("captured", True) == (True, False)
+            assert manual_use_flags("captured", False) == (False, False)
+            assert manifest_records(Path("."), [{"id":"S","required":True,"filename":"missing.png","locales":{"zh":{"status":"waived","reason":"x"}}}], ["zh"]) == [{"id":"S","locale":"zh","decision":"waived","reason":"x"}]
+            sample = "Before ![shot](images/example.png) after <img src='images/keep.png'>"
+            assert [match.group(0) for match in MARKDOWN_IMAGE_PATTERN.finditer(sample)] == ["![shot](images/example.png)", "<img src='images/keep.png'>"]
+            print("screenshot state checks passed")
+            return 0
+        if args.command == "apply-staging-eligibility":
+            changed = apply_staging_eligibility(args.workspace.resolve(), args.task_id, args.locale)
+            print(json.dumps({"changed": changed}, ensure_ascii=False, indent=2))
+            return 0
+        if args.command == "check-usage":
+            findings = validate_markdown_usage(args.workspace.resolve(), args.task_id, args.locale, args.markdown_root.resolve())
+            for finding in findings: print(f"ERROR: {finding}")
+            if findings:return 1
+            print("screenshot usage checks passed")
+            return 0
         if args.command == "discover":
             result = discover(args.repository.resolve())
         elif args.command == "set-status":

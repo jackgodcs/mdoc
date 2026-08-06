@@ -24,6 +24,7 @@ STATUS_LABELS = {
     "pending": "待截图", "captured": "已截图", "needs-retake": "需重拍",
     "blocked": "受阻", "not-applicable": "不适用", "waived": "豁免",
 }
+REFERENCE_ONLY_STATUSES = {"blocked", "needs-retake", "not-applicable", "waived"}
 def dpi_aware() -> None:
     if sys.platform == "win32":
         try:
@@ -407,7 +408,7 @@ class Assistant:
         if not self.lock.acquire(): raise RuntimeError("此任务的截图助手已经在运行。")
         self.root.protocol("WM_DELETE_WINDOW", self.close); self.root.title(f"GreenValley 截图助手 — {task_id}")
         self.root.geometry("1180x760"); self.root.minsize(900, 600)
-        self.reference_photo = self.current_photo = None; self.preview_resize_job=None; self.preview_dragging=False; self.visible = []; self.capture_in_progress=False; self.last_capture_request=0.0; self.capture_context=None; self.modal_count=0
+        self.reference_photo = self.current_photo = None; self.preview_resize_job=None; self.preview_dragging=False; self.visible = []; self.capture_in_progress=False; self.last_capture_request=0.0; self.capture_context=None; self.capture_state=None; self.modal_count=0
         self.events=queue.Queue(); self.hotkey=GlobalHotkey(self.events)
         self.load_local(); self.build(); self.refresh(); self.hotkey.start(); self.root.after(50,self.poll_events)
         if check:
@@ -447,7 +448,9 @@ class Assistant:
         self.preview_divider_line=self.preview_divider.create_rectangle(4,0,6,1,fill="#c8c8c8",outline="")
         self.preview_divider_dots=[self.preview_divider.create_oval(3,0,7,4,fill="#8a8a8a",outline="") for _ in range(3)]
         reference_header=ttk.Frame(reference); reference_header.pack(fill="x"); self.reference_title=ttk.Label(reference_header,text="中文参考图（zh）"); self.reference_title.pack(side="left"); self.reference_open=ttk.Button(reference_header,text="打开参考图",command=self.open_reference_image,state="disabled"); self.reference_open.pack(side="right")
+        self.reference_notice=tk.Label(reference,anchor="w",padx=6,pady=3)
         current_header=ttk.Frame(current); current_header.pack(fill="x"); self.current_title=ttk.Label(current_header,text="当前语言截图"); self.current_title.pack(side="left")
+        self.current_notice=tk.Label(current,anchor="w",padx=6,pady=3)
         self.reference_preview=ttk.Label(reference,text="中文参考图尚未截图",anchor="center"); self.reference_preview.pack(fill="both",expand=True,padx=(0,4),pady=(4,0))
         self.current_preview=ttk.Label(current,text="当前语言截图尚未截图",anchor="center"); self.current_preview.pack(fill="both",expand=True,padx=(4,0),pady=(4,0))
         self.preview_area.bind("<Configure>",self.preview_resized); self.preview_divider.bind("<Enter>",lambda e:self.paint_preview_divider("drag" if self.preview_dragging else "hover")); self.preview_divider.bind("<Leave>",lambda e:self.paint_preview_divider("drag" if self.preview_dragging else "normal"))
@@ -494,7 +497,7 @@ class Assistant:
         s=self.tree.selection(); return s[0] if s else None
     def selected(self): return next((x for x in self.manifest["screenshots"] if x["id"]==self.selected_id()),None)
     def clear_details(self):
-        self.requirements.config(state="normal"); self.requirements.delete("1.0","end"); self.requirements.config(state="disabled"); self.reference_preview.config(image="",text="没有截图项"); self.current_preview.config(image="",text="没有截图项"); self.reference_photo=self.current_photo=None; self.reference_open.config(state="disabled")
+        self.requirements.config(state="normal"); self.requirements.delete("1.0","end"); self.requirements.config(state="disabled"); self.reference_preview.config(image="",text="没有截图项"); self.current_preview.config(image="",text="没有截图项"); self.reference_notice.pack_forget(); self.current_notice.pack_forget(); self.reference_photo=self.current_photo=None; self.reference_open.config(state="disabled")
     def show_selected(self,e=None):
         shot=self.selected(); locale=self.locale_var.get()
         if not shot:return
@@ -502,9 +505,17 @@ class Assistant:
         if shot["entry_steps"]: lines += ["","操作："]+[f"  {i+1}. {x}" for i,x in enumerate(shot["entry_steps"])]
         if shot["preconditions"]: lines += ["","准备："]+[f"  • {x}" for x in shot["preconditions"]]
         if shot["expected_state"]: lines += ["","画面必须包含："]+[f"  • {x}" for x in shot["expected_state"]]
+        if d.get("reference_only"): lines += ["","使用资格：仅保留为历史参考，禁止用于最终手册。"]
+        elif d.get("usable_in_manual"): lines += ["","使用资格：允许用于最终手册。"]
         if d.get("reason"): lines += ["",f"原因：{d['reason']}"]
         self.requirements.config(state="normal"); self.requirements.delete("1.0","end"); self.requirements.insert("1.0","\n".join(lines)); self.requirements.config(state="disabled"); self.update_previews(shot)
     def preview_status(self,data):return STATUS_LABELS.get(data.get("status","pending"),data.get("status","pending"))
+    def update_preview_notice(self,label,data):
+        status=data.get("status","pending") if data else "pending"
+        if data and data.get("reference_only"):
+            colors={"blocked":("#fff1d6","#8a4b08"),"needs-retake":("#ffe2df","#9c2820"),"not-applicable":("#e8f1f8","#315b78"),"waived":("#eeeeee","#555555")}
+            bg,fg=colors.get(status,("#eeeeee","#555555")); label.config(text=f"{self.preview_status(data)} · 此图片仅供参考，禁止用于最终手册",background=bg,foreground=fg); label.pack(fill="x",pady=(4,0))
+        else:label.pack_forget()
     def set_preview(self,label,path,empty,slot,fast=False):
         if not path.is_file():label.config(image="",text=empty); setattr(self,slot,None); return
         try:
@@ -518,6 +529,7 @@ class Assistant:
         current=self.locale_var.get(); reference=shot["locales"].get("zh"); target=shot["locales"].get(current)
         self.reference_title.config(text=f"中文参考图（zh）· {self.preview_status(reference) if reference else '不可用'}")
         self.current_title.config(text=f"当前语言（{current}）· {self.preview_status(target) if target else '不可用'}")
+        self.update_preview_notice(self.reference_notice,reference); self.update_preview_notice(self.current_notice,target)
         reference_path=Path(reference["absolute_target"]) if reference else Path()
         current_path=Path(target["absolute_target"]) if target else Path()
         self.set_preview(self.reference_preview,reference_path,"中文参考图尚未截图","reference_photo",fast); self.set_preview(self.current_preview,current_path,f"{current} 截图尚未截图","current_photo",fast)
@@ -557,8 +569,14 @@ class Assistant:
         if self.capture_in_progress or self.modal_count or now-self.last_capture_request<0.3:return
         shot=self.selected()
         if not shot:return
+        locale=self.locale_var.get(); locale_state=shot["locales"][locale]; old_status=locale_state.get("status","pending")
+        if old_status in REFERENCE_ONLY_STATUSES:
+            self.modal_count+=1
+            try:proceed=messagebox.askyesno("恢复截图使用资格",f"当前项目状态为“{STATUS_LABELS.get(old_status,old_status)}”。\n\n成功保存新截图后将恢复为“已截图”，清除异常原因，并允许该图片用于最终手册。是否继续？",parent=self.root)
+            finally:self.modal_count-=1
+            if not proceed:return
         self.last_capture_request=now; self.capture_in_progress=True
-        target=Path(shot["locales"][self.locale_var.get()]["absolute_target"]); state_before=self.root.state(); visible=state_before not in {"withdrawn","iconic"}
+        target=Path(locale_state["absolute_target"]); self.capture_state={"shot_id":shot["id"],"locale":locale,"old_status":old_status}; state_before=self.root.state(); visible=state_before not in {"withdrawn","iconic"}
         if source=="global":
             payload=payload or {}; cursor=payload.get("cursor",(0,0)); bbox=virtual_screen() if self.scope_var.get()=="all_monitors" else monitor_for_point(*cursor); delay=120
         else:bbox=virtual_screen() if self.scope_var.get()=="all_monitors" else monitor_for_window(self.root); delay=250; payload={"foreground":0}
@@ -572,19 +590,19 @@ class Assistant:
         CaptureOverlay(self.root,image,bbox,lambda result:self.finish_capture(result,target),windows)
     def finish_capture(self,image,target):
         context=self.capture_context or {}; self.capture_context=None
-        if image is None:self.restore_after_cancel(context); self.capture_in_progress=False; return
+        if image is None:self.restore_after_cancel(context); self.capture_in_progress=False; self.capture_state=None; return
         self.activate_assistant()
         if target.exists():
             self.modal_count+=1
             try:overwrite=messagebox.askyesno("覆盖截图",f"目标文件已存在，是否覆盖？\n{target}",parent=self.root)
             finally:self.modal_count-=1
-            if not overwrite:self.capture_in_progress=False; return
+            if not overwrite:self.capture_in_progress=False; self.capture_state=None; return
         try:
             target.parent.mkdir(parents=True,exist_ok=True); fd,tmp=tempfile.mkstemp(prefix=target.stem+".",suffix=".png",dir=target.parent); os.close(fd)
             try:image.save(tmp,"PNG"); os.replace(tmp,target)
             finally:
                 if os.path.exists(tmp):os.unlink(tmp)
-            current=self.selected_id(); self.refresh()
+            current=self.selected_id(); capture_state=self.capture_state or {}; state.set_locale_status(self.workspace,self.task_id,capture_state.get("shot_id",current),capture_state.get("locale",self.locale_var.get()),"captured","Recaptured by user"); self.refresh()
             if self.auto_var.get() and current:
                 children=self.tree.get_children()
                 if children:
@@ -593,7 +611,7 @@ class Assistant:
                     self.tree.selection_set(nxt); self.tree.focus(nxt); self.tree.see(nxt); self.show_selected()
         except Exception as error:
             messagebox.showerror("截图保存失败",str(error),parent=self.root)
-        finally:self.capture_in_progress=False
+        finally:self.capture_in_progress=False; self.capture_state=None
     def activate_assistant(self):
         self.root.deiconify(); self.root.lift(); self.root.focus_force()
         if sys.platform=="win32":
@@ -627,17 +645,18 @@ class Assistant:
         shot=self.selected();
         if not shot:return
         self.modal_count+=1
-        win=tk.Toplevel(self.root); win.title("设置截图状态"); win.transient(self.root); win.withdraw(); choice=tk.StringVar(value="blocked")
+        locale=self.locale_var.get(); data=shot["locales"][locale]; restore_status="captured" if Path(data["absolute_target"]).is_file() else "pending"; restore_label="恢复为已截图" if restore_status=="captured" else "恢复为待截图"
+        win=tk.Toplevel(self.root); win.title("设置截图状态"); win.transient(self.root); win.withdraw(); choice=tk.StringVar(value=data.get("status") if data.get("status") in REFERENCE_ONLY_STATUSES else "blocked")
         closed=False
         def close_dialog():
             nonlocal closed
             if closed:return
             closed=True; self.modal_count=max(0,self.modal_count-1); win.destroy()
         win.protocol("WM_DELETE_WINDOW",close_dialog)
-        for label,value in [("受阻","blocked"),("不适用","not-applicable"),("豁免","waived"),("恢复待截图","pending")]: ttk.Radiobutton(win,text=label,variable=choice,value=value).pack(anchor="w",padx=15,pady=3)
+        for label,value in [("受阻","blocked"),("需重拍","needs-retake"),("不适用","not-applicable"),("豁免","waived"),(restore_label,restore_status)]: ttk.Radiobutton(win,text=label,variable=choice,value=value).pack(anchor="w",padx=15,pady=3)
         ttk.Label(win,text="原因（异常状态必填）").pack(anchor="w",padx=15,pady=(8,2)); entry=ttk.Entry(win,width=55); entry.pack(padx=15); entry.focus_set()
         def save():
-            try: state.set_locale_status(self.workspace,self.task_id,shot["id"],self.locale_var.get(),choice.get(),entry.get()); close_dialog(); self.refresh()
+            try: state.set_locale_status(self.workspace,self.task_id,shot["id"],locale,choice.get(),entry.get()); close_dialog(); self.refresh()
             except Exception as e: messagebox.showerror("无法保存",str(e),parent=win)
         ttk.Button(win,text="保存",command=save).pack(pady=12)
         center_on_parent(win,self.root); win.deiconify(); win.grab_set(); win.lift(); entry.focus_set()
@@ -664,6 +683,8 @@ def main():
             assert CaptureOverlay.resize_result((10,10,100,100),"e",120,50) == ((10,10,120,100),"e")
             assert CaptureOverlay.resize_result((10,10,100,100),"e",5,50) == ((5,10,10,100),"w")
             assert CaptureOverlay.resize_result((10,10,100,100),"se",5,4) == ((5,4,10,10),"nw")
+            assert REFERENCE_ONLY_STATUSES == state.EXCEPTION_STATUSES
+            assert not (REFERENCE_ONLY_STATUSES & state.MANUAL_USABLE_STATUSES)
             modifiers,key=GlobalHotkey.decode_lparam(); assert modifiers & GlobalHotkey.MOD_CONTROL and modifiers & GlobalHotkey.MOD_SHIFT and modifiers & GlobalHotkey.MOD_NOREPEAT and key==0x5A
             windows=[{"rect":(10,10,100,100),"title":"back"},{"rect":(20,20,80,80),"title":"front"}]
             assert next(item for item in windows if item["rect"][0]<=30<item["rect"][2] and item["rect"][1]<=30<item["rect"][3])["title"]=="back"

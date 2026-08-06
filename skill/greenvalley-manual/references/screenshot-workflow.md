@@ -15,23 +15,25 @@ Split the image preview horizontally into a read-only Chinese reference pane and
 Run `scripts/screenshot_state.py sync <process-workspace> <task-id>`. It must:
 
 - scan only the declared target `.png` path for each locale;
-- treat file existence as captured without reading image contents;
+- treat file existence as captured without reading image contents only when no explicit exception or retake decision exists;
 - set ordinary missing captures back to pending and remove stale file mappings;
-- preserve explicit `not-applicable`, `waived`, and `blocked` decisions while the target file is absent;
-- prefer an actual target PNG over an earlier exception status;
+- preserve explicit `not-applicable`, `waived`, `blocked`, and `needs-retake` decisions whether or not the target PNG exists;
+- treat human status decisions as authoritative over file existence; an existing PNG under an exception state is reference-only and must not be written into a manual;
 - refresh the generated GUI manifest while preserving local preferences;
 - leave every individual `review.status` unchanged;
 - never copy captures into the formal manual.
 
-Human recapture may directly replace the formal target PNG. The agent must not silently overwrite captures itself.
+Human recapture may directly replace the target PNG. The agent must not silently overwrite captures itself. Successful recapture of an exception or retake item changes that locale to `captured`, clears its exception reason, restores its manual-use eligibility, and makes aggregate acceptance stale.
 
 ## Status and exceptions
 
-Capture statuses are `pending`, `captured`, `needs-retake`, `approved`, `not-applicable`, `waived`, and `blocked`. `not-applicable` and `waived` require explicit user confirmation. `blocked` remains incomplete. Missing optional screenshots do not block capture completion.
+Capture statuses are `pending`, `captured`, `needs-retake`, `approved`, `not-applicable`, `waived`, and `blocked`. Exception and retake decisions require a reason and are locale-specific. `not-applicable` and `waived` count as explicit completion decisions; `blocked` and `needs-retake` remain incomplete. Missing optional screenshots do not block capture completion. Only an existing PNG whose locale state is `captured` or compatible `approved` is eligible for manual writing.
+
+An existing PNG may remain at its target path under `not-applicable`, `waived`, `blocked`, or `needs-retake`. Keep it available as historical reference, omit it from the `capture.files` map and generated `manual_assets`, and never copy or reference it in staging or formal manuals. Restoring an item chooses `captured` when the target PNG exists and `pending` when it does not.
 
 ## Review and acceptance
 
-Content review is independent and runs only when requested. It may update individual `review.status` values. Alternatively, after the user visually checks the previews in the assistant, record aggregate acceptance in `state.yaml`; do not mark unreviewed individual screenshots approved. Either independent approval or current aggregate user acceptance permits publishing. Required missing screenshots still need an explicit waiver.
+Content review is independent and runs only when requested. It may update individual `review.status` values. Alternatively, after the user visually checks the previews in the assistant, record aggregate acceptance in `state.yaml`; do not mark unreviewed individual screenshots approved. Either independent approval or current aggregate user acceptance permits publishing. Required missing screenshots still need an explicit waiver. Required `blocked` and `needs-retake` items prevent acceptance even when an older PNG remains on disk.
 
 ## GUI capture behavior
 
@@ -51,8 +53,12 @@ On Windows, register `Ctrl+Shift+Z` with `RegisterHotKey` and `MOD_NOREPEAT` whi
 
 For a global trigger, record the current foreground window and pointer location, hide the assistant without activating it, wait 120 milliseconds for key release, and capture the pointer's monitor when the scope is Current Monitor. Successful capture restores and activates the assistant for the next requirement. Cancellation restores the assistant's prior visible, minimized, or hidden state without activation and attempts to return focus to the recorded foreground window. Use a shared busy flag, modal guard, and 300-millisecond deduplication window for global, local, and toolbar triggers.
 
-Task dialogs opened by the assistant must be centered over the assistant window using absolute screen coordinates, including when the window is on a secondary monitor.
+Task dialogs opened by the assistant must be centered over the assistant window using absolute screen coordinates, including when the window is on a secondary monitor. The assistant must visibly mark retained exception images as reference-only and forbidden for manual use. If the user captures an exception item, explain that successful saving restores `captured` status before opening the overlay.
 
 Aggregate acceptance must fingerprint all effective required captures and exception decisions. If a required file is replaced, added, deleted, or renamed, or a waiver/applicability decision changes, synchronization marks aggregate acceptance `stale`. Publishing then requires one renewed aggregate confirmation.
+
+## Writing eligibility
+
+Use the generated manifest's `manual_assets` list or each locale entry's `usable_in_manual` flag as the only screenshot input for writing. Do not infer eligibility from target-path existence. Omit waived and not-applicable images without leaving placeholders, and keep the surrounding instructions understandable without the image. Report a warning when the omitted image leaves critical instructions unclear. `blocked` and `needs-retake` required images block publishing. Use `scripts/screenshot_state.py apply-staging-eligibility <workspace> <task-id> <locale>` to remove ineligible image tags only from the task's fixed `staging/` directory, then use `check-usage` to validate staging Markdown. If a formal manual already references an image that later becomes ineligible, report a publish conflict and request explicit deletion or update confirmation; never remove the formal reference automatically.
 
 Never fabricate application screenshots. Use localized live interfaces for each locale that requires them. Preserve originals and create annotated copies separately. Pause for authentication, licenses, customer data, ambiguous dialogs, destructive actions, or unexpected application state.

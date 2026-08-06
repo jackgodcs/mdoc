@@ -53,11 +53,11 @@ Generate source-locale content first, rewrite locales that require localized UI 
 
 Read `references/screenshot-workflow.md`. Keep `screenshots.yaml` as the machine state source. Use `scripts/screenshot_state.py sync <process-workspace> <task-id>` to generate the task-local manifest and launcher, then open `.work/greenvalley-manual/<task-id>/open-screenshot-assistant.cmd`. Do not generate Markdown screenshot workbooks.
 
-The assistant lists independent locales and screenshot requirements, previews existing target PNGs, captures a region from its current monitor by default, confirms replacement, and synchronizes state. Capture completion means only that the target PNG exists; never inspect image content during ordinary sync. Run screenshot content review only when explicitly requested. A user may explicitly accept all current screenshots after visually reviewing them in the assistant; record aggregate acceptance in `state.yaml` without changing individual `review.status` values. Never fabricate software screenshots.
+The assistant lists independent locales and screenshot requirements, previews existing target PNGs, captures a region from its current monitor by default, confirms replacement, and synchronizes state. Explicit exception and retake states override file existence: retained PNGs remain previewable but are reference-only. Only generated `manual_assets` or locale entries with `usable_in_manual: true` may be used during writing. Never inspect image content during ordinary sync. Run screenshot content review only when explicitly requested. A user may explicitly accept all current screenshots after visually reviewing them in the assistant; record aggregate acceptance in `state.yaml` without changing individual `review.status` values. Never fabricate software screenshots.
 
 ## Staging, Publishing, and Safety
 
-Generate into task staging first. Compute links for their final destinations. Validate staging, produce `publish-plan.yaml`, then apply minimal formal-repository changes and validate again.
+Generate into task staging first. Compute links for their final destinations. Omit waived/not-applicable screenshots without placeholders and validate that staging does not reference any ineligible screenshot. Produce `publish-plan.yaml`, then apply minimal formal-repository changes and validate again. Treat an existing formal-manual reference to a newly ineligible screenshot as a conflict requiring explicit confirmation; do not remove it automatically.
 
 Preserve all existing manual files and assets. Any deletion requires explicit confirmation of the exact objects, even when a config requests deletion. Existing same-name content, screenshots, or summary entries are conflicts, not implicit overwrite permission.
 

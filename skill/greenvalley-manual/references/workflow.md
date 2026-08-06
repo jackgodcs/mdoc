@@ -7,9 +7,9 @@
 3. Create or resume a task using one of: create_module, add_feature, update_feature, add_locale.
 4. Propose and approve structure.
 5. Propose and approve screenshot tasks.
-6. Generate the screenshot-assistant manifest and launcher, then capture required screenshots in the GUI. Capture completion is target-PNG existence only.
-7. Generate manuals in staging.
-8. Validate staging and create a publish plan. Before publishing, either complete independent screenshot review or record the user's aggregate visual acceptance of the current capture fingerprint.
+6. Generate the screenshot-assistant manifest and launcher, then capture required screenshots in the GUI. Capture completion requires an eligible target PNG or an explicit waived/not-applicable decision; retained exception PNGs are reference-only.
+7. Generate manuals in staging using only manifest `manual_assets`; never select images from path existence alone.
+8. Apply screenshot eligibility only to the task's fixed staging directory, validate that staging rejects remaining ineligible references, and create a publish plan. Before publishing, either complete independent screenshot review or record the user's aggregate visual acceptance of the current capture fingerprint. Existing formal references that become ineligible are publish conflicts and require explicit confirmation before removal.
 9. Apply minimal changes to the formal manual repository.
 10. Validate again and produce reports.
 11. Stop at ready_for_review until the user accepts.
