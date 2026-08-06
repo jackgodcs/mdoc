@@ -1,3 +1,2 @@
-term_id,source,en,ja,ui_label,keep_original,notes
-module_name,示例模块,Example Module,Example Module,示例模块,false,
-
+term_id,source,en,ja,ui_label,keep_original,forbidden_variants,notes
+module_name,示例模块,Example Module,Example Module,示例模块,false,example module,

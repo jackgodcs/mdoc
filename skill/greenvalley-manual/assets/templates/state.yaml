@@ -11,4 +11,11 @@ checks:
   writing: not_started
   validation: not_started
   delivery: not_started
+quality_gate:
+  status: not_requested
+  profile: null
+  staging_report_digest: null
+  formal_report_digest: null
+  build_status: not_requested
+  visual_status: not_requested
 blockers: []

@@ -23,4 +23,18 @@ structure:
 policies:
   preserve_existing_content: true
   deletion_requires_confirmation: true
-
+validation:
+  mode: advisory
+  auto_run: false
+  default_profile: full
+  publish_policy:
+    required_before_publish: false
+    required_profile: release
+    required_components: []
+    block_on: [error]
+  markdown:
+    require_blank_line_after_html_block: false
+    ordered_list_style: standard
+    paragraph_max_characters: 1200
+    table_style: either
+    external_url_style: link

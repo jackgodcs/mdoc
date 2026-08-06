@@ -17,4 +17,7 @@ module:
 scope:
   api_appendix: separate_task
   example_path_style: placeholder
-
+validation:
+  profile: full
+  mode: inherit
+  required_components: []

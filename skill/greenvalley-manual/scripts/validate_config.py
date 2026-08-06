@@ -19,6 +19,7 @@ ENUMS = {
     "validation_mode": {"disabled", "advisory", "required", "inherit"},
     "validation_profile": {"quick", "full", "release"},
 }
+VALIDATION_COMPONENTS = {"static", "html_build", "pdf_build", "visual_review"}
 
 
 def text(path: Path) -> str:
@@ -31,6 +32,16 @@ def scalar(source: str, key: str):
         return None
     value = match.group(1).strip().strip("\"'")
     return value
+
+
+def nested_section(source: str, key: str) -> str:
+    lines = source.splitlines()
+    start = next((index for index, line in enumerate(lines) if line.strip() == f"{key}:"), None)
+    if start is None:
+        return ""
+    base = len(lines[start]) - len(lines[start].lstrip())
+    end = next((index for index in range(start + 1, len(lines)) if lines[index].strip() and len(lines[index]) - len(lines[index].lstrip()) <= base), len(lines))
+    return "\n".join(lines[start + 1:end])
 
 
 def top_level_section(source: str, key: str) -> str:
@@ -100,6 +111,10 @@ def validate_workspace(root: Path, errors: list[str]):
         profile_name = scalar(validation_source, "default_profile")
         if profile_name and profile_name not in ENUMS["validation_profile"]:
             errors.append(f"{profile}: invalid validation default_profile: {profile_name}")
+        publish_source = nested_section(validation_source, "publish_policy")
+        for component in inline_list_values(publish_source, "required_components"):
+            if component not in VALIDATION_COMPONENTS:
+                errors.append(f"{profile}: invalid validation component: {component}")
 
 
 def validate_task(task_dir: Path, errors: list[str], warnings: list[str]):
@@ -166,6 +181,41 @@ def validate_task(task_dir: Path, errors: list[str], warnings: list[str]):
     validation_profile = scalar(task_source, "profile")
     if validation_profile and validation_profile not in ENUMS["validation_profile"]:
         errors.append(f"{task}: invalid validation profile: {validation_profile}")
+    validation_source = top_level_section(task_source, "validation")
+    task_mode = scalar(validation_source, "mode")
+    if task_mode and task_mode not in {"inherit", "advisory", "required"}:
+        errors.append(f"{task}: invalid validation mode: {task_mode}")
+    for component in inline_list_values(validation_source, "required_components"):
+        if component not in VALIDATION_COMPONENTS:
+            errors.append(f"{task}: invalid validation component: {component}")
+
+
+def validate_validation_policy(root: Path, errors: list[str]):
+    profile = root / "product-profile.yaml"
+    if not profile.exists():
+        return
+    validation = top_level_section(text(profile), "validation")
+    mode = scalar(validation, "mode") or "advisory"
+    publish = nested_section(validation, "publish_policy")
+    required = scalar(publish, "required_before_publish") == "true"
+    if required and mode != "required":
+        errors.append(f"{profile}: publish_policy.required_before_publish requires validation.mode: required")
+    ranks = {"disabled": 0, "advisory": 1, "required": 2}
+    profile_ranks = {"quick": 0, "full": 1, "release": 2}
+    base_profile = scalar(validation, "default_profile") or "full"
+    required_profile = scalar(publish, "required_profile") or base_profile
+    if required and profile_ranks.get(required_profile, -1) < profile_ranks.get(base_profile, 1):
+        errors.append(f"{profile}: publish required_profile cannot be weaker than validation default_profile")
+    task_root = root / "manual-tasks"
+    if task_root.exists():
+        for task in task_root.glob("*/task.yaml"):
+            task_validation = top_level_section(text(task), "validation")
+            task_mode = scalar(task_validation, "mode") or "inherit"
+            if task_mode != "inherit" and ranks.get(task_mode, 99) < ranks.get(mode, 1):
+                errors.append(f"{task}: task validation mode cannot weaken product mode {mode}")
+            task_profile = scalar(task_validation, "profile") or base_profile
+            if profile_ranks.get(task_profile, -1) < profile_ranks.get(base_profile, 1):
+                errors.append(f"{task}: task validation profile cannot weaken product profile {base_profile}")
 
 
 def main() -> int:
@@ -175,6 +225,7 @@ def main() -> int:
     root = args.workspace.resolve()
     errors, warnings = [], []
     validate_workspace(root, errors)
+    validate_validation_policy(root, errors)
     task_root = root / "manual-tasks"
     if task_root.exists():
         for task_dir in sorted(path for path in task_root.iterdir() if path.is_dir()):

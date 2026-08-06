@@ -42,21 +42,26 @@ validation:
     require_blank_line_after_html_block: false
     ordered_list_style: standard
     paragraph_max_characters: 1200
+    table_style: either
+    external_url_style: link
   images:
     require_width_for_block_images: false
     width_steps: [50, 100, 200, 300, 400, 500, 600, 700, 800]
     max_width_px: 8192
     max_height_px: 4096
     max_pixel_count: 16777216
+    require_locale_width_consistency: true
   terminology:
     product_name: <product-display-name>
     forbidden_variants: []
   spelling:
     enabled: false
     required_locales: [en]
-    engine: auto
+    engine: wordlist
+    dictionary_file: ""
   punctuation:
     en: ascii
     zh: chinese
     ja: japanese
+    quote_style: locale
   custom_patterns: []

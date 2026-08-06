@@ -1,3 +1,2 @@
-term_id,source,en,ja,ui_label,keep_original,notes
-example_term,示例术语,Example Term,Example Term,示例术语,false,
-
+term_id,source,en,ja,ui_label,keep_original,forbidden_variants,notes
+example_term,示例术语,Example Term,Example Term,示例术语,false,Example term|example Term,

@@ -30,6 +30,17 @@
     "blockers": {
       "type": "array"
     },
+    "quality_gate": {
+      "type": "object",
+      "properties": {
+        "status": {"enum": ["not_requested", "not_configured", "running", "passed", "completed_with_findings", "needs_visual_review", "blocked", "stale"]},
+        "profile": {"type": ["string", "null"]},
+        "staging_report_digest": {"type": ["string", "null"]},
+        "formal_report_digest": {"type": ["string", "null"]},
+        "build_status": {"type": "string"},
+        "visual_status": {"type": "string"}
+      }
+    },
     "screenshot_acceptance": {
       "type": "object",
       "required": [

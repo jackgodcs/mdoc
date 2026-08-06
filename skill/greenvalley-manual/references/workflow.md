@@ -11,12 +11,15 @@
 7. Generate manuals in staging using only manifest `manual_assets`; never select images from path existence alone.
 8. Apply screenshot eligibility only to the task's fixed staging directory, validate that staging rejects remaining ineligible references, and create a publish plan. Before publishing, either complete independent screenshot review or record the user's aggregate visual acceptance of the current capture fingerprint. Existing formal references that become ineligible are publish conflicts and require explicit confirmation before removal.
 9. Apply minimal changes to the formal manual repository.
-10. Validate again and produce reports.
-11. Stop at ready_for_review until the user accepts.
+10. If requested or configured, run the optional Quality Gate. In advisory mode, report findings without blocking publishing. In required mode, complete the configured profile and components before publishing.
+11. Validate the ordinary task invariants again and produce reports.
+12. Stop at ready_for_review until the user accepts.
 
 ## Confirmation gates
 
 Workspace configuration is confirmed only when new or invalid. Structure, screenshot plan, and screenshot acceptance are the normal task gates. Configuration-driven review or automation may skip conversational repetition when approved state is internally consistent.
+
+Quality Gate is not a normal confirmation gate. Missing validation configuration preserves the existing workflow. Run it explicitly for an audit, automatically only when configured, and make it a publishing prerequisite only when `validation.mode` is `required` and `publish_policy.required_before_publish` is true.
 
 ## Task states
 

@@ -12,4 +12,7 @@ tasks:
 defaults:
   interaction_mode: guided
   screenshot_capture_mode: assisted
-
+validation:
+  baseline: validation-baseline.json
+  report_root: .work/greenvalley-manual
+  build_adapters: []
