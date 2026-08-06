@@ -30,4 +30,4 @@ Automation may advance only to `ready_for_review`; only explicit user acceptance
 
 When scaled-step image sizing is configured, validate PNG dimensions from the header. Every local image tag must use the deterministic width and responsive style configured by `writing.image_sizing`.
 
-When a shared FAQ directory is configured, validation must reject FAQ-template pages stored below feature module roots, missing entries in the shared FAQ index, or FAQ links placed under the feature module branch instead of the dedicated FAQ branch in `Summary.md`.
+When a shared FAQ directory is configured, validation must reject FAQ-template pages stored below feature module roots, missing entries in the shared FAQ index, FAQ links placed under the feature module branch, or newly added feature FAQ links that are not the last child of the dedicated FAQ branch in `Summary.md`.

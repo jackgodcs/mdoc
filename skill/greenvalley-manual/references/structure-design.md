@@ -17,7 +17,7 @@ Give independent entries, independent operations, or separately illustrated func
 
 ## Shared FAQ placement
 
-If `manual_layout.faq_directory` is configured, all feature FAQ pages belong under that shared directory. A feature module may link to its FAQ in prose, but must not store the FAQ page below the module root or list it as a child of the module in `Summary.md`. Register the page in the shared FAQ index and as a child of the dedicated FAQ Summary node. Use a stable feature-specific filename such as `<Feature>_FAQ.md`.
+If `manual_layout.faq_directory` is configured, all feature FAQ pages belong under that shared directory. A feature module may link to its FAQ in prose, but must not store the FAQ page below the module root or list it as a child of the module in `Summary.md`. Register the page in the shared FAQ index and append it after all existing children of the dedicated FAQ Summary node. Use a stable feature-specific filename such as `<Feature>_FAQ.md`.
 
 ## Incremental protection
 

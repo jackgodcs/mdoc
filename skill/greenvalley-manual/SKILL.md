@@ -47,7 +47,7 @@ Apply this evidence priority: confirmed decisions, live target application, appr
 
 Select page templates from `assets/templates/pages/`: `module-index`, `category-index`, `operation`, `interface`, `workflow`, `concept`, or `faq`. Adapt to the repository style and omit empty sections.
 
-When the product profile declares a shared FAQ section, place every feature FAQ under that section rather than inside the feature module. Add the FAQ page to the shared FAQ index and to the dedicated FAQ branch in the book Summary; do not duplicate it in the feature module's Summary hierarchy.
+When the product profile declares a shared FAQ section, place every feature FAQ under that section rather than inside the feature module. Add the FAQ page to the shared FAQ index and append it as the last child of the dedicated FAQ branch in the book Summary; do not duplicate it in the feature module's Summary hierarchy.
 
 Generate source-locale content first, rewrite locales that require localized UI screenshots, and apply copy strategies exactly as configured. Formal manuals must not contain local absolute paths, task-workspace links, unresolved placeholders, or source-analysis implementation details irrelevant to users.
 
