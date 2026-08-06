@@ -447,7 +447,7 @@ class Assistant:
         self.preview_divider=tk.Canvas(self.preview_area,width=10,highlightthickness=0,bd=0,cursor="sb_h_double_arrow",background="#f0f0f0")
         self.preview_divider_line=self.preview_divider.create_rectangle(4,0,6,1,fill="#c8c8c8",outline="")
         self.preview_divider_dots=[self.preview_divider.create_oval(3,0,7,4,fill="#8a8a8a",outline="") for _ in range(3)]
-        reference_header=ttk.Frame(reference); reference_header.pack(fill="x"); self.reference_title=ttk.Label(reference_header,text="中文参考图（zh）"); self.reference_title.pack(side="left"); self.reference_open=ttk.Button(reference_header,text="打开参考图",command=self.open_reference_image,state="disabled"); self.reference_open.pack(side="right")
+        reference_header=ttk.Frame(reference); reference_header.pack(fill="x"); self.reference_title=ttk.Label(reference_header,text="中文参考图（zh）"); self.reference_title.pack(side="left"); self.reference_open=ttk.Button(reference_header,text="打开参考图",command=self.open_reference_image,state="disabled"); self.reference_open.pack(side="right"); self.reference_copy=ttk.Button(reference_header,text="复制到 en",command=self.copy_reference); self.reference_copy.pack(side="right",padx=(0,4))
         self.reference_notice=tk.Label(reference,anchor="w",padx=6,pady=3)
         current_header=ttk.Frame(current); current_header.pack(fill="x"); self.current_title=ttk.Label(current_header,text="当前语言截图"); self.current_title.pack(side="left")
         self.current_notice=tk.Label(current,anchor="w",padx=6,pady=3)
@@ -497,7 +497,7 @@ class Assistant:
         s=self.tree.selection(); return s[0] if s else None
     def selected(self): return next((x for x in self.manifest["screenshots"] if x["id"]==self.selected_id()),None)
     def clear_details(self):
-        self.requirements.config(state="normal"); self.requirements.delete("1.0","end"); self.requirements.config(state="disabled"); self.reference_preview.config(image="",text="没有截图项"); self.current_preview.config(image="",text="没有截图项"); self.reference_notice.pack_forget(); self.current_notice.pack_forget(); self.reference_photo=self.current_photo=None; self.reference_open.config(state="disabled")
+        self.requirements.config(state="normal"); self.requirements.delete("1.0","end"); self.requirements.config(state="disabled"); self.reference_preview.config(image="",text="没有截图项"); self.current_preview.config(image="",text="没有截图项"); self.reference_notice.pack_forget(); self.current_notice.pack_forget(); self.reference_copy.pack_forget(); self.reference_photo=self.current_photo=None; self.reference_open.config(state="disabled")
     def show_selected(self,e=None):
         shot=self.selected(); locale=self.locale_var.get()
         if not shot:return
@@ -534,6 +534,12 @@ class Assistant:
         current_path=Path(target["absolute_target"]) if target else Path()
         self.set_preview(self.reference_preview,reference_path,"中文参考图尚未截图","reference_photo",fast); self.set_preview(self.current_preview,current_path,f"{current} 截图尚未截图","current_photo",fast)
         self.reference_open.config(state="normal" if reference and reference_path.is_file() else "disabled")
+        if current=="zh":self.reference_copy.pack_forget()
+        else:
+            self.reference_copy.config(text=f"复制到 {current}",state="normal" if reference and reference.get("usable_in_manual") else "disabled")
+            if not self.reference_copy.winfo_manager():self.reference_copy.pack(side="right",before=self.reference_open,padx=(0,4))
+            if reference and not reference.get("usable_in_manual") and not reference.get("reference_only"):
+                self.reference_notice.config(text="中文参考图尚未完成，不能复制到当前语言",background="#eeeeee",foreground="#555555"); self.reference_notice.pack(fill="x",pady=(4,0))
     def layout_preview_split(self):
         self.root.update_idletasks(); width=self.preview_area.winfo_width(); height=self.preview_area.winfo_height()
         if width<=12 or height<=1:return
@@ -564,6 +570,15 @@ class Assistant:
     def update_status(self):
         if not hasattr(self,"manifest"):return
         locale=self.locale_var.get(); complete=sum(x["locales"][locale]["status"] in state.COMPLETE_STATUSES for x in self.manifest["screenshots"] if x["required"]); total=sum(x["required"] for x in self.manifest["screenshots"]); hotkey=getattr(self,"hotkey_text","正在注册全局快捷键…"); self.status.config(text=f"{locale}: 必需截图 {complete}/{total}；总体验收：{self.manifest['acceptance']['status']}；{hotkey}")
+    def show_status_message(self,text):
+        self.status.config(text=text); self.root.after(3000,self.update_status)
+    def advance_after_completion(self,current):
+        if not self.auto_var.get() or not current:return
+        children=self.tree.get_children()
+        if not children:return
+        try:i=children.index(current); nxt=children[min(i+1,len(children)-1)]
+        except ValueError:nxt=children[0]
+        self.tree.selection_set(nxt); self.tree.focus(nxt); self.tree.see(nxt); self.show_selected()
     def request_capture(self,source,payload=None):
         now=time.monotonic()
         if self.capture_in_progress or self.modal_count or now-self.last_capture_request<0.3:return
@@ -603,12 +618,7 @@ class Assistant:
             finally:
                 if os.path.exists(tmp):os.unlink(tmp)
             current=self.selected_id(); capture_state=self.capture_state or {}; state.set_locale_status(self.workspace,self.task_id,capture_state.get("shot_id",current),capture_state.get("locale",self.locale_var.get()),"captured","Recaptured by user"); self.refresh()
-            if self.auto_var.get() and current:
-                children=self.tree.get_children()
-                if children:
-                    try:i=children.index(current); nxt=children[min(i+1,len(children)-1)]
-                    except ValueError:nxt=children[0]
-                    self.tree.selection_set(nxt); self.tree.focus(nxt); self.tree.see(nxt); self.show_selected()
+            self.advance_after_completion(current)
         except Exception as error:
             messagebox.showerror("截图保存失败",str(error),parent=self.root)
         finally:self.capture_in_progress=False; self.capture_state=None
@@ -637,6 +647,24 @@ class Assistant:
         if reference:
             path=Path(reference["absolute_target"])
             if path.is_file():os.startfile(path)
+    def copy_reference(self):
+        shot=self.selected(); target_locale=self.locale_var.get()
+        if not shot or target_locale=="zh":return
+        reference=shot["locales"].get("zh"); target=shot["locales"].get(target_locale)
+        if not reference or not reference.get("usable_in_manual"):
+            messagebox.showwarning("无法复制","中文参考图不存在或当前不允许用于手册。",parent=self.root); return
+        target_path=Path(target["absolute_target"]); old_status=target.get("status","pending"); details=[]
+        if target_path.exists():details.append(f"{target_locale} 截图已经存在，复制将覆盖原图片，且无法通过截图助手恢复。")
+        if old_status in REFERENCE_ONLY_STATUSES:details.append(f"当前 {target_locale} 状态为“{STATUS_LABELS.get(old_status,old_status)}”。复制成功后将恢复为“已截图”、清除异常原因、允许用于手册，并使原有总体验收失效。")
+        prompt="\n\n".join(details or [f"将当前中文参考图复制为 {target_locale} 截图。"])+"\n\n是否继续？"
+        self.modal_count+=1
+        try:confirmed=messagebox.askyesno(f"复制到 {target_locale}",prompt,parent=self.root)
+        finally:self.modal_count-=1
+        if not confirmed:return
+        current=shot["id"]
+        try:
+            state.copy_locale_capture(self.workspace,self.task_id,current,"zh",target_locale,target_path.exists()); self.refresh(); self.show_status_message(f"已将 zh 参考图复制到 {target_locale}"); self.advance_after_completion(current)
+        except Exception as error:messagebox.showerror("复制失败",str(error),parent=self.root)
     def open_folder(self):
         shot=self.selected();
         if shot:
@@ -685,6 +713,7 @@ def main():
             assert CaptureOverlay.resize_result((10,10,100,100),"se",5,4) == ((5,4,10,10),"nw")
             assert REFERENCE_ONLY_STATUSES == state.EXCEPTION_STATUSES
             assert not (REFERENCE_ONLY_STATUSES & state.MANUAL_USABLE_STATUSES)
+            assert "zh" not in {"en","ja"}
             modifiers,key=GlobalHotkey.decode_lparam(); assert modifiers & GlobalHotkey.MOD_CONTROL and modifiers & GlobalHotkey.MOD_SHIFT and modifiers & GlobalHotkey.MOD_NOREPEAT and key==0x5A
             windows=[{"rect":(10,10,100,100),"title":"back"},{"rect":(20,20,80,80),"title":"front"}]
             assert next(item for item in windows if item["rect"][0]<=30<item["rect"][2] and item["rect"][1]<=30<item["rect"][3])["title"]=="back"

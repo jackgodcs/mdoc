@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import sys
 import tempfile
 from datetime import datetime, timezone
@@ -52,6 +53,27 @@ def atomic_write(path: Path, content: str) -> None:
 
 def atomic_json(path: Path, data: dict) -> None:
     atomic_write(path, json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+
+
+def atomic_copy(source: Path, target: Path) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd, name = tempfile.mkstemp(prefix=target.stem + ".", suffix=target.suffix, dir=target.parent)
+    try:
+        with source.open("rb") as input_stream, os.fdopen(fd, "wb") as output_stream:
+            shutil.copyfileobj(input_stream, output_stream)
+            output_stream.flush()
+            os.fsync(output_stream.fileno())
+        os.replace(name, target)
+    except Exception:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        try:
+            os.unlink(name)
+        except OSError:
+            pass
+        raise
 
 
 def scalar(source: str, key: str) -> str | None:
@@ -345,6 +367,16 @@ def update_state(path: Path, complete: bool, digest: str, accept_now: bool = Fal
     atomic_write(path, source)
 
 
+def invalidate_acceptance(path: Path) -> None:
+    source = read(path)
+    block, span = acceptance_block(source)
+    if not block or scalar(block, "status") != "user_accepted":
+        return
+    new = re.sub(r"(?m)^  status:[ \t]*.*$", "  status: stale", block, count=1).rstrip()
+    new += f"\n  changed_at: {now()}\n"
+    atomic_write(path, source[:span[0]] + new + source[span[1]:])
+
+
 def build_manifest(workspace: Path, task_id: str, shots: list[dict], locales: list[dict], paths: dict[str, Path]) -> dict:
     state_source = read(paths["state"])
     acceptance, _ = acceptance_block(state_source)
@@ -473,6 +505,33 @@ def set_locale_status(workspace: Path, task_id: str, shot_id: str, locale: str, 
     return synchronize(workspace, task_id)
 
 
+def copy_locale_capture(workspace: Path, task_id: str, shot_id: str, source_locale: str, target_locale: str, overwrite: bool = False) -> dict:
+    if source_locale == target_locale:
+        raise ValueError("Source and target locale must be different")
+    source, shots, locales, paths = load_task(workspace, task_id)
+    locale_ids = [item["id"] for item in locales]
+    if source_locale not in locale_ids or target_locale not in locale_ids:
+        raise ValueError("Source and target locales must be independently captured")
+    shot = next((item for item in shots if item["id"] == shot_id), None)
+    if not shot:
+        raise ValueError(f"Unknown screenshot: {shot_id}")
+    source_path = paths["work_root"] / "captures" / source_locale / "original" / shot["filename"]
+    target_path = paths["work_root"] / "captures" / target_locale / "original" / shot["filename"]
+    source_status = shot["locales"][source_locale].get("status", "pending")
+    if not source_path.is_file() or source_status not in MANUAL_USABLE_STATUSES:
+        raise ValueError(f"{source_locale} reference image is not eligible for manual use")
+    if target_path.exists() and not overwrite:
+        raise FileExistsError(f"Target screenshot already exists: {target_path}")
+    old = shot["locales"][target_locale].get("status", "pending")
+    atomic_copy(source_path, target_path)
+    shot["history"].append({"locale": target_locale, "from": old, "to": "captured", "reason": f"Copied from {source_locale} reference image", "changed_at": now()})
+    shot["locales"][target_locale] = {"status": "captured", "updated_at": now()}
+    shot["files"][target_locale] = target_path.relative_to(paths["work_root"]).as_posix()
+    atomic_write(paths["screenshots"], update_screenshot_yaml(source, shots, locale_ids))
+    invalidate_acceptance(paths["state"])
+    return synchronize(workspace, task_id)
+
+
 def accept(workspace: Path, task_id: str) -> dict:
     manifest = synchronize(workspace, task_id)
     if not manifest["required_complete"]:
@@ -577,6 +636,8 @@ def main() -> int:
             assert manifest_records(Path("."), [{"id":"S","required":True,"filename":"missing.png","locales":{"zh":{"status":"waived","reason":"x"}}}], ["zh"]) == [{"id":"S","locale":"zh","decision":"waived","reason":"x"}]
             sample = "Before ![shot](images/example.png) after <img src='images/keep.png'>"
             assert [match.group(0) for match in MARKDOWN_IMAGE_PATTERN.finditer(sample)] == ["![shot](images/example.png)", "<img src='images/keep.png'>"]
+            with tempfile.TemporaryDirectory() as directory:
+                source_path=Path(directory)/"source.png"; target_path=Path(directory)/"target.png"; payload=b"png-bytes\x00\xff"; source_path.write_bytes(payload); atomic_copy(source_path,target_path); assert target_path.read_bytes()==payload
             print("screenshot state checks passed")
             return 0
         if args.command == "apply-staging-eligibility":
