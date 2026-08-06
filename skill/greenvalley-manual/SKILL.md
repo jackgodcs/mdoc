@@ -49,6 +49,8 @@ Select page templates from `assets/templates/pages/`: `module-index`, `category-
 
 Generate source-locale content first, rewrite locales that require localized UI screenshots, and apply copy strategies exactly as configured. Formal manuals must not contain local absolute paths, task-workspace links, unresolved placeholders, or source-analysis implementation details irrelevant to users.
 
+Apply `writing.image_sizing` after staging Markdown and PNG assets exist. For scaled-step sizing, read only PNG header dimensions, calculate the configured scaled reference, clamp to the configured step boundaries, choose the nearest strict step with lower-step tie breaking, apply the configured same-name locale-variant strategy, and add the responsive image style. Run `scripts/image_sizing.py check` as part of staging and formal-repository validation. This is not screenshot content review.
+
 ## Screenshot Workflow
 
 Read `references/screenshot-workflow.md`. Keep `screenshots.yaml` as the machine state source. Use `scripts/screenshot_state.py sync <process-workspace> <task-id>` to generate the task-local manifest and launcher, then open `.work/greenvalley-manual/<task-id>/open-screenshot-assistant.cmd`. Do not generate Markdown screenshot workbooks.

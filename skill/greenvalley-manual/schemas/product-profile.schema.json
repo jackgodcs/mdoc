@@ -35,6 +35,30 @@
         "targets"
       ]
     },
+    "writing": {
+      "type": "object",
+      "properties": {
+        "image_sizing": {
+          "type": "object",
+          "required": ["mode", "scale", "steps", "boundary_mode", "matching", "tie_break", "locale_variant_strategy", "responsive"],
+          "properties": {
+            "mode": {"const": "scaled_steps"},
+            "scale": {"type": "number", "exclusiveMinimum": 0},
+            "steps": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {"type": "integer", "minimum": 1}
+            },
+            "boundary_mode": {"const": "clamp"},
+            "matching": {"const": "nearest"},
+            "tie_break": {"const": "lower"},
+            "locale_variant_strategy": {"const": "minimum_step"},
+            "responsive": {"const": true}
+          }
+        }
+      }
+    },
     "policies": {
       "type": "object",
       "required": [
