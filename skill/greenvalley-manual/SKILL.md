@@ -1,6 +1,6 @@
 ---
 name: greenvalley-manual
-description: Plan, capture, write, localize, validate, and publish multilingual GreenValley product manuals. Use when creating a complete manual module, adding a feature to an existing module, updating an existing feature, adding a locale, preparing screenshot plans, or resuming a configuration-driven manual-authoring workspace.
+description: Plan, capture, write, localize, validate, audit, and publish multilingual GreenValley product manuals. Use when creating or updating manual content, adding a locale, preparing screenshots, running an optional manual Quality Gate on a task or existing book, or resuming a configuration-driven manual-authoring workspace.
 ---
 
 # GreenValley Manual Authoring
@@ -47,6 +47,8 @@ Apply this evidence priority: confirmed decisions, live target application, appr
 
 Select page templates from `assets/templates/pages/`: `module-index`, `category-index`, `operation`, `interface`, `workflow`, `concept`, or `faq`. Adapt to the repository style and omit empty sections.
 
+When the product profile declares a shared FAQ section, place every feature FAQ under that section rather than inside the feature module. Add the FAQ page to the shared FAQ index and to the dedicated FAQ branch in the book Summary; do not duplicate it in the feature module's Summary hierarchy.
+
 Generate source-locale content first, rewrite locales that require localized UI screenshots, and apply copy strategies exactly as configured. Formal manuals must not contain local absolute paths, task-workspace links, unresolved placeholders, or source-analysis implementation details irrelevant to users.
 
 Apply `writing.image_sizing` after staging Markdown and PNG assets exist. For scaled-step sizing, read only PNG header dimensions, calculate the configured scaled reference, clamp to the configured step boundaries, choose the nearest strict step with lower-step tie breaking, apply the configured same-name locale-variant strategy, and add the responsive image style. Run `scripts/image_sizing.py check` as part of staging and formal-repository validation. This is not screenshot content review.
@@ -65,7 +67,7 @@ Preserve all existing manual files and assets. Any deletion requires explicit co
 
 ## Quality Gate
 
-Run configuration, structure, Markdown/resource, and content-quality checks described in `references/validation-rules.md`. Classify findings as `error`, `warning`, `suggestion`, or `passed`. Automation may advance only to `ready_for_review`; only explicit user acceptance sets `accepted`.
+Treat Quality Gate as an optional capability, not an implicit publishing prerequisite. Run it when the user requests a manual audit or when merged configuration explicitly enables automatic or required validation. Use `quick`, `full`, or `release` profiles and classify findings by both severity and confidence. Read `references/manual-lint.md` before running or configuring it. Only `validation.mode: required` with `publish_policy.required_before_publish: true` may block publishing; advisory findings remain visible without changing the user's publishing authority.
 
 ## Resources
 
@@ -76,10 +78,13 @@ Run configuration, structure, Markdown/resource, and content-quality checks desc
 - `references/structure-design.md`: structure rules and page-template selection.
 - `references/screenshot-workflow.md`: capture and review rules.
 - `references/validation-rules.md`: quality gates and completion definition.
+- `references/manual-lint.md`: Quality Gate profiles, FAQ-derived rules, baselines, suppressions, reports, fixes, builds, and visual review.
 - `references/deletion-policy.md`: mandatory preservation and deletion rules.
 - `assets/templates/`: editable neutral templates.
 - `assets/examples/`: complete neutral examples that must pass schemas.
 - `schemas/`: machine-readable configuration schemas.
 - `scripts/validate_config.py`: schema and cross-file validation entry point.
+- `scripts/manual_lint.py`: optional task or standalone-book Quality Gate entry point.
+- `scripts/manual_visual_validation.py`: risk-driven visual-review manifest and acceptance state.
 - `scripts/screenshot_state.py`: manifest, file-existence synchronization, exceptions, and aggregate visual-acceptance fingerprints.
 - `scripts/screenshot_assistant.py`: task-aware human screenshot GUI.

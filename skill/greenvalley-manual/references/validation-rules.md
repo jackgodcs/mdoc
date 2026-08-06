@@ -2,18 +2,32 @@
 
 ## Four layers
 
-1. Configuration: schemas, overrides, IDs, allowed roots, state consistency.
-2. Structure: declared pages and category indexes, locale structure, scope boundaries, no deletions.
-3. Markdown/resources: summary links, image links, internal links, readable images, no unresolved placeholders or local absolute paths.
-4. Content: localized UI terms, cross-locale scope, evidence support, required limitations, no internal implementation detail unless user-relevant.
+1. Configuration: schemas, overrides, IDs, allowed roots, and state consistency.
+2. Structure: declared pages, category indexes, locale structure, scope boundaries, and preservation.
+3. Markdown/resources: summary links, image links, internal links, readable images, placeholders, and local paths.
+4. Content: localized UI terms, cross-locale scope, evidence, limitations, terminology, spelling, and locale style.
 
-## Severity
+## Optional Quality Gate
 
-- error: blocks publishing or review readiness.
-- warning: requires visibility but may not block.
-- suggestion: optional improvement.
-- passed: check succeeded.
+Quality Gate is available for task staging, a formal repository, or a standalone existing book. It does not run or block publishing unless configuration or the user requests it. Missing configuration defaults to `mode: advisory`, `auto_run: false`, and `default_profile: full`.
 
-Automation may advance only to ready_for_review. Capture completion requires every effective required locale to have an eligible target PNG in `captured`/compatible `approved` state or an explicit `not-applicable`/`waived` decision. Ordinary synchronization validates existence only, not image content, but explicit `blocked`, `needs-retake`, `not-applicable`, and `waived` states override file existence. Retained exception PNGs are reference-only. Staging Markdown must not reference an ineligible screenshot filename; required `blocked` and `needs-retake` items block publishing. Existing formal-manual references that become ineligible are reported as conflicts and are not removed without explicit confirmation. Publishing may proceed after independent screenshot review approval or non-stale aggregate user visual acceptance; aggregate acceptance represents the user's own visual verification even when individual reviews remain pending. Final completion still requires configured locales, no errors, reports, and explicit user acceptance.
+Profiles are `quick`, `full`, and `release`. `quick` runs deterministic repository checks. `full` covers every FAQ-derived static or review rule. `release` adds configured HTML/PDF builds and visual review. See `manual-lint.md`.
 
-When scaled-step image sizing is configured, validate PNG dimensions from the IHDR header without inspecting image content. Every local image tag must use the deterministic width produced by scale, boundary clamp, nearest configured step, lower-step tie breaking, and the configured same-name locale-variant strategy. Widths outside the configured steps, missing responsive styles, and inconsistent widths for the same filename across locales or pages are errors.
+Only `mode: required` combined with `publish_policy.required_before_publish: true` creates a publishing prerequisite. A task may tighten an inherited policy but may not weaken one. Advisory errors remain visible but do not revoke explicit publishing authority.
+
+## Findings
+
+Severity and confidence are independent:
+
+- severity: `error`, `warning`, `suggestion`, or `passed`
+- confidence: `exact`, `probable`, or `review`
+
+Baseline status is `new`, `existing`, `touched_existing`, or `resolved`. Baselines change blocking behavior only; they never turn a finding into `passed`.
+
+## Existing screenshot rules
+
+Automation may advance only to `ready_for_review`; only explicit user acceptance sets `accepted`. Screenshot capture requires an eligible target PNG or an explicit `not-applicable`/`waived` decision. Explicit exception states override file existence. Staging must not reference an ineligible screenshot. Existing formal references that become ineligible are conflicts and are not removed without confirmation.
+
+When scaled-step image sizing is configured, validate PNG dimensions from the header. Every local image tag must use the deterministic width and responsive style configured by `writing.image_sizing`.
+
+When a shared FAQ directory is configured, validation must reject FAQ-template pages stored below feature module roots, missing entries in the shared FAQ index, or FAQ links placed under the feature module branch instead of the dedicated FAQ branch in `Summary.md`.

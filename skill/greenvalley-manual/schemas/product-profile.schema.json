@@ -26,7 +26,15 @@
         "image_directory",
         "summary_file",
         "module_index_file"
-      ]
+      ],
+      "properties": {
+        "content_directory": {"type": "string", "minLength": 1},
+        "image_directory": {"type": "string", "minLength": 1},
+        "summary_file": {"type": "string", "minLength": 1},
+        "module_index_file": {"type": "string", "minLength": 1},
+        "faq_directory": {"type": "string", "minLength": 1},
+        "faq_index_file": {"type": "string", "minLength": 1}
+      }
     },
     "locales": {
       "type": "object",
@@ -72,6 +80,29 @@
         "deletion_requires_confirmation": {
           "const": true
         }
+      }
+    },
+    "validation": {
+      "type": "object",
+      "properties": {
+        "mode": {"enum": ["disabled", "advisory", "required"]},
+        "auto_run": {"type": "boolean"},
+        "default_profile": {"enum": ["quick", "full", "release"]},
+        "publish_policy": {
+          "type": "object",
+          "properties": {
+            "required_before_publish": {"type": "boolean"},
+            "required_profile": {"enum": ["quick", "full", "release"]},
+            "required_components": {"type": "array", "uniqueItems": true, "items": {"enum": ["static", "html_build", "pdf_build", "visual_review"]}},
+            "block_on": {"type": "array", "uniqueItems": true, "items": {"enum": ["error", "warning", "suggestion"]}}
+          }
+        },
+        "markdown": {"type": "object"},
+        "images": {"type": "object"},
+        "terminology": {"type": "object"},
+        "spelling": {"type": "object"},
+        "punctuation": {"type": "object"},
+        "custom_patterns": {"type": "array"}
       }
     }
   }

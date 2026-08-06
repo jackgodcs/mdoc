@@ -16,6 +16,8 @@ ENUMS = {
     "task_status": {"draft", "generated", "validation_failed", "ready_for_review", "accepted"},
     "template": {"module-index", "category-index", "operation", "interface", "workflow", "concept", "faq", "api-reference"},
     "snapshot": {"none", "selected", "full"},
+    "validation_mode": {"disabled", "advisory", "required", "inherit"},
+    "validation_profile": {"quick", "full", "release"},
 }
 
 
@@ -29,6 +31,15 @@ def scalar(source: str, key: str):
         return None
     value = match.group(1).strip().strip("\"'")
     return value
+
+
+def top_level_section(source: str, key: str) -> str:
+    lines = source.splitlines()
+    start = next((index for index, line in enumerate(lines) if line == f"{key}:"), None)
+    if start is None:
+        return ""
+    end = next((index for index in range(start + 1, len(lines)) if lines[index] and not lines[index][0].isspace()), len(lines))
+    return "\n".join(lines[start + 1:end])
 
 
 def list_item_values(source: str, key: str) -> list[str]:
@@ -70,6 +81,9 @@ def validate_workspace(root: Path, errors: list[str]):
             value = scalar(source, key)
             if value and value not in allowed:
                 errors.append(f"{workspace}: invalid {key}: {value}")
+        value = scalar(source, "default_profile")
+        if value and value not in ENUMS["validation_profile"]:
+            errors.append(f"{workspace}: invalid validation default_profile: {value}")
     if not profile.exists():
         errors.append(f"{root}: product-profile.yaml is missing")
     else:
@@ -79,6 +93,13 @@ def validate_workspace(root: Path, errors: list[str]):
             errors.append(f"{profile}: preserve_existing_content must be true")
         if scalar(source, "deletion_requires_confirmation") != "true":
             errors.append(f"{profile}: deletion_requires_confirmation must be true")
+        validation_source = top_level_section(source, "validation")
+        mode = scalar(validation_source, "mode")
+        if mode and mode not in ENUMS["validation_mode"]:
+            errors.append(f"{profile}: invalid validation mode: {mode}")
+        profile_name = scalar(validation_source, "default_profile")
+        if profile_name and profile_name not in ENUMS["validation_profile"]:
+            errors.append(f"{profile}: invalid validation default_profile: {profile_name}")
 
 
 def validate_task(task_dir: Path, errors: list[str], warnings: list[str]):
@@ -142,6 +163,9 @@ def validate_task(task_dir: Path, errors: list[str], warnings: list[str]):
     publish = task_dir / "publish-plan.yaml"
     if publish.exists() and re.search(r"(?ms)^\s*delete:\s*\n\s*-\s+", text(publish)):
         warnings.append(f"{publish}: deletion proposals require separate explicit confirmation")
+    validation_profile = scalar(task_source, "profile")
+    if validation_profile and validation_profile not in ENUMS["validation_profile"]:
+        errors.append(f"{task}: invalid validation profile: {validation_profile}")
 
 
 def main() -> int:
