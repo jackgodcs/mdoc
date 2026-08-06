@@ -407,7 +407,7 @@ class Assistant:
         if not self.lock.acquire(): raise RuntimeError("此任务的截图助手已经在运行。")
         self.root.protocol("WM_DELETE_WINDOW", self.close); self.root.title(f"GreenValley 截图助手 — {task_id}")
         self.root.geometry("1180x760"); self.root.minsize(900, 600)
-        self.reference_photo = self.current_photo = None; self.preview_resize_job=None; self.visible = []; self.capture_in_progress=False; self.last_capture_request=0.0; self.capture_context=None; self.modal_count=0
+        self.reference_photo = self.current_photo = None; self.preview_resize_job=None; self.preview_dragging=False; self.visible = []; self.capture_in_progress=False; self.last_capture_request=0.0; self.capture_context=None; self.modal_count=0
         self.events=queue.Queue(); self.hotkey=GlobalHotkey(self.events)
         self.load_local(); self.build(); self.refresh(); self.hotkey.start(); self.root.after(50,self.poll_events)
         if check:
@@ -440,13 +440,19 @@ class Assistant:
         ttk.Button(bar,text="截图 Ctrl+Shift+Z",command=lambda:self.request_capture("local")).pack(side="left"); ttk.Button(bar,text="打开图片",command=self.open_image).pack(side="left",padx=4); ttk.Button(bar,text="打开目录",command=self.open_folder).pack(side="left")
         ttk.Button(bar,text="异常状态…",command=self.exception).pack(side="left",padx=4); ttk.Checkbutton(bar,text="保存后自动下一项",variable=self.auto_var).pack(side="right")
         ttk.Radiobutton(bar,text="当前屏幕",variable=self.scope_var,value="current_monitor").pack(side="right"); ttk.Radiobutton(bar,text="全部屏幕",variable=self.scope_var,value="all_monitors").pack(side="right")
-        self.preview_pane=ttk.Panedwindow(prev,orient="horizontal"); self.preview_pane.pack(fill="both",expand=True,pady=(8,0))
-        reference=ttk.Frame(self.preview_pane); current=ttk.Frame(self.preview_pane); self.preview_pane.add(reference,weight=2); self.preview_pane.add(current,weight=3)
+        self.preview_area=ttk.Frame(prev); self.preview_area.pack(fill="both",expand=True,pady=(8,0))
+        reference=ttk.Frame(self.preview_area); current=ttk.Frame(self.preview_area)
+        self.preview_reference_frame=reference; self.preview_current_frame=current
+        self.preview_divider=tk.Canvas(self.preview_area,width=10,highlightthickness=0,bd=0,cursor="sb_h_double_arrow",background="#f0f0f0")
+        self.preview_divider_line=self.preview_divider.create_rectangle(4,0,6,1,fill="#c8c8c8",outline="")
+        self.preview_divider_dots=[self.preview_divider.create_oval(3,0,7,4,fill="#8a8a8a",outline="") for _ in range(3)]
         reference_header=ttk.Frame(reference); reference_header.pack(fill="x"); self.reference_title=ttk.Label(reference_header,text="中文参考图（zh）"); self.reference_title.pack(side="left"); self.reference_open=ttk.Button(reference_header,text="打开参考图",command=self.open_reference_image,state="disabled"); self.reference_open.pack(side="right")
         current_header=ttk.Frame(current); current_header.pack(fill="x"); self.current_title=ttk.Label(current_header,text="当前语言截图"); self.current_title.pack(side="left")
         self.reference_preview=ttk.Label(reference,text="中文参考图尚未截图",anchor="center"); self.reference_preview.pack(fill="both",expand=True,padx=(0,4),pady=(4,0))
         self.current_preview=ttk.Label(current,text="当前语言截图尚未截图",anchor="center"); self.current_preview.pack(fill="both",expand=True,padx=(4,0),pady=(4,0))
-        self.preview_pane.bind("<ButtonRelease-1>",self.preview_sash_released); self.preview_pane.bind("<Configure>",self.preview_resized); self.root.after(150,self.restore_preview_split)
+        self.preview_area.bind("<Configure>",self.preview_resized); self.preview_divider.bind("<Enter>",lambda e:self.paint_preview_divider("drag" if self.preview_dragging else "hover")); self.preview_divider.bind("<Leave>",lambda e:self.paint_preview_divider("drag" if self.preview_dragging else "normal"))
+        self.preview_divider.bind("<ButtonPress-1>",self.preview_divider_press); self.preview_divider.bind("<B1-Motion>",self.preview_divider_drag); self.preview_divider.bind("<ButtonRelease-1>",self.preview_divider_release); self.preview_divider.bind("<Double-Button-1>",self.reset_preview_split)
+        self.root.after(150,self.layout_preview_split)
         self.status = ttk.Label(self.root, anchor="w", padding=(8,2)); self.status.pack(fill="x")
         self.tree.bind("<<TreeviewSelect>>", self.show_selected); self.locale_box.bind("<<ComboboxSelected>>", self.locale_changed)
         self.root.bind("<F5>",lambda e:self.refresh()); self.root.bind("<Control-Shift-Z>",lambda e:self.request_capture("local")); self.root.bind("<Control-o>",lambda e:self.open_image()); self.root.bind("<Control-Shift-O>",lambda e:self.open_folder()); self.root.bind("<Control-Return>",lambda e:self.accept_all())
@@ -499,13 +505,13 @@ class Assistant:
         if d.get("reason"): lines += ["",f"原因：{d['reason']}"]
         self.requirements.config(state="normal"); self.requirements.delete("1.0","end"); self.requirements.insert("1.0","\n".join(lines)); self.requirements.config(state="disabled"); self.update_previews(shot)
     def preview_status(self,data):return STATUS_LABELS.get(data.get("status","pending"),data.get("status","pending"))
-    def set_preview(self,label,path,empty,slot):
+    def set_preview(self,label,path,empty,slot,fast=False):
         if not path.is_file():label.config(image="",text=empty); setattr(self,slot,None); return
         try:
             with Image.open(path) as source:im=source.copy()
-            self.root.update_idletasks(); w=max(120,label.winfo_width()-16); h=max(120,label.winfo_height()-16); im.thumbnail((w,h),Image.Resampling.LANCZOS); photo=ImageTk.PhotoImage(im); setattr(self,slot,photo); label.config(image=photo,text="")
+            self.root.update_idletasks(); w=max(120,label.winfo_width()-16); h=max(120,label.winfo_height()-16); im.thumbnail((w,h),Image.Resampling.BILINEAR if fast else Image.Resampling.LANCZOS); photo=ImageTk.PhotoImage(im); setattr(self,slot,photo); label.config(image=photo,text="")
         except Exception as error:label.config(image="",text=f"无法预览：{error}"); setattr(self,slot,None)
-    def update_previews(self,shot=None):
+    def update_previews(self,shot=None,fast=False):
         if not hasattr(self,"manifest"):return
         shot=shot or self.selected()
         if not shot:return
@@ -514,18 +520,35 @@ class Assistant:
         self.current_title.config(text=f"当前语言（{current}）· {self.preview_status(target) if target else '不可用'}")
         reference_path=Path(reference["absolute_target"]) if reference else Path()
         current_path=Path(target["absolute_target"]) if target else Path()
-        self.set_preview(self.reference_preview,reference_path,"中文参考图尚未截图","reference_photo"); self.set_preview(self.current_preview,current_path,f"{current} 截图尚未截图","current_photo")
+        self.set_preview(self.reference_preview,reference_path,"中文参考图尚未截图","reference_photo",fast); self.set_preview(self.current_preview,current_path,f"{current} 截图尚未截图","current_photo",fast)
         self.reference_open.config(state="normal" if reference and reference_path.is_file() else "disabled")
-    def restore_preview_split(self):
-        self.root.update_idletasks(); width=self.preview_pane.winfo_width()
-        if width>1:self.preview_pane.sashpos(0,int(width*self.preview_split_ratio))
-    def preview_sash_released(self,event=None):
-        width=self.preview_pane.winfo_width()
-        if width>1:self.preview_split_ratio=max(0.2,min(0.8,self.preview_pane.sashpos(0)/width)); self.save_local(); self.update_previews()
+    def layout_preview_split(self):
+        self.root.update_idletasks(); width=self.preview_area.winfo_width(); height=self.preview_area.winfo_height()
+        if width<=12 or height<=1:return
+        usable=width-10; left=int(usable*self.preview_split_ratio); self.preview_reference_frame.place(x=0,y=0,width=left,height=height); self.preview_divider.place(x=left,y=0,width=10,height=height); self.preview_current_frame.place(x=left+10,y=0,width=usable-left,height=height)
+        self.preview_divider.coords(self.preview_divider_line,4,0,6,height); middle=height//2
+        for item,y in zip(self.preview_divider_dots,(middle-10,middle-2,middle+6)):self.preview_divider.coords(item,3,y,7,y+4)
+    def paint_preview_divider(self,state):
+        colors={"normal":("#f0f0f0","#c8c8c8","#8a8a8a"),"hover":("#e5f2fb","#78b8e6","#4798d0"),"drag":("#dcefff","#168cff","#168cff")}; bg,line,dot=colors[state]; self.preview_divider.config(background=bg); self.preview_divider.itemconfigure(self.preview_divider_line,fill=line)
+        for item in self.preview_divider_dots:self.preview_divider.itemconfigure(item,fill=dot)
+    def preview_divider_press(self,event):self.preview_dragging=True; self.paint_preview_divider("drag")
+    def preview_divider_drag(self,event):
+        width=self.preview_area.winfo_width()-10
+        if width<=1:return
+        absolute=self.preview_divider.winfo_x()+event.x; self.preview_split_ratio=max(0.2,min(0.8,absolute/width)); self.layout_preview_split()
+        if self.preview_resize_job:self.root.after_cancel(self.preview_resize_job)
+        self.preview_resize_job=self.root.after(50,self.fast_preview_refresh)
+    def fast_preview_refresh(self):self.preview_resize_job=None; self.update_previews(fast=True)
+    def preview_divider_release(self,event=None):
+        self.preview_dragging=False; self.paint_preview_divider("hover")
+        if self.preview_resize_job:self.root.after_cancel(self.preview_resize_job); self.preview_resize_job=None
+        self.save_local(); self.update_previews()
+    def reset_preview_split(self,event=None):self.preview_split_ratio=0.4; self.layout_preview_split(); self.save_local(); self.update_previews()
     def preview_resized(self,event=None):
+        self.layout_preview_split()
         if self.preview_resize_job:self.root.after_cancel(self.preview_resize_job)
         self.preview_resize_job=self.root.after(120,self.finish_preview_resize)
-    def finish_preview_resize(self):self.preview_resize_job=None; self.restore_preview_split(); self.update_previews()
+    def finish_preview_resize(self):self.preview_resize_job=None; self.layout_preview_split(); self.update_previews()
     def update_status(self):
         if not hasattr(self,"manifest"):return
         locale=self.locale_var.get(); complete=sum(x["locales"][locale]["status"] in state.COMPLETE_STATUSES for x in self.manifest["screenshots"] if x["required"]); total=sum(x["required"] for x in self.manifest["screenshots"]); hotkey=getattr(self,"hotkey_text","正在注册全局快捷键…"); self.status.config(text=f"{locale}: 必需截图 {complete}/{total}；总体验收：{self.manifest['acceptance']['status']}；{hotkey}")
