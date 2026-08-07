@@ -1,0 +1,7 @@
+schema_version: 2
+status: draft
+defaults:
+  preserve_original: true
+  filename_language: en
+  sensitive_information: reject
+screenshots: []

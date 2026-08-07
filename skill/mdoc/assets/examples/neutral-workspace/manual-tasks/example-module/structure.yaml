@@ -1,0 +1,21 @@
+schema_version: 2
+status: approved
+operation: create_module
+summary:
+  placement:
+    after: Existing Entry
+pages:
+  - id: module-index
+    file: Index.md
+    template: module-index
+    title:
+      source: 示例模块
+    screenshot_ids: []
+  - id: example-operation
+    file: Operations/ExampleOperation.md
+    template: operation
+    title:
+      source: 示例操作
+    screenshot_ids:
+      - IMG-001
+

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["schema_version", "status", "counts", "artifacts", "findings"],
+  "properties": {
+    "schema_version": {"const": 2},
+    "status": {"enum": ["not_requested", "not_configured", "running", "completed", "failed", "stale"]},
+    "counts": {"type": "object", "required": ["effective_errors", "ignored_errors", "warnings", "suggestions"]},
+    "artifacts": {"type": "array"},
+    "findings": {"type": "array", "items": {"type": "object", "required": ["id", "rule_id", "severity", "confidence", "scope", "effective_blocking", "artifact_id", "pdf_pages", "message", "fingerprint"]}}
+  }
+}

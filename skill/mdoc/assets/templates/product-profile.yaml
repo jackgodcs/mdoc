@@ -1,0 +1,85 @@
+schema_version: 2
+product:
+  id: <product-id>
+  display_name: <product-display-name>
+manual_layout:
+  content_directory: Main
+  image_directory: images
+  summary_file: Summary.md
+  module_index_file: Index.md
+  faq_directory: FAQ
+  faq_index_file: Index.md
+locales:
+  source: <source-locale>
+  targets: []
+writing:
+  image_markup_style: existing
+  image_sizing:
+    mode: scaled_steps
+    scale: 1.0
+    steps: [50, 100, 200, 300, 400, 500, 600, 700, 800]
+    boundary_mode: clamp
+    matching: nearest
+    tie_break: lower
+    locale_variant_strategy: minimum_step
+    responsive: true
+  localized_ui_labels: true
+structure:
+  summary_depth: leaf_pages
+policies:
+  preserve_existing_content: true
+  deletion_requires_confirmation: true
+validation:
+  mode: advisory
+  auto_run: false
+  default_profile: full
+  publish_policy:
+    required_before_publish: false
+    required_profile: release
+    required_components: []
+    block_on: [error]
+  markdown:
+    require_blank_line_after_html_block: false
+    ordered_list_style: standard
+    paragraph_max_characters: 1200
+    table_style: either
+    external_url_style: link
+  images:
+    require_width_for_block_images: false
+    width_steps: [50, 100, 200, 300, 400, 500, 600, 700, 800]
+    max_width_px: 8192
+    max_height_px: 4096
+    max_pixel_count: 16777216
+    require_locale_width_consistency: true
+  terminology:
+    product_name: <product-display-name>
+    forbidden_variants: []
+  spelling:
+    enabled: false
+    required_locales: [en]
+    engine: wordlist
+    dictionary_file: ""
+  punctuation:
+    en: ascii
+    zh: chinese
+    ja: japanese
+    quote_style: locale
+  custom_patterns: []
+  pdf_check:
+    enabled: false
+    scan_scope: all_pages
+    task_scope_policy: task-only
+    block_on_not_evaluable: false
+    page_margin_tolerance_pt: 2
+    overlap_min_area_pt2: 24
+    title_min_following_lines: 2
+    image_min_display_width_pt: 120
+    text_min_font_size_pt: 7
+    disabled_rules: []
+    severity_overrides: {}
+    required_capabilities: [render, text_mapping]
+    retention:
+      cleanup_after_publish: true
+      keep_previous_checks: 0
+      keep_recent_check: true
+      keep_problem_page_previews_only: true

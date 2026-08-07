@@ -1,0 +1,20 @@
+schema_version: 2
+workspace:
+  id: example-manual-workspace
+product:
+  profile: product-profile.yaml
+repository:
+  root: ../../example-manual-repository
+manual:
+  active_version: Product_V1
+tasks:
+  root: manual-tasks
+defaults:
+  interaction_mode: review
+  screenshot_capture_mode: assisted
+validation:
+  baseline: validation-baseline.json
+  report_root: .work/mdoc
+  build_adapters: []
+  pdf_check:
+    artifacts: []

@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "status",
+    "operation",
+    "pages"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 2
+    },
+    "status": {
+      "enum": [
+        "draft",
+        "approved"
+      ]
+    },
+    "operation": {
+      "enum": [
+        "create_module",
+        "add_feature",
+        "update_feature",
+        "add_locale"
+      ]
+    },
+    "pages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "file",
+          "template",
+          "title"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "file": {
+            "type": "string"
+          },
+          "template": {
+            "enum": [
+              "module-index",
+              "category-index",
+              "operation",
+              "interface",
+              "workflow",
+              "concept",
+              "faq",
+              "api-reference"
+            ]
+          },
+          "screenshot_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,16 @@
+name: Bug report
+description: Report a reproducible mdoc defect without private manual content
+body:
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Observed behavior
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Remove credentials, absolute paths, manual text, screenshots, and PDFs.
+    validations:
+      required: true

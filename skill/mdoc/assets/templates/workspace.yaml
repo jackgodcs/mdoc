@@ -1,0 +1,20 @@
+schema_version: 2
+workspace:
+  id: <workspace-id>
+product:
+  profile: product-profile.yaml
+repository:
+  root: <repository-binding>
+manual:
+  active_version: <version-directory>
+tasks:
+  root: manual-tasks
+defaults:
+  interaction_mode: guided
+  screenshot_capture_mode: assisted
+validation:
+  baseline: validation-baseline.json
+  report_root: .work/mdoc
+  build_adapters: []
+  pdf_check:
+    artifacts: []

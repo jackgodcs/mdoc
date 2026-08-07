@@ -4,4 +4,10 @@
 **/sources/snapshots/
 *.log
 __pycache__/
-
+/workspaces/*
+!/workspaces/README.md
+**/.work/
+**/.pdf-check/
+**/captures/
+**/*.lock
+/dist/
