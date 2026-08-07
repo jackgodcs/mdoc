@@ -31,6 +31,7 @@ class MdocCliTests(unittest.TestCase):
             [sys.executable, str(SCRIPT), *args],
             text=True,
             capture_output=True,
+            encoding="utf-8",
             env=self.env,
             check=False,
         )
@@ -40,6 +41,16 @@ class MdocCliTests(unittest.TestCase):
     def test_version_is_stable_product_version(self):
         result = self.run_cli("--version")
         self.assertEqual("mdoc 1.0.0", result.stdout.strip())
+
+    def test_human_output_uses_utf8_when_windows_locale_is_not_chinese(self):
+        self.run_cli("setup", "--repository", str(self.repo), "--workspace", str(self.workspace), "--book", "Book-A")
+        environment = self.env | {"PYTHONIOENCODING": "cp1252"}
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), "status", "--workspace", str(self.workspace)],
+            text=True, capture_output=True, env=environment, check=False, encoding="utf-8"
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("活动书册：Book-A", result.stdout)
 
     def test_setup_and_status_report_active_book(self):
         setup = self.run_cli(

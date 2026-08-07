@@ -17,6 +17,13 @@ VERSION = "1.0.0"
 SCHEMA_VERSION = 2
 
 
+def configure_utf8_console() -> None:
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure:
+            reconfigure(encoding="utf-8", errors="replace")
+
+
 class MdocError(Exception):
     def __init__(self, code: str, message: str):
         super().__init__(message)
@@ -418,6 +425,7 @@ def parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    configure_utf8_console()
     args = parser().parse_args()
     try:
         if args.command == "check":
