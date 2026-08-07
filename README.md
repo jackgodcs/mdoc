@@ -12,16 +12,16 @@ Copyright 2026 cshuan. Licensed under Apache-2.0. 该许可证只覆盖 mdoc 源
 
 - mdoc：`https://github.com/jackgodcs/mdoc/releases`
 - Python：`https://www.python.org/downloads/windows/`
-- Poppler（PDF 可选）：使用 `skill/mdoc/tool-manifest.json` 中固定版本、地址和 SHA-256；不要使用未校验的镜像。
+- Poppler（PDF 可选）：只使用 `skill/mdoc/tool-manifest.json` 中经过维护者许可证复核并填写固定版本、地址和 SHA-256 的条目；空清单表示当前发布包未授权自动下载，不要使用未校验的镜像。
 
-基础运行需要 Python 3.12、`ruamel.yaml` 和 `jsonschema`。PDF Check 还需要 `pdfplumber`、`pypdf`、Pillow 和 Poppler。优先复用 Codex 随附运行时；缺失时先运行 `mdoc doctor`，在用户确认后再由 `mdoc doctor --repair` 安装到 `%LOCALAPPDATA%\mdoc`。
+基础运行需要 Python 3.12、`ruamel.yaml` 和 `jsonschema`。PDF Check 还需要 `pdfplumber`、`pypdf`、Pillow 和 Poppler。优先复用 Codex 随附运行时；缺失时先运行 `mdoc doctor`。`mdoc doctor --repair --toolkit <path>` 只接受用户已同意获取且已校验的离线工具包；只有 Release 工具清单包含受控 URL、SHA-256 和许可证信息时，AI 才可在逐次获得用户联网授权后帮助下载。
 
 ## 首次使用
 
 ```powershell
-python scripts/mdoc.py setup --repository D:\manuals --workspace D:\manuals-manual-workspace --book Product_V1
-python scripts/mdoc.py status --workspace D:\manuals-manual-workspace
-python scripts/mdoc.py new-task --workspace D:\manuals-manual-workspace --id add-search --operation add_feature --title Search
+python skill/mdoc/scripts/mdoc.py setup --repository D:\manuals --workspace D:\manuals-manual-workspace --book Product_V1
+python skill/mdoc/scripts/mdoc.py status --workspace D:\manuals-manual-workspace
+python skill/mdoc/scripts/mdoc.py new-task --workspace D:\manuals-manual-workspace --id add-search --operation add_feature --title Search
 ```
 
 也可双击流程工作区内的 `open-mdoc.cmd` 查看当前活动书册。全新项目默认源语言为简体中文，初始目标语言为英语；初始化只建立语言目录，首个模块任务才创建内容结构。
