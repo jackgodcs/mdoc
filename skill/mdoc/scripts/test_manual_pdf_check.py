@@ -5,6 +5,7 @@ import hashlib
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from reportlab.pdfgen import canvas
 
@@ -105,7 +106,16 @@ class ManualPdfCheckTests(unittest.TestCase):
         report_dir = self.root / "report"
         work = self.root / "work"
         data = pdf_check_core.check_existing_pdf(self.book, self.pdf, report_dir, {"artifact_id": "pdf-en", "locale": "en"})
-        current = pdf_check_render.prepare_viewer_resources(self.pdf, data, work)
+
+        def render_test_page(_pdf: Path, _page: int, output: Path, dpi: int = 144):
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_bytes(b"test preview")
+
+        # Resource lifecycle is independent of the optional Poppler runtime.
+        # Actual pdftoppm integration is covered by release/E2E verification on
+        # hosts where PDF Check dependencies are installed.
+        with mock.patch.object(pdf_check_render, "render_page", side_effect=render_test_page):
+            current = pdf_check_render.prepare_viewer_resources(self.pdf, data, work)
         self.assertTrue((current / "artifacts" / "pdf-en" / "check.pdf").exists())
         self.assertTrue(any((current / "problem-pages" / "pdf-en").glob("*.png")))
         stale = work / ".run-old"
