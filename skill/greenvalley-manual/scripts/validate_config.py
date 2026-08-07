@@ -19,7 +19,7 @@ ENUMS = {
     "validation_mode": {"disabled", "advisory", "required", "inherit"},
     "validation_profile": {"quick", "full", "release"},
 }
-VALIDATION_COMPONENTS = {"static", "html_build", "pdf_build", "visual_review"}
+VALIDATION_COMPONENTS = {"static", "html_build", "pdf_build", "pdf_check", "visual_review"}
 
 
 def text(path: Path) -> str:

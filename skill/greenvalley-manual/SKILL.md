@@ -67,7 +67,7 @@ Preserve all existing manual files and assets. Any deletion requires explicit co
 
 ## Quality Gate
 
-Treat Quality Gate as an optional capability, not an implicit publishing prerequisite. Run it when the user requests a manual audit or when merged configuration explicitly enables automatic or required validation. Use `quick`, `full`, or `release` profiles and classify findings by both severity and confidence. Read `references/manual-lint.md` before running or configuring it. Only `validation.mode: required` with `publish_policy.required_before_publish: true` may block publishing; advisory findings remain visible without changing the user's publishing authority.
+Treat Quality Gate as an optional capability, not an implicit publishing prerequisite. Run it when the user requests a manual audit or when merged configuration explicitly enables automatic or required validation. Use `quick`, `full`, or `release` profiles and classify findings by both severity and confidence. Read `references/manual-lint.md` before running or configuring it. Use `references/pdf-check.md` and `scripts/manual_pdf_check.py` when the user needs generated-PDF problem detection, page preview, Markdown source opening, or iterative rechecking. Only `validation.mode: required` with `publish_policy.required_before_publish: true` may block publishing; advisory findings remain visible without changing the user's publishing authority.
 
 ## Resources
 
@@ -79,6 +79,7 @@ Treat Quality Gate as an optional capability, not an implicit publishing prerequ
 - `references/screenshot-workflow.md`: capture and review rules.
 - `references/validation-rules.md`: quality gates and completion definition.
 - `references/manual-lint.md`: Quality Gate profiles, FAQ-derived rules, baselines, suppressions, reports, fixes, builds, and visual review.
+- `references/pdf-check.md`: generated-PDF sources, deterministic checks, viewer, source opening, ignores, scope, and cleanup.
 - `references/deletion-policy.md`: mandatory preservation and deletion rules.
 - `assets/templates/`: editable neutral templates.
 - `assets/examples/`: complete neutral examples that must pass schemas.
@@ -86,5 +87,6 @@ Treat Quality Gate as an optional capability, not an implicit publishing prerequ
 - `scripts/validate_config.py`: schema and cross-file validation entry point.
 - `scripts/manual_lint.py`: optional task or standalone-book Quality Gate entry point.
 - `scripts/manual_visual_validation.py`: risk-driven visual-review manifest and acceptance state.
+- `scripts/manual_pdf_check.py`: one-command PDF problem check and local viewer.
 - `scripts/screenshot_state.py`: manifest, file-existence synchronization, exceptions, and aggregate visual-acceptance fingerprints.
 - `scripts/screenshot_assistant.py`: task-aware human screenshot GUI.

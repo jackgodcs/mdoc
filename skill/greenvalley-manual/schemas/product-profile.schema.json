@@ -93,7 +93,7 @@
           "properties": {
             "required_before_publish": {"type": "boolean"},
             "required_profile": {"enum": ["quick", "full", "release"]},
-            "required_components": {"type": "array", "uniqueItems": true, "items": {"enum": ["static", "html_build", "pdf_build", "visual_review"]}},
+            "required_components": {"type": "array", "uniqueItems": true, "items": {"enum": ["static", "html_build", "pdf_build", "pdf_check", "visual_review"]}},
             "block_on": {"type": "array", "uniqueItems": true, "items": {"enum": ["error", "warning", "suggestion"]}}
           }
         },
@@ -102,7 +102,20 @@
         "terminology": {"type": "object"},
         "spelling": {"type": "object"},
         "punctuation": {"type": "object"},
-        "custom_patterns": {"type": "array"}
+        "custom_patterns": {"type": "array"},
+        "pdf_check": {
+          "type": "object",
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "scan_scope": {"const": "all_pages"},
+            "task_scope_policy": {"enum": ["task-only", "whole-book"]},
+            "block_on_not_evaluable": {"type": "boolean"},
+            "disabled_rules": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+            "severity_overrides": {"type": "object"},
+            "required_capabilities": {"type": "array", "uniqueItems": true, "items": {"enum": ["render", "text_mapping", "deterministic_precheck", "font_inspection"]}},
+            "retention": {"type": "object"}
+          }
+        }
       }
     }
   }

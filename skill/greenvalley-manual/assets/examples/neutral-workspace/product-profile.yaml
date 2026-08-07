@@ -32,6 +32,10 @@ validation:
     required_profile: release
     required_components: []
     block_on: [error]
+  pdf_check:
+    enabled: false
+    scan_scope: all_pages
+    task_scope_policy: task-only
   markdown:
     require_blank_line_after_html_block: false
     ordered_list_style: standard

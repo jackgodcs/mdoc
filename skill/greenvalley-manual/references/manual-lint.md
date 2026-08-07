@@ -56,7 +56,7 @@ Safe fixes may correct resolvable path case, remove an isolated image-attribute 
 
 Build adapters are optional unless the publish policy requires them. Record success, failure, timeout, missing configuration, logs, and an input/configuration fingerprint. A successful build is not visual acceptance.
 
-`manual_visual_validation.py` creates risk-driven cases for pages with lists, HTML blocks, images, tables, long paragraphs, or related findings. Review statuses are `pending`, `approved`, `needs-fix`, and `not-applicable`. Any source, artifact, configuration, or PDF fingerprint change makes acceptance stale.
+`manual_pdf_check.py` is the current generated-PDF problem finder. It scans every page, renders only problem pages for a local viewer, maps findings to Markdown where possible, and supports narrowly confirmed ignores. `visual_review` is deprecated and maps to `pdf_check` during the compatibility period; old approval state is not reused. See `pdf-check.md`.
 
 ## Reports
 

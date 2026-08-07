@@ -83,7 +83,7 @@
       "properties": {
         "profile": {"enum": ["quick", "full", "release"]},
         "mode": {"enum": ["inherit", "advisory", "required"]},
-        "required_components": {"type": "array", "uniqueItems": true, "items": {"enum": ["static", "html_build", "pdf_build", "visual_review"]}}
+        "required_components": {"type": "array", "uniqueItems": true, "items": {"enum": ["static", "html_build", "pdf_build", "pdf_check", "visual_review"]}}
       }
     }
   }

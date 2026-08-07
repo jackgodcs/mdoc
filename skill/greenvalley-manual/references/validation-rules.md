@@ -11,7 +11,7 @@
 
 Quality Gate is available for task staging, a formal repository, or a standalone existing book. It does not run or block publishing unless configuration or the user requests it. Missing configuration defaults to `mode: advisory`, `auto_run: false`, and `default_profile: full`.
 
-Profiles are `quick`, `full`, and `release`. `quick` runs deterministic repository checks. `full` covers every FAQ-derived static or review rule. `release` adds configured HTML/PDF builds and visual review. See `manual-lint.md`.
+Profiles are `quick`, `full`, and `release`. `quick` runs deterministic repository checks. `full` covers every FAQ-derived static or review rule. `release` adds configured HTML/PDF builds and, when enabled, PDF Check. PDF Check remains optional unless the required publish-policy combination explicitly includes `pdf_check`. See `manual-lint.md` and `pdf-check.md`.
 
 Only `mode: required` combined with `publish_policy.required_before_publish: true` creates a publishing prerequisite. A task may tighten an inherited policy but may not weaken one. Advisory errors remain visible but do not revoke explicit publishing authority.
 

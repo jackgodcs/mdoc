@@ -16,3 +16,5 @@ validation:
   baseline: validation-baseline.json
   report_root: .work/greenvalley-manual
   build_adapters: []
+  pdf_check:
+    artifacts: []

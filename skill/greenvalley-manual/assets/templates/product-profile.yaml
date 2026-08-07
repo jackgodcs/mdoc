@@ -65,3 +65,21 @@ validation:
     ja: japanese
     quote_style: locale
   custom_patterns: []
+  pdf_check:
+    enabled: false
+    scan_scope: all_pages
+    task_scope_policy: task-only
+    block_on_not_evaluable: false
+    page_margin_tolerance_pt: 2
+    overlap_min_area_pt2: 24
+    title_min_following_lines: 2
+    image_min_display_width_pt: 120
+    text_min_font_size_pt: 7
+    disabled_rules: []
+    severity_overrides: {}
+    required_capabilities: [render, text_mapping]
+    retention:
+      cleanup_after_publish: true
+      keep_previous_checks: 0
+      keep_recent_check: true
+      keep_problem_page_previews_only: true

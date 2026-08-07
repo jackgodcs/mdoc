@@ -193,12 +193,20 @@ def actual_case(path: Path) -> Path | None:
 def case_matches(path: Path) -> list[Path]:
     """Return filesystem entries matching the requested path case-insensitively."""
     path = path.resolve()
+    if path.exists():
+        try:
+            return [entry for entry in path.parent.iterdir() if entry.name.casefold() == path.name.casefold()]
+        except OSError:
+            return [path]
     candidates = [Path(path.anchor)]
     for part in path.parts[1:]:
         next_candidates = []
         for parent in candidates:
             if parent.is_dir():
-                next_candidates.extend(entry for entry in parent.iterdir() if entry.name.casefold() == part.casefold())
+                try:
+                    next_candidates.extend(entry for entry in parent.iterdir() if entry.name.casefold() == part.casefold())
+                except OSError:
+                    continue
         candidates = next_candidates
         if not candidates:
             break
@@ -593,16 +601,25 @@ def write_report(linter: Linter, output: Path, profile: str, builds: list[dict] 
                 blocked_by_builds = True
         blocked_by_builds = blocked_by_builds or any(item.get("required") and item.get("status") != "passed" for item in (builds or []))
     blocked_by_visual = blocking and "visual_review" in required_components and (visual or {}).get("status") not in {"approved", "not-applicable"}
-    data = {"schema_version": 1, "book_root": ".", "profile": profile, "generated_at": int(time.time()), "counts": counts, "policy": policy, "publish_blocked": blocked_by_findings or blocked_by_builds or blocked_by_visual, "builds": builds or [], "visual_review": visual or {"status": "not_requested"}, "findings": [asdict(finding) for finding in linter.findings]}
+    pdf_report_path = output.parent / "pdf-check.json"
+    pdf_check = json.loads(pdf_report_path.read_text(encoding="utf-8")) if pdf_report_path.exists() else {"status": "not_requested", "counts": {"effective_errors": 0}}
+    blocked_by_pdf = pdf_check_blocks(policy, pdf_check)
+    data = {"schema_version": 1, "book_root": ".", "profile": profile, "generated_at": int(time.time()), "counts": counts, "policy": policy, "publish_blocked": blocked_by_findings or blocked_by_builds or blocked_by_visual or blocked_by_pdf, "builds": builds or [], "visual_review": visual or {"status": "not_requested"}, "pdf_check": pdf_check, "findings": [asdict(finding) for finding in linter.findings]}
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     summary = output.with_name("validation-summary.md")
-    lines = ["# Manual Quality Gate", "", f"Profile: {profile}", f"Mode: {policy.get('mode', 'advisory')}", f"Publish blocked: {'yes' if data['publish_blocked'] else 'no'}", "", f"Errors: {counts['error']}; warnings: {counts['warning']}; suggestions: {counts['suggestion']}.", ""]
+    pdf_counts = pdf_check.get("counts", {})
+    lines = ["# Manual Quality Gate", "", f"Profile: {profile}", f"Mode: {policy.get('mode', 'advisory')}", f"Publish blocked: {'yes' if data['publish_blocked'] else 'no'}", "", f"Errors: {counts['error']}; warnings: {counts['warning']}; suggestions: {counts['suggestion']}.", f"PDF Check: {pdf_check.get('status', 'not_requested')}; effective errors: {pdf_counts.get('effective_errors', 0)}; ignored errors: {pdf_counts.get('ignored_errors', 0)}; warnings: {pdf_counts.get('warnings', 0)}; suggestions: {pdf_counts.get('suggestions', 0)}.", ""]
     lines.extend(f"- {finding.severity}/{finding.confidence} {finding.rule_id} {finding.file}:{finding.line} — {finding.message}" for finding in active[:200])
     if len(active) > 200:
         lines.append(f"- … {len(active) - 200} more finding(s); see JSON report.")
     summary.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return data
+
+
+def pdf_check_blocks(policy: dict, report: dict) -> bool:
+    required = policy.get("mode") == "required" and policy.get("required_before_publish") and "pdf_check" in set(policy.get("required_components", []))
+    return bool(required and (report.get("status") != "completed" or report.get("counts", {}).get("effective_errors", 0) > 0))
 
 
 def run_builds(adapters: list[dict], root: Path, output: Path) -> list[dict]:
@@ -680,7 +697,7 @@ def effective_policy(config: dict, task_config: dict) -> dict:
     requested = task_validation.get("mode", "inherit")
     mode = base_mode if requested == "inherit" else max((base_mode, requested), key=lambda item: ranks[item])
     publish = validation.get("publish_policy", {})
-    required_components = list(dict.fromkeys(list(publish.get("required_components", [])) + list(task_validation.get("required_components", []))))
+    required_components = ["pdf_check" if item == "visual_review" else item for item in list(dict.fromkeys(list(publish.get("required_components", [])) + list(task_validation.get("required_components", []))))]
     profile_ranks = {"quick": 0, "full": 1, "release": 2}
     required_profile = publish.get("required_profile", "release")
     requested_profile = task_validation.get("profile", required_profile)
