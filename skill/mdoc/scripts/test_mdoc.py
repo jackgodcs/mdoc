@@ -40,7 +40,7 @@ class MdocCliTests(unittest.TestCase):
 
     def test_version_is_stable_product_version(self):
         result = self.run_cli("--version")
-        self.assertEqual("mdoc 1.0.0", result.stdout.strip())
+        self.assertEqual("mdoc 1.1.0", result.stdout.strip())
 
     def test_human_output_uses_utf8_when_windows_locale_is_not_chinese(self):
         self.run_cli("setup", "--repository", str(self.repo), "--workspace", str(self.workspace), "--book", "Book-A")
@@ -123,6 +123,9 @@ class MdocCliTests(unittest.TestCase):
         self.assertEqual("Book-A", payload["active_book"])
         self.assertEqual("available", payload["runtime"]["python"]["status"])
         self.assertIn("pdf_check", payload["capabilities"])
+        self.assertIn("screenshot_assistant", payload["capabilities"])
+        self.assertIn("venv", payload["runtime"]["python"]["features"])
+        self.assertIn("tkinter", payload["runtime"]["python"]["features"])
 
     def test_check_delegates_to_quality_gate_for_fixed_task_book(self):
         (self.repo / "Book-A" / "zh" / "Page.md").write_text("# Page\n", encoding="utf-8")
@@ -152,6 +155,21 @@ class MdocCliTests(unittest.TestCase):
         self.assertIn("MDOC-UNINSTALL-CONFIRMATION-REQUIRED", result.stderr)
         self.run_cli("uninstall", "--installation", str(target), "--confirm")
         self.assertFalse(target.exists())
+
+    def test_uninstall_removes_only_managed_runtime_unless_keep_tools(self):
+        installation = self.root / "skills" / "mdoc"
+        installation.mkdir(parents=True)
+        runtime_root = self.root / "LocalAppData" / "mdoc"
+        (runtime_root / "tools" / "poppler").mkdir(parents=True)
+        (runtime_root / "state").mkdir(parents=True)
+        (runtime_root / "state" / "installed-tools.json").write_text(json.dumps({
+            "schema_version": 1, "tools": [{"id": "poppler", "ownership": "managed-by-mdoc"}]
+        }), encoding="utf-8")
+        self.run_cli("uninstall", "--installation", str(installation), "--runtime-root", str(runtime_root), "--keep-tools", "--confirm")
+        self.assertTrue((runtime_root / "tools").exists())
+        installation.mkdir(parents=True)
+        self.run_cli("uninstall", "--installation", str(installation), "--runtime-root", str(runtime_root), "--confirm")
+        self.assertFalse(runtime_root.exists())
 
     def test_help_exposes_all_stable_commands(self):
         result = self.run_cli("--help")

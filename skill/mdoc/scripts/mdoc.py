@@ -10,10 +10,11 @@ import sys
 import re
 import importlib.util
 import shutil
+import platform
 from pathlib import Path
 
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 SCHEMA_VERSION = 2
 
 
@@ -209,11 +210,14 @@ def command_doctor(args) -> dict:
     current = context(args.workspace.resolve())
     modules = {name: module_status(name) for name in ("ruamel.yaml", "jsonschema", "pdfplumber", "pypdf", "PIL")}
     tools = {name: (shutil.which(name) or shutil.which(name + ".exe")) for name in ("pdfinfo", "pdftoppm")}
+    features = {"venv": module_status("venv"), "tkinter": module_status("tkinter")}
     required = modules["ruamel.yaml"] == "available" and modules["jsonschema"] == "available"
+    pdf_ready = all(modules[name] == "available" for name in ("pdfplumber", "pypdf", "PIL")) and all(tools.values())
+    screenshot_ready = modules["PIL"] == "available" and features["tkinter"] == "available"
     result = current | {
-        "runtime": {"python": {"status": "available", "version": sys.version.split()[0], "executable": sys.executable}},
+        "runtime": {"python": {"status": "available", "version": sys.version.split()[0], "executable": sys.executable, "implementation": platform.python_implementation(), "architecture": platform.machine(), "features": features}},
         "modules": modules, "tools": tools,
-        "capabilities": {"core": "ready" if required else "needs-repair", "pdf_check": "ready" if modules["pdfplumber"] == "available" else "optional-missing"},
+        "capabilities": {"core": "ready" if required else "needs-repair", "pdf_check": "ready" if pdf_ready else "optional-missing", "screenshot_assistant": "ready" if screenshot_ready else "optional-missing"},
     }
     if args.repair:
         if not args.toolkit or not args.toolkit.is_file():
@@ -273,7 +277,10 @@ def command_uninstall(args) -> dict:
         raise MdocError("MDOC-UNINSTALL-TARGET-INVALID", f"拒绝删除非 mdoc 目录：{installation}")
     if installation.exists():
         shutil.rmtree(installation)
-    return {"schema_version": SCHEMA_VERSION, "status": "uninstalled", "installation": str(installation)}
+    runtime_root = args.runtime_root.resolve()
+    if not args.keep_tools and runtime_root.name.lower() == "mdoc" and runtime_root.exists():
+        shutil.rmtree(runtime_root)
+    return {"schema_version": SCHEMA_VERSION, "status": "uninstalled", "installation": str(installation), "runtime_root": str(runtime_root), "tools_retained": args.keep_tools}
 
 
 def command_check(args) -> int:
@@ -403,6 +410,8 @@ def parser() -> argparse.ArgumentParser:
     diagnose.add_argument("--json", action="store_true")
     uninstall = sub.add_parser("uninstall", help="卸载 mdoc 技能运行时，不删除流程工作区或正式手册")
     uninstall.add_argument("--installation", type=Path, default=Path.home() / ".codex" / "skills" / "mdoc")
+    uninstall.add_argument("--runtime-root", type=Path, default=Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "mdoc")
+    uninstall.add_argument("--keep-tools", action="store_true")
     uninstall.add_argument("--confirm", action="store_true")
     uninstall.add_argument("--json", action="store_true")
     configure = sub.add_parser("configure", help="显示当前工作区配置位置")

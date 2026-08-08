@@ -1,29 +1,36 @@
 [CmdletBinding()]
 param(
-  [string]$Package = (Join-Path $PSScriptRoot 'mdoc-1.0.0.zip'),
-  [string]$Manifest = (Join-Path $PSScriptRoot 'RELEASE-MANIFEST.json'),
-  [string]$Destination = (Join-Path $HOME '.codex\skills\mdoc')
+  [ValidateSet('Full', 'Core', 'Existing', 'Offline')] [string]$Profile = 'Full',
+  [string]$Python,
+  [string]$Toolkit,
+  [string]$Destination = (Join-Path $HOME '.codex\skills\mdoc'),
+  [switch]$AllowNetworkDownload,
+  [switch]$SkipRuntimeRepair
 )
 $ErrorActionPreference = 'Stop'
-if (-not (Test-Path -LiteralPath $Package)) { throw "Package not found: $Package" }
-if (-not (Test-Path -LiteralPath $Manifest)) { throw "Manifest not found: $Manifest" }
-$release = Get-Content -LiteralPath $Manifest -Raw | ConvertFrom-Json
-$actual = (Get-FileHash -LiteralPath $Package -Algorithm SHA256).Hash.ToLowerInvariant()
-if ($actual -ne [string]$release.sha256) { throw "SHA-256 verification failed." }
-$temporary = Join-Path ([IO.Path]::GetTempPath()) ("mdoc-install-" + [guid]::NewGuid().ToString('N'))
-New-Item -ItemType Directory -Path $temporary | Out-Null
-try {
-  Expand-Archive -LiteralPath $Package -DestinationPath $temporary -Force
-  $source = Join-Path $temporary 'skill\mdoc'
-  if (-not (Test-Path -LiteralPath (Join-Path $source 'SKILL.md'))) { throw 'Invalid mdoc package.' }
-  $parent = Split-Path -Parent $Destination
-  New-Item -ItemType Directory -Path $parent -Force | Out-Null
-  $staging = $Destination + '.installing'
-  if (Test-Path -LiteralPath $staging) { Remove-Item -LiteralPath $staging -Recurse -Force }
-  Copy-Item -LiteralPath $source -Destination $staging -Recurse
-  if (Test-Path -LiteralPath $Destination) { Remove-Item -LiteralPath $Destination -Recurse -Force }
-  Move-Item -LiteralPath $staging -Destination $Destination
-  Write-Host "mdoc $($release.version) installed to $Destination"
-} finally {
-  if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary -Recurse -Force }
+$packageRoot = $PSScriptRoot
+$manifestPath = Join-Path $packageRoot 'PACKAGE-MANIFEST.json'
+if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { throw 'MDOC-INSTALL-MANIFEST-MISSING: PACKAGE-MANIFEST.json 不存在。请先完整解压安装 ZIP。' }
+$manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+if ($manifest.product -ne 'mdoc' -or $manifest.platform -ne 'windows-x86_64') { throw 'MDOC-INSTALL-PACKAGE-INVALID: 安装包产品或平台不匹配。' }
+foreach ($file in $manifest.files) {
+  $candidate = [IO.Path]::GetFullPath((Join-Path $packageRoot ([string]$file.path)))
+  if (-not $candidate.StartsWith([IO.Path]::GetFullPath($packageRoot) + [IO.Path]::DirectorySeparatorChar)) { throw 'MDOC-INSTALL-PACKAGE-UNSAFE: Manifest 包含越界路径。' }
+  if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) { throw "MDOC-INSTALL-FILE-MISSING: $($file.path)" }
+  $actual = (Get-FileHash -LiteralPath $candidate -Algorithm SHA256).Hash.ToLowerInvariant()
+  if ($actual -ne [string]$file.sha256) { throw "MDOC-INSTALL-SHA256-MISMATCH: $($file.path)" }
 }
+$source = Join-Path $packageRoot 'skill\mdoc'
+if (-not (Test-Path -LiteralPath (Join-Path $source 'SKILL.md'))) { throw 'MDOC-INSTALL-PACKAGE-INVALID: 缺少 skill/mdoc/SKILL.md。' }
+$parent = Split-Path -Parent $Destination
+New-Item -ItemType Directory -Path $parent -Force | Out-Null
+$staging = $Destination + '.installing'
+if (Test-Path -LiteralPath $staging) { Remove-Item -LiteralPath $staging -Recurse -Force }
+Copy-Item -LiteralPath $source -Destination $staging -Recurse
+if (-not $SkipRuntimeRepair) {
+  $repair = Join-Path $packageRoot 'repair-mdoc-runtime.ps1'
+  & $repair -Profile $Profile -Python $Python -Toolkit $Toolkit -AllowNetworkDownload:$AllowNetworkDownload | Write-Host
+}
+if (Test-Path -LiteralPath $Destination) { Remove-Item -LiteralPath $Destination -Recurse -Force }
+Move-Item -LiteralPath $staging -Destination $Destination
+Write-Host "mdoc $($manifest.version) installed to $Destination"

@@ -1,0 +1,9 @@
+mdoc 1.1.0 Windows 安装包
+
+1. 双击“安装 mdoc.cmd”。
+2. 默认选择“完整安装”，可准备核心、PDF Check 和截图助手环境。
+3. 任何联网下载都会先显示来源、版本、许可证、大小和安装位置，并请求确认。
+4. 安装后在新终端运行：mdoc doctor
+
+项目主页：https://github.com/jackgodcs/mdoc
+运行环境目录：https://github.com/jackgodcs/mdoc-toolchain

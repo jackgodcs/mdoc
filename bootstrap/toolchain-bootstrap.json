@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "catalog_schema": 1,
+  "catalog_version": "2026.08.1",
+  "catalog_url": "https://github.com/jackgodcs/mdoc-toolchain/releases/download/v2026.08.1/catalog-v1.json",
+  "catalog_sha256": "PENDING_TOOLCHAIN_STABLE_RELEASE",
+  "repository": "https://github.com/jackgodcs/mdoc-toolchain",
+  "minimum_catalog_version": "2026.08.1"
+}

@@ -38,5 +38,5 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.tag }}
-          files: dist/*
+          files: dist/mdoc-*-windows-x64.zip
           fail_on_unmatched_files: true

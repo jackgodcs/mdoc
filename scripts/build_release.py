@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import stat
 import zipfile
@@ -13,7 +14,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 DIST = ROOT / "dist"
-ASSET = DIST / f"mdoc-{VERSION}.zip"
+ASSET = DIST / f"mdoc-{VERSION}-windows-x64.zip"
 FILES = [ROOT / name for name in ("LICENSE", "NOTICE", "VERSION", "README.md", "SECURITY.md", "THIRD-PARTY-NOTICES.md")]
 
 
@@ -35,33 +36,47 @@ def zip_info(name: str, executable: bool = False) -> zipfile.ZipInfo:
 
 def collect() -> list[tuple[Path, str]]:
     result = [(path, path.name) for path in FILES]
+    result.extend((ROOT / name, name) for name in ("安装 mdoc.cmd", "install-mdoc.ps1", "repair-mdoc-runtime.ps1", "开始使用.txt"))
+    result.extend((path, path.relative_to(ROOT).as_posix()) for folder in ("bootstrap", "runtime") for path in sorted((ROOT / folder).rglob("*")) if path.is_file())
     skill = ROOT / "skill" / "mdoc"
     for path in sorted(skill.rglob("*")):
         if path.is_file() and "__pycache__" not in path.parts:
             result.append((path, (Path("skill") / "mdoc" / path.relative_to(skill)).as_posix()))
-    result.extend((ROOT / name, name) for name in ("install-mdoc.cmd", "install-mdoc.ps1"))
     return result
 
 
 def main() -> int:
+    if DIST.exists():
+        for path in sorted(DIST.rglob("*"), reverse=True):
+            try:
+                os.chmod(path, stat.S_IWRITE | stat.S_IREAD)
+            except OSError:
+                pass
     shutil.rmtree(DIST, ignore_errors=True)
-    DIST.mkdir()
-    with zipfile.ZipFile(ASSET, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
-        for path, name in collect():
-            archive.writestr(zip_info(name, path.suffix in {".py", ".cmd", ".ps1"}), path.read_bytes())
-    digest = sha256(ASSET)
-    (DIST / f"{ASSET.name}.sha256").write_text(f"{digest}  {ASSET.name}\n", encoding="ascii", newline="\n")
-    manifest = {
-        "schema_version": 1, "product": "mdoc", "version": VERSION,
-        "platform": "windows-x86_64", "asset": ASSET.name, "sha256": digest,
-        "license": "Apache-2.0", "copyright": "Copyright 2026 cshuan",
+    DIST.mkdir(exist_ok=True)
+    collected = collect()
+    package_manifest = {
+        "schema_version": 2,
+        "product": "mdoc",
+        "version": VERSION,
+        "platform": "windows-x86_64",
+        "license": "Apache-2.0",
+        "copyright": "Copyright 2026 cshuan",
+        "files": [
+            {"path": name, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+            for path, name in sorted(collected, key=lambda item: item[1])
+        ],
     }
-    (DIST / "RELEASE-MANIFEST.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8", newline="\n")
-    components = [{"type": "application", "name": "mdoc", "version": VERSION, "licenses": [{"license": {"id": "Apache-2.0"}}]}]
-    sbom = {"bomFormat": "CycloneDX", "specVersion": "1.5", "version": 1, "components": components}
-    (DIST / "mdoc-sbom.cdx.json").write_text(json.dumps(sbom, indent=2) + "\n", encoding="utf-8", newline="\n")
-    for name in ("install-mdoc.cmd", "install-mdoc.ps1"):
-        shutil.copy2(ROOT / name, DIST / name)
+    sbom = {
+        "bomFormat": "CycloneDX", "specVersion": "1.5", "version": 1,
+        "components": [{"type": "application", "name": "mdoc", "version": VERSION, "licenses": [{"license": {"id": "Apache-2.0"}}]}],
+    }
+    with zipfile.ZipFile(ASSET, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+        for path, name in collected:
+            archive.writestr(zip_info(name, path.suffix in {".py", ".cmd", ".ps1"}), path.read_bytes())
+        archive.writestr(zip_info("PACKAGE-MANIFEST.json"), (json.dumps(package_manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
+        archive.writestr(zip_info("metadata/mdoc-sbom.cdx.json"), (json.dumps(sbom, indent=2) + "\n").encode("utf-8"))
+    digest = sha256(ASSET)
     print(ASSET)
     print(digest)
     return 0

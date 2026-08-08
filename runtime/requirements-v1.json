@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "product": "mdoc",
+  "product_version": "1.1.0",
+  "platform": "windows-x86_64",
+  "python": {
+    "implementation": "cpython",
+    "version": ">=3.12,<3.13",
+    "architecture": "x86_64",
+    "required_features": ["venv", "tkinter", "tcl-tk"]
+  },
+  "capabilities": {
+    "core": {"required": true, "python_packages": ["ruamel.yaml", "jsonschema"]},
+    "pdf-check": {"required": false, "python_packages": ["pdfplumber", "pypdf", "Pillow"], "executables": ["pdfinfo", "pdftoppm"]},
+    "screenshot-assistant": {"required": false, "python_packages": ["Pillow"], "features": ["tkinter", "tcl-tk", "imagegrab", "imagetk"]}
+  },
+  "test_only": {"python_packages": ["reportlab"]}
+}
