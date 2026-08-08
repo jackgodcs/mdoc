@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 DIST = ROOT / "dist"
 ASSET = DIST / f"mdoc-{VERSION}-windows-x64.zip"
+STAGED_ASSET = DIST / f".{ASSET.name}.building"
 FILES = [ROOT / name for name in ("LICENSE", "NOTICE", "VERSION", "README.md", "SECURITY.md", "THIRD-PARTY-NOTICES.md")]
 
 
@@ -46,14 +47,14 @@ def collect() -> list[tuple[Path, str]]:
 
 
 def main() -> int:
-    if DIST.exists():
-        for path in sorted(DIST.rglob("*"), reverse=True):
-            try:
-                os.chmod(path, stat.S_IWRITE | stat.S_IREAD)
-            except OSError:
-                pass
-    shutil.rmtree(DIST, ignore_errors=True)
     DIST.mkdir(exist_ok=True)
+    for path in DIST.iterdir():
+        if path not in {ASSET, STAGED_ASSET}:
+            if path.is_dir():
+                shutil.rmtree(path)
+            else:
+                path.unlink()
+    STAGED_ASSET.unlink(missing_ok=True)
     collected = collect()
     package_manifest = {
         "schema_version": 2,
@@ -71,12 +72,16 @@ def main() -> int:
         "bomFormat": "CycloneDX", "specVersion": "1.5", "version": 1,
         "components": [{"type": "application", "name": "mdoc", "version": VERSION, "licenses": [{"license": {"id": "Apache-2.0"}}]}],
     }
-    with zipfile.ZipFile(ASSET, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+    with zipfile.ZipFile(STAGED_ASSET, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for path, name in collected:
             archive.writestr(zip_info(name, path.suffix in {".py", ".cmd", ".ps1"}), path.read_bytes())
         archive.writestr(zip_info("PACKAGE-MANIFEST.json"), (json.dumps(package_manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
         archive.writestr(zip_info("metadata/mdoc-sbom.cdx.json"), (json.dumps(sbom, indent=2) + "\n").encode("utf-8"))
-    digest = sha256(ASSET)
+    digest = sha256(STAGED_ASSET)
+    if ASSET.is_file() and sha256(ASSET) == digest:
+        STAGED_ASSET.unlink()
+    else:
+        os.replace(STAGED_ASSET, ASSET)
     print(ASSET)
     print(digest)
     return 0

@@ -11,11 +11,22 @@ import re
 import importlib.util
 import shutil
 import platform
+import subprocess
 from pathlib import Path
 
 
-VERSION = "1.1.0"
+def product_version() -> str:
+    source_version = Path(__file__).resolve().parents[3] / "VERSION"
+    if source_version.is_file():
+        return source_version.read_text(encoding="utf-8").strip()
+    return "1.1.0"
+
+
+VERSION = product_version()
 SCHEMA_VERSION = 2
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
 
 
 def configure_utf8_console() -> None:
@@ -208,11 +219,11 @@ def module_status(name: str) -> str:
 
 def command_doctor(args) -> dict:
     current = context(args.workspace.resolve())
-    modules = {name: module_status(name) for name in ("ruamel.yaml", "jsonschema", "pdfplumber", "pypdf", "PIL")}
-    tools = {name: (shutil.which(name) or shutil.which(name + ".exe")) for name in ("pdfinfo", "pdftoppm")}
+    modules = {name: module_status(name) for name in ("ruamel.yaml", "jsonschema", "pdfplumber", "pypdf", "pypdfium2", "PIL")}
+    tools = {}
     features = {"venv": module_status("venv"), "tkinter": module_status("tkinter")}
     required = modules["ruamel.yaml"] == "available" and modules["jsonschema"] == "available"
-    pdf_ready = all(modules[name] == "available" for name in ("pdfplumber", "pypdf", "PIL")) and all(tools.values())
+    pdf_ready = all(modules[name] == "available" for name in ("pdfplumber", "pypdf", "pypdfium2", "PIL"))
     screenshot_ready = modules["PIL"] == "available" and features["tkinter"] == "available"
     result = current | {
         "runtime": {"python": {"status": "available", "version": sys.version.split()[0], "executable": sys.executable, "implementation": platform.python_implementation(), "architecture": platform.machine(), "features": features}},
@@ -220,9 +231,24 @@ def command_doctor(args) -> dict:
         "capabilities": {"core": "ready" if required else "needs-repair", "pdf_check": "ready" if pdf_ready else "optional-missing", "screenshot_assistant": "ready" if screenshot_ready else "optional-missing"},
     }
     if args.repair:
-        if not args.toolkit or not args.toolkit.is_file():
-            raise MdocError("MDOC-DOCTOR-TOOLKIT-REQUIRED", "修复需要提供已校验的离线 --toolkit；联网下载必须先获得用户同意。")
-        result["repair"] = {"status": "toolkit-accepted", "toolkit": str(args.toolkit.resolve())}
+        repair = Path(__file__).parent.parent / "runtime-support" / "repair-mdoc-runtime.ps1"
+        if not repair.is_file():
+            raise MdocError("MDOC-DOCTOR-REPAIR-UNAVAILABLE", "当前安装缺少运行时修复组件，请重新安装 mdoc。")
+        if not args.toolkit and not args.allow_network_download:
+            raise MdocError("MDOC-DOCTOR-NETWORK-CONSENT-REQUIRED", "请提供离线 --toolkit，或在明确同意联网后添加 --allow-network-download。")
+        command = ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(repair), "-Profile", args.profile, "-Installation", str(Path(__file__).parent.parent)]
+        if args.toolkit:
+            command.extend(["-Toolkit", str(args.toolkit.resolve())])
+        if args.python:
+            command.extend(["-Python", str(args.python.resolve())])
+        if args.allow_network_download:
+            command.append("-AllowNetworkDownload")
+        if args.proxy:
+            command.extend(["-Proxy", args.proxy])
+        completed = subprocess.run(command, text=True, capture_output=True, encoding="utf-8", errors="replace", check=False)
+        if completed.returncode != 0:
+            raise MdocError("MDOC-DOCTOR-REPAIR-FAILED", (completed.stderr or completed.stdout).strip())
+        result["repair"] = {"status": "completed", "profile": args.profile}
     return result
 
 
@@ -279,6 +305,30 @@ def command_uninstall(args) -> dict:
         shutil.rmtree(installation)
     runtime_root = args.runtime_root.resolve()
     if not args.keep_tools and runtime_root.name.lower() == "mdoc" and runtime_root.exists():
+        state_path = runtime_root / "state" / "installed-runtime.json"
+        if state_path.is_file():
+            try:
+                state = json.loads(state_path.read_text(encoding="utf-8-sig"))
+            except (OSError, json.JSONDecodeError):
+                state = {}
+            installer = Path(state.get("python_installer") or "")
+            if state.get("python_ownership") == "managed-by-mdoc" and installer.is_file():
+                completed = subprocess.run([str(installer), "/uninstall", "/quiet"], check=False)
+                if completed.returncode != 0:
+                    raise MdocError("MDOC-UNINSTALL-PYTHON-FAILED", f"受管 Python 卸载失败：{completed.returncode}")
+            path_entry = state.get("path_entry")
+            if path_entry:
+                try:
+                    import winreg
+                    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment", 0, winreg.KEY_READ | winreg.KEY_WRITE) as key:
+                        user_path, value_type = winreg.QueryValueEx(key, "Path")
+                        parts = [item for item in user_path.split(";") if item and os.path.normcase(item) != os.path.normcase(path_entry)]
+                        winreg.SetValueEx(key, "Path", 0, value_type, ";".join(parts))
+                except (OSError, FileNotFoundError):
+                    pass
+            start_menu = Path(state.get("start_menu") or "")
+            if start_menu.name.lower() == "mdoc" and start_menu.exists():
+                shutil.rmtree(start_menu)
         shutil.rmtree(runtime_root)
     return {"schema_version": SCHEMA_VERSION, "status": "uninstalled", "installation": str(installation), "runtime_root": str(runtime_root), "tools_retained": args.keep_tools}
 
@@ -396,6 +446,10 @@ def parser() -> argparse.ArgumentParser:
     doctor.add_argument("--workspace", type=Path, required=True)
     doctor.add_argument("--repair", action="store_true", help="保留给经用户同意的受控修复流程")
     doctor.add_argument("--toolkit", type=Path)
+    doctor.add_argument("--python", type=Path)
+    doctor.add_argument("--profile", choices=("Full", "Core", "Existing", "Offline"), default="Full")
+    doctor.add_argument("--allow-network-download", action="store_true")
+    doctor.add_argument("--proxy", help="显式无凭据 HTTP/HTTPS/SOCKS5 代理")
     doctor.add_argument("--json", action="store_true")
     check = sub.add_parser("check", help="运行可选 Quality Gate")
     check.add_argument("--workspace", type=Path, required=True)

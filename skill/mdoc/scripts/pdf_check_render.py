@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import shutil
-import subprocess
 import time
 import uuid
 from pathlib import Path
@@ -12,20 +11,30 @@ from pathlib import Path
 
 def render_page(pdf: Path, page: int, output: Path, dpi: int = 144):
     output.parent.mkdir(parents=True, exist_ok=True)
-    prefix = output.with_suffix("")
-    executable = shutil.which("pdftoppm.exe") or shutil.which("pdftoppm") or shutil.which("pdftoppm.cmd")
-    if executable and Path(executable).suffix.lower() == ".cmd":
-        candidate = (Path(executable).resolve().parent / ".." / ".." / "native" / "poppler" / "Library" / "bin" / "pdftoppm.exe").resolve()
-        if candidate.is_file():
-            executable = str(candidate)
-    if not executable:
-        raise RuntimeError("pdftoppm is unavailable")
-    arguments = ["-f", str(page), "-singlefile", "-r", str(dpi), "-png", str(pdf), str(prefix)]
-    command = (["cmd.exe", "/d", "/c", executable] if Path(executable).suffix.lower() in {".cmd", ".bat"} else [executable]) + arguments
-    completed = subprocess.run(command, capture_output=True, text=True, timeout=120, check=False)
-    generated = prefix.with_suffix(".png")
-    if completed.returncode != 0 or not generated.exists():
-        raise RuntimeError(completed.stderr or "pdftoppm did not produce a page image")
+    try:
+        import pypdfium2 as pdfium
+        document = pdfium.PdfDocument(pdf)
+        try:
+            if page < 1 or page > len(document):
+                raise RuntimeError(f"PDF page is out of range: {page}")
+            pdf_page = document[page - 1]
+            try:
+                bitmap = pdf_page.render(scale=dpi / 72)
+                try:
+                    bitmap.to_pil().save(output, format="PNG")
+                finally:
+                    bitmap.close()
+            finally:
+                pdf_page.close()
+        finally:
+            document.close()
+        return
+    except ImportError as exc:
+        raise RuntimeError("pypdfium2 is unavailable") from exc
+    except RuntimeError:
+        raise
+    except Exception as exc:
+        raise RuntimeError(f"pypdfium2 did not produce a page image: {exc}") from exc
 
 
 def prepare_viewer_resources(pdf: Path | dict[str, Path], report: dict, work_root: Path) -> Path:

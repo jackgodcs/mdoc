@@ -3,7 +3,9 @@
   "catalog_schema": 1,
   "catalog_version": "2026.08.1",
   "catalog_url": "https://github.com/jackgodcs/mdoc-toolchain/releases/download/v2026.08.1/catalog-v1.json",
-  "catalog_sha256": "PENDING_TOOLCHAIN_STABLE_RELEASE",
+  "catalog_sha256": "1a8f9e1ab8e1bcfece6ca4bfe1d31e299044cdfe50f040f5a585110fc8e2ef44",
+  "toolkit_url": "https://github.com/jackgodcs/mdoc-toolchain/releases/download/v2026.08.1/mdoc-toolchain-2026.08.1-windows-x64.zip",
+  "toolkit_sha256": "5cca8a7d35bcc2e2b0b4e5b9b07486e8c3d8bc55a4984b81b223492c66fcc0ed",
   "repository": "https://github.com/jackgodcs/mdoc-toolchain",
   "minimum_catalog_version": "2026.08.1"
 }

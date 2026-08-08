@@ -11,7 +11,7 @@
   },
   "capabilities": {
     "core": {"required": true, "python_packages": ["ruamel.yaml", "jsonschema"]},
-    "pdf-check": {"required": false, "python_packages": ["pdfplumber", "pypdf", "Pillow"], "executables": ["pdfinfo", "pdftoppm"]},
+    "pdf-check": {"required": false, "python_packages": ["pdfplumber", "pypdf", "pypdfium2", "Pillow"]},
     "screenshot-assistant": {"required": false, "python_packages": ["Pillow"], "features": ["tkinter", "tcl-tk", "imagegrab", "imagetk"]}
   },
   "test_only": {"python_packages": ["reportlab"]}

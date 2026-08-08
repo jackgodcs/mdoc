@@ -31,6 +31,13 @@ def make_pdf(path: Path, pages: list[dict]):
 
 
 class ManualPdfCheckTests(unittest.TestCase):
+    def test_problem_page_renderer_works_without_poppler(self):
+        make_pdf(self.pdf, [{"texts": [("Preview", 20, 350, 10)]}])
+        output = self.root / "rendered-page.png"
+        pdf_check_render.render_page(self.pdf, 1, output, dpi=72)
+        self.assertTrue(output.is_file())
+        self.assertTrue(output.read_bytes().startswith(b"\x89PNG"))
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)

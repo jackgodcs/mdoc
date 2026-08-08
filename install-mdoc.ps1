@@ -4,6 +4,8 @@ param(
   [string]$Python,
   [string]$Toolkit,
   [string]$Destination = (Join-Path $HOME '.codex\skills\mdoc'),
+  [string]$RuntimeRoot = (Join-Path $env:LOCALAPPDATA 'mdoc'),
+  [string]$Proxy,
   [switch]$AllowNetworkDownload,
   [switch]$SkipRuntimeRepair
 )
@@ -27,9 +29,15 @@ New-Item -ItemType Directory -Path $parent -Force | Out-Null
 $staging = $Destination + '.installing'
 if (Test-Path -LiteralPath $staging) { Remove-Item -LiteralPath $staging -Recurse -Force }
 Copy-Item -LiteralPath $source -Destination $staging -Recurse
+$support = Join-Path $staging 'runtime-support'
+New-Item -ItemType Directory -Path $support -Force | Out-Null
+Copy-Item -LiteralPath (Join-Path $packageRoot 'repair-mdoc-runtime.ps1') -Destination $support
+Copy-Item -LiteralPath (Join-Path $packageRoot 'bootstrap') -Destination $support -Recurse
+Copy-Item -LiteralPath (Join-Path $packageRoot 'runtime') -Destination $support -Recurse
 if (-not $SkipRuntimeRepair) {
   $repair = Join-Path $packageRoot 'repair-mdoc-runtime.ps1'
-  & $repair -Profile $Profile -Python $Python -Toolkit $Toolkit -AllowNetworkDownload:$AllowNetworkDownload | Write-Host
+  & $repair -Profile $Profile -Python $Python -Toolkit $Toolkit -Installation $Destination -RuntimeRoot $RuntimeRoot -Proxy $Proxy -AllowNetworkDownload:$AllowNetworkDownload | Write-Host
+  if ($LASTEXITCODE -ne 0) { throw "MDOC-INSTALL-RUNTIME-REPAIR-FAILED: $LASTEXITCODE" }
 }
 if (Test-Path -LiteralPath $Destination) { Remove-Item -LiteralPath $Destination -Recurse -Force }
 Move-Item -LiteralPath $staging -Destination $Destination

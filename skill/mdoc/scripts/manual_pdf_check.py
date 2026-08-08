@@ -145,12 +145,12 @@ def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
     if args.command == "doctor":
         modules = {}
-        for name in ("pdfplumber", "pypdf", "PIL"):
+        for name in ("pdfplumber", "pypdf", "pypdfium2", "PIL"):
             try:
                 __import__(name); modules[name] = "available"
             except ImportError:
                 modules[name] = "unavailable"
-        tools = {name: bool(shutil.which(name) or shutil.which(name + ".cmd")) for name in ("pdfinfo", "pdftoppm")}
+        tools = {}
         print(json.dumps({"modules": modules, "tools": tools, "platform": sys.platform}, ensure_ascii=False, indent=2))
         return 0 if modules["pdfplumber"] == "available" else 4
     if getattr(args, "workspace", None) and not args.task:

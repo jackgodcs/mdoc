@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import re
 import sys
+import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -43,6 +44,18 @@ def main() -> int:
     version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
     if version != "1.1.0":
         problems.append(f"unexpected VERSION: {version}")
+    expected_version_sources = {
+        ROOT / "skill" / "mdoc" / "scripts" / "mdoc.py": f'return "{version}"',
+        ROOT / "README.md": f"mdoc-{version}-windows-x64.zip",
+        ROOT / "CHANGELOG.md": f"## {version} -",
+        ROOT / "开始使用.txt": f"mdoc {version} Windows 安装包",
+    }
+    for path, marker in expected_version_sources.items():
+        if marker not in path.read_text(encoding="utf-8"):
+            problems.append(f"version marker mismatch: {path.relative_to(ROOT)}")
+    requirements = json.loads((ROOT / "runtime" / "requirements-v1.json").read_text(encoding="utf-8"))
+    if requirements.get("product_version") != version:
+        problems.append("version mismatch: runtime/requirements-v1.json")
     if problems:
         print("RELEASE CHECK FAILED")
         print("\n".join(f"- {item}" for item in problems))

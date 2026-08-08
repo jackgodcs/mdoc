@@ -6,8 +6,6 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-import tkinter as tk
-from tkinter import filedialog
 from pathlib import Path
 
 
@@ -50,6 +48,12 @@ def open_mode(preferences: dict) -> str:
 
 
 def choose_editor() -> Path | None:
+    # Tk is optional for mdoc. Import it only when the user explicitly opens
+    # the executable picker so headless/minimal Python runtimes can still run
+    # deterministic PDF checks and use the Windows-default editor mode.
+    import tkinter as tk
+    from tkinter import filedialog
+
     root = tk.Tk(); root.withdraw()
     try:
         selected = filedialog.askopenfilename(title="选择 Markdown 编辑器", filetypes=[("Windows 应用程序", "*.exe")])
