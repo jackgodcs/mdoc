@@ -1,5 +1,8 @@
 name: Release
 on:
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
       tag:
@@ -17,6 +20,7 @@ jobs:
           python-version: '3.12'
       - run: python -m pip install --disable-pip-version-check -r requirements-ci.txt
       - run: python -m unittest discover -s skill/mdoc/scripts -p "test_*.py" -v
+      - run: python -m unittest discover -s runtime-bootstrap -p "test_*.py" -v
       - run: python -m unittest discover -s scripts -p "test_*.py" -v
       - run: python scripts/release_check.py
       - run: python scripts/build_release.py
@@ -37,6 +41,7 @@ jobs:
           path: dist
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ inputs.tag }}
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          prerelease: ${{ contains(inputs.tag || github.ref_name, '-') }}
           files: dist/mdoc-*-windows-x64.zip
           fail_on_unmatched_files: true
