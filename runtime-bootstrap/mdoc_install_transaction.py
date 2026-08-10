@@ -17,6 +17,30 @@ class TransactionError(Exception):
     pass
 
 
+def pid_is_running(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    if os.name == "nt":
+        import ctypes
+        process_query_limited_information = 0x1000
+        still_active = 259
+        handle = ctypes.windll.kernel32.OpenProcess(process_query_limited_information, False, pid)
+        if not handle:
+            return False
+        try:
+            exit_code = ctypes.c_ulong()
+            if not ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+                return False
+            return exit_code.value == still_active
+        finally:
+            ctypes.windll.kernel32.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
 def sha256(path: Path) -> str:
     digest = hashlib.sha256()
     if path.is_dir():
@@ -79,12 +103,8 @@ def acquire_lock(runtime_root: Path, operation: str) -> Path:
             pid = int(json.loads(lock.read_text(encoding="utf-8")).get("pid") or 0)
         except Exception:
             pid = 0
-        try:
-            if pid > 0:
-                os.kill(pid, 0)
-                raise TransactionError(f"MDOC-TRANSACTION-LOCKED: pid={pid}")
-        except OSError:
-            pass
+        if pid_is_running(pid):
+            raise TransactionError(f"MDOC-TRANSACTION-LOCKED: pid={pid}")
         lock.unlink(missing_ok=True)
     lock.write_text(json.dumps({"pid": os.getpid(), "operation": operation, "started_at": int(time.time())}), encoding="utf-8")
     return lock
@@ -183,13 +203,11 @@ def cancel(root: Path, confirm: bool) -> dict:
     active = root / ".repair" / "active-run.json"
     if not active.is_file(): return {"status": "nothing_to_cancel"}
     data = json.loads(active.read_text(encoding="utf-8")); pid = int(data.get("pid") or 0)
-    try:
-        os.kill(pid, 0)
+    if pid_is_running(pid):
         raise TransactionError("MDOC-TRANSACTION-ACTIVE")
-    except OSError:
-        shutil.rmtree(Path(data.get("run", "")), ignore_errors=True); active.unlink(missing_ok=True)
-        (root / ".repair" / "install.lock").unlink(missing_ok=True)
-        return {"status": "cancelled"}
+    shutil.rmtree(Path(data.get("run", "")), ignore_errors=True); active.unlink(missing_ok=True)
+    (root / ".repair" / "install.lock").unlink(missing_ok=True)
+    return {"status": "cancelled"}
 
 
 def main(argv=None) -> int:

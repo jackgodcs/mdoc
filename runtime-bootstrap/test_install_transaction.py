@@ -63,6 +63,8 @@ class InstallTransactionTests(unittest.TestCase):
             transaction.apply_plan(self.runtime, True)
 
     def test_active_lock_is_refused_and_stale_lock_is_removed(self):
+        self.assertTrue(transaction.pid_is_running(os.getpid()))
+        self.assertFalse(transaction.pid_is_running(99999999))
         lock = self.runtime / ".repair/install.lock"; lock.parent.mkdir(parents=True)
         lock.write_text(json.dumps({"pid": os.getpid()}), encoding="utf-8")
         with self.assertRaisesRegex(transaction.TransactionError, "MDOC-TRANSACTION-LOCKED"):
