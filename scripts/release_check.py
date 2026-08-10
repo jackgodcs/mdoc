@@ -42,7 +42,7 @@ def main() -> int:
             if pattern.search(source):
                 problems.append(f"{label}: {path.relative_to(ROOT)}")
     version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
-    if version != "1.1.0":
+    if version != "1.2.0-rc.1":
         problems.append(f"unexpected VERSION: {version}")
     expected_version_sources = {
         ROOT / "skill" / "mdoc" / "scripts" / "mdoc.py": f'return "{version}"',

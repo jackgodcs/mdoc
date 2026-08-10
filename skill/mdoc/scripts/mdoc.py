@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -12,6 +13,7 @@ import importlib.util
 import shutil
 import platform
 import subprocess
+import importlib.util
 from pathlib import Path
 
 
@@ -19,7 +21,7 @@ def product_version() -> str:
     source_version = Path(__file__).resolve().parents[3] / "VERSION"
     if source_version.is_file():
         return source_version.read_text(encoding="utf-8").strip()
-    return "1.1.0"
+    return "1.2.0-rc.1"
 
 
 VERSION = product_version()
@@ -113,12 +115,36 @@ def write_registry(workspace: Path, repository: Path) -> None:
     if target.is_file():
         try:
             data = json.loads(target.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            pass
+        except (OSError, json.JSONDecodeError) as exc:
+            raise MdocError("MDOC-REGISTRY-CORRUPT", f"工作区注册表损坏，请运行 workspace registry repair：{target}") from exc
     entry = {"workspace": str(workspace.resolve()), "repository": str(repository.resolve())}
     entries = [item for item in data.get("workspaces", []) if item.get("workspace") != entry["workspace"]]
     data = {"schema_version": SCHEMA_VERSION, "workspaces": [entry, *entries][:50]}
     target.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def registry_path() -> Path:
+    return Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "mdoc" / "workspace-registry.json"
+
+
+def read_registry() -> dict:
+    target = registry_path()
+    if not target.is_file():
+        return {"schema_version": SCHEMA_VERSION, "workspaces": []}
+    try:
+        data = json.loads(target.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise MdocError("MDOC-REGISTRY-CORRUPT", f"工作区注册表损坏，请运行 workspace registry repair：{target}") from exc
+    if not isinstance(data.get("workspaces"), list):
+        raise MdocError("MDOC-REGISTRY-CORRUPT", f"工作区注册表结构无效：{target}")
+    return data
+
+
+def atomic_write_json(target: Path, data: dict) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = target.with_suffix(target.suffix + ".tmp")
+    temporary.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    os.replace(temporary, target)
 
 
 def command_setup(args) -> dict:
@@ -155,10 +181,259 @@ def command_setup(args) -> dict:
     profile_text = profile_text.replace("<source-locale>", "zh-CN").replace("targets: []", "targets: [en]")
     (workspace / "product-profile.yaml").write_text(profile_text, encoding="utf-8", newline="\n")
     (workspace / ".gitignore").write_text("workspace.local.yaml\nmanual-tasks/*/task.local.yaml\n.work/\n.pdf-check/\ncaptures/\n", encoding="utf-8", newline="\n")
-    launcher = f'@echo off\r\n"{sys.executable}" "{Path(__file__).resolve()}" status --workspace "%~dp0"\r\n'
+    launcher = '@echo off\r\n' + r'"%LOCALAPPDATA%\mdoc\bin\mdoc.cmd" status --workspace "%~dp0"' + '\r\n'
     (workspace / "open-mdoc.cmd").write_text(launcher, encoding="utf-8", newline="")
     write_registry(workspace, repository)
     return context(workspace) | {"status": "initialized"}
+
+
+def workspace_schema_version(workspace: Path) -> int | None:
+    config = workspace / "workspace.yaml"
+    if not config.is_file():
+        return None
+    match = re.search(r"(?m)^schema_version:\s*(\d+)\s*$", config.read_text(encoding="utf-8"))
+    return int(match.group(1)) if match else None
+
+
+def command_workspace_inspect(args) -> dict:
+    workspace = args.workspace.resolve()
+    detected = workspace_schema_version(workspace)
+    if detected is None:
+        raise MdocError("MDOC-WORKSPACE-NOT-INITIALIZED", f"工作区未初始化：{workspace}")
+    current = context(workspace)
+    migration_status = "current" if detected == SCHEMA_VERSION else ("migration_required" if detected < SCHEMA_VERSION else "unsupported")
+    return current | {"detected_schema_version": detected, "migration_status": migration_status}
+
+
+def digest_path(path: Path) -> str:
+    digest = hashlib.sha256()
+    if not path.exists():
+        digest.update(b"missing")
+        return digest.hexdigest()
+    if path.is_file():
+        digest.update(b"file\0")
+        digest.update(path.read_bytes())
+        return digest.hexdigest()
+    digest.update(b"directory\0")
+    for item in sorted(path.rglob("*"), key=lambda value: value.as_posix().lower()):
+        relative = item.relative_to(path).as_posix()
+        digest.update(relative.encode("utf-8"))
+        digest.update(b"\0")
+        if item.is_file():
+            digest.update(item.read_bytes())
+    return digest.hexdigest()
+
+
+def plan_paths(workspace: Path, kind: str) -> tuple[Path, Path]:
+    root = workspace / ".work" / "mdoc"
+    return root / "plans" / f"{kind}-current.json", root / "records" / f"latest-{kind}.json"
+
+
+def save_plan(workspace: Path, kind: str, inputs: list[Path], actions: list[dict]) -> dict:
+    target, _ = plan_paths(workspace, kind)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    data = {
+        "schema_version": 1, "kind": kind, "status": "planned",
+        "workspace": str(workspace),
+        "inputs": [{"path": str(path), "sha256": digest_path(path)} for path in inputs],
+        "actions": actions,
+    }
+    target.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return data
+
+
+def load_valid_plan(workspace: Path, kind: str, confirmed: bool) -> tuple[dict, Path, Path]:
+    if not confirmed:
+        raise MdocError("MDOC-CONFIRMATION-REQUIRED", f"{kind} 执行必须显式提供 --confirm。")
+    target, record = plan_paths(workspace, kind)
+    if not target.is_file():
+        raise MdocError("MDOC-PLAN-MISSING", f"请先运行 workspace {kind} --plan。")
+    data = json.loads(target.read_text(encoding="utf-8"))
+    for item in data.get("inputs", []):
+        if digest_path(Path(item["path"])) != item["sha256"]:
+            raise MdocError("MDOC-PLAN-STALE", f"计划生成后输入已变化：{item['path']}")
+    return data, target, record
+
+
+def finish_plan(data: dict, target: Path, record: Path, status: str) -> dict:
+    summary = {
+        "schema_version": 1, "kind": data["kind"], "status": status,
+        "workspace": data["workspace"], "action_count": len(data.get("actions", [])),
+    }
+    record.parent.mkdir(parents=True, exist_ok=True)
+    record.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    target.unlink(missing_ok=True)
+    return summary
+
+
+def stable_launcher_text() -> str:
+    return '@echo off\r\n' + r'"%LOCALAPPDATA%\mdoc\bin\mdoc.cmd" status --workspace "%~dp0"' + '\r\n'
+
+
+def command_workspace_adopt(args) -> dict:
+    workspace = args.workspace.resolve()
+    current = context(workspace)
+    launcher = workspace / "open-mdoc.cmd"
+    gitignore = workspace / ".gitignore"
+    inputs = [workspace / "workspace.yaml", workspace / "workspace.local.yaml", launcher, gitignore]
+    if args.plan:
+        actions = []
+        if not launcher.is_file() or launcher.read_text(encoding="utf-8", errors="replace") != stable_launcher_text():
+            actions.append({"action": "write_stable_launcher", "path": str(launcher)})
+        required = {"workspace.local.yaml", "manual-tasks/*/task.local.yaml", ".work/", ".pdf-check/", "captures/"}
+        existing = set(gitignore.read_text(encoding="utf-8").splitlines()) if gitignore.is_file() else set()
+        if not required.issubset(existing):
+            actions.append({"action": "merge_gitignore", "path": str(gitignore)})
+        actions.append({"action": "register_workspace"})
+        return current | save_plan(workspace, "adopt", inputs, actions)
+    data, target, record = load_valid_plan(workspace, "adopt", args.confirm)
+    for action in data["actions"]:
+        if action["action"] == "write_stable_launcher":
+            launcher.write_text(stable_launcher_text(), encoding="utf-8", newline="")
+        elif action["action"] == "merge_gitignore":
+            lines = gitignore.read_text(encoding="utf-8").splitlines() if gitignore.is_file() else []
+            for line in ("workspace.local.yaml", "manual-tasks/*/task.local.yaml", ".work/", ".pdf-check/", "captures/"):
+                if line not in lines:
+                    lines.append(line)
+            gitignore.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        elif action["action"] == "register_workspace":
+            write_registry(workspace, Path(current["repository"]))
+    return current | finish_plan(data, target, record, "adopted")
+
+
+def command_workspace_migrate(args) -> dict:
+    workspace = args.workspace.resolve()
+    detected = workspace_schema_version(workspace)
+    if detected != 1:
+        raise MdocError("MDOC-MIGRATION-NOT-REQUIRED", f"仅支持 schema v1 到 v2，当前为：{detected}")
+    config = workspace / "workspace.yaml"
+    local = workspace / "workspace.local.yaml"
+    inputs = [config, local, workspace / "manual-tasks"]
+    if args.plan:
+        return save_plan(workspace, "migrate", inputs, [{"action": "schema_v1_to_v2", "files": [str(config), str(local)]}])
+    data, target, record = load_valid_plan(workspace, "migrate", args.confirm)
+    for path in (config, local):
+        if path.is_file():
+            source = path.read_text(encoding="utf-8")
+            updated, count = re.subn(r"(?m)^schema_version:\s*1\s*$", "schema_version: 2", source, count=1)
+            if count != 1:
+                raise MdocError("MDOC-MIGRATION-CONFLICT", f"无法确认 schema v1 标记：{path}")
+            path.write_text(updated, encoding="utf-8", newline="\n")
+    summary = finish_plan(data, target, record, "migrated")
+    return {**summary, "schema_version": 2, "workspace": str(workspace)}
+
+
+def cleanup_candidates(workspace: Path, repository: Path | None) -> list[tuple[Path, str]]:
+    result = [(workspace / ".pdf-check", "regenerable-cache"), (workspace / "captures", "regenerable-cache")]
+    work = workspace / ".work"
+    if work.is_dir():
+        result.extend((item, "regenerable-cache") for item in work.iterdir() if item.name != "mdoc")
+    if repository:
+        result.extend([(repository / ".work", "regenerable-cache"), (repository / ".mdoc-development", "development-checkout")])
+    return result
+
+
+def command_workspace_cleanup(args) -> dict:
+    workspace = args.workspace.resolve()
+    try:
+        current = context(workspace)
+        repository = Path(current["repository"])
+    except MdocError:
+        current, repository = {"workspace": str(workspace), "active_book": None}, None
+    candidates = [(path, category) for path, category in cleanup_candidates(workspace, repository) if path.exists()]
+    if args.plan:
+        actions = [{"action": "delete", "path": str(path), "category": category, "sha256": digest_path(path)} for path, category in candidates]
+        return current | save_plan(workspace, "cleanup", [path for path, _ in candidates], actions)
+    data, target, record = load_valid_plan(workspace, "cleanup", args.confirm)
+    for action in data["actions"]:
+        path = Path(action["path"])
+        if path.is_dir():
+            shutil.rmtree(path)
+        elif path.exists():
+            path.unlink()
+    return current | finish_plan(data, target, record, "cleaned")
+
+
+def command_workspace_list(args) -> dict:
+    data = read_registry()
+    entries = []
+    for item in data["workspaces"]:
+        workspace = Path(item.get("workspace", ""))
+        state = "available" if workspace.exists() else "missing"
+        entries.append(item | {"state": state})
+    return {"schema_version": SCHEMA_VERSION, "workspaces": entries}
+
+
+def command_workspace_register(args) -> dict:
+    write_registry(args.workspace.resolve(), args.repository.resolve())
+    return {"schema_version": SCHEMA_VERSION, "status": "registered", "workspace": str(args.workspace.resolve())}
+
+
+def command_workspace_unregister(args) -> dict:
+    if not args.confirm:
+        raise MdocError("MDOC-CONFIRMATION-REQUIRED", "注销工作区登记必须显式提供 --confirm。")
+    target = registry_path()
+    data = read_registry()
+    requested = str(args.workspace.resolve())
+    before = len(data["workspaces"])
+    data["workspaces"] = [item for item in data["workspaces"] if item.get("workspace") != requested]
+    atomic_write_json(target, data)
+    return {"schema_version": SCHEMA_VERSION, "status": "unregistered", "removed": before - len(data["workspaces"])}
+
+
+def command_workspace_prune(args) -> dict:
+    target = registry_path()
+    data = read_registry()
+    retained, removed = [], 0
+    for item in data["workspaces"]:
+        value = str(item.get("workspace", ""))
+        if value.startswith("\\"):
+            retained.append(item | {"state": "unreachable"})
+        elif Path(value).exists():
+            retained.append(item)
+        else:
+            removed += 1
+    data["workspaces"] = retained
+    atomic_write_json(target, data)
+    return {"schema_version": SCHEMA_VERSION, "status": "pruned", "removed": removed, "retained": len(retained)}
+
+
+def registry_repair_plan_path() -> Path:
+    return registry_path().parent / "state" / "plans" / "registry-repair-current.json"
+
+
+def command_workspace_registry_repair(args) -> dict:
+    scan_root = args.scan_root.resolve()
+    plan = registry_repair_plan_path()
+    if args.plan:
+        found = []
+        if scan_root.is_dir():
+            for config in sorted(scan_root.rglob("workspace.yaml")):
+                workspace = config.parent
+                local = workspace / "workspace.local.yaml"
+                repository = scalar(local, "manual_repository") if local.is_file() else None
+                if repository:
+                    found.append({"workspace": str(workspace.resolve()), "repository": str(Path(repository).resolve())})
+        data = {"schema_version": 1, "status": "planned", "scan_root": str(scan_root), "scan_sha256": digest_path(scan_root), "workspaces": found}
+        plan.parent.mkdir(parents=True, exist_ok=True)
+        plan.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        return data
+    if not args.confirm:
+        raise MdocError("MDOC-CONFIRMATION-REQUIRED", "注册表修复必须显式提供 --confirm。")
+    if not plan.is_file():
+        raise MdocError("MDOC-PLAN-MISSING", "请先运行 workspace registry repair --plan。")
+    data = json.loads(plan.read_text(encoding="utf-8"))
+    if data["scan_root"] != str(scan_root) or data["scan_sha256"] != digest_path(scan_root):
+        raise MdocError("MDOC-PLAN-STALE", "扫描目录在计划生成后已变化。")
+    target = registry_path()
+    if target.is_file():
+        corrupt = target.with_name("workspace-registry.corrupt-latest.json")
+        for old in target.parent.glob("workspace-registry.corrupt-*.json"):
+            old.unlink(missing_ok=True)
+        os.replace(target, corrupt)
+    atomic_write_json(target, {"schema_version": SCHEMA_VERSION, "workspaces": data["workspaces"]})
+    plan.unlink(missing_ok=True)
+    return {"schema_version": SCHEMA_VERSION, "status": "repaired", "registered": len(data["workspaces"])}
 
 
 def command_new_task(args) -> dict:
@@ -217,16 +492,69 @@ def module_status(name: str) -> str:
         return "unavailable"
 
 
-def command_doctor(args) -> dict:
-    current = context(args.workspace.resolve())
-    modules = {name: module_status(name) for name in ("ruamel.yaml", "jsonschema", "pdfplumber", "pypdf", "pypdfium2", "PIL")}
-    tools = {}
+def doctor_runtime() -> tuple[dict, dict, dict]:
+    names = ("ruamel.yaml", "jsonschema", "pdfplumber", "pypdf", "pypdfium2", "PIL")
+    root = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "mdoc"
+    state_path = root / "state" / "installed-runtime.json"
+    executable = Path(sys.executable)
+    source = "current-process"
+    if state_path.is_file():
+        try:
+            state = json.loads(state_path.read_text(encoding="utf-8-sig"))
+            candidate = Path(state.get("runtime_python") or "")
+            if candidate.is_file():
+                executable, source = candidate, "installed-runtime"
+        except (OSError, json.JSONDecodeError):
+            pass
+    probe = (
+        "import importlib.util,json,platform,sys\n"
+        "names=['ruamel.yaml','jsonschema','pdfplumber','pypdf','pypdfium2','PIL','venv','tkinter']\n"
+        "modules={}\n"
+        "for name in names:\n"
+        "  try: modules[name]='available' if importlib.util.find_spec(name) else 'unavailable'\n"
+        "  except (ImportError,ModuleNotFoundError): modules[name]='unavailable'\n"
+        "print(json.dumps({'version':sys.version.split()[0],'implementation':platform.python_implementation(),'architecture':platform.machine(),'modules':modules}))\n"
+    )
+    completed = subprocess.run([str(executable), "-c", probe], text=True, capture_output=True, encoding="utf-8", errors="replace", check=False)
+    if completed.returncode == 0:
+        payload = json.loads(completed.stdout)
+        statuses = payload["modules"]
+        modules = {name: statuses[name] for name in names}
+        features = {name: statuses[name] for name in ("venv", "tkinter")}
+        runtime = {"status": "available", "version": payload["version"], "executable": str(executable), "implementation": payload["implementation"], "architecture": payload["architecture"], "source": source, "features": features}
+        return runtime, modules, features
+    modules = {name: module_status(name) for name in names}
     features = {"venv": module_status("venv"), "tkinter": module_status("tkinter")}
+    return {"status": "unavailable", "executable": str(executable), "source": source, "features": features}, modules, features
+
+
+def command_doctor(args) -> dict:
+    detected_schema = workspace_schema_version(args.workspace.resolve()) if args.workspace else None
+    current = (
+        context(args.workspace.resolve())
+        if args.workspace
+        else {
+            "schema_version": SCHEMA_VERSION,
+            "workspace": None,
+            "repository": None,
+            "active_book": None,
+            "operation_book": None,
+            "workspace_status": "unbound",
+        }
+    )
+    runtime_python, modules, features = doctor_runtime()
+    tools = {}
     required = modules["ruamel.yaml"] == "available" and modules["jsonschema"] == "available"
     pdf_ready = all(modules[name] == "available" for name in ("pdfplumber", "pypdf", "pypdfium2", "PIL"))
     screenshot_ready = modules["PIL"] == "available" and features["tkinter"] == "available"
+    if "workspace_status" not in current:
+        current["workspace_status"] = "bound"
+    status = "ready" if required and pdf_ready and screenshot_ready else ("ready_with_warnings" if required else "repair_required")
+    if detected_schema is not None and detected_schema < SCHEMA_VERSION:
+        status = "migration_required"
     result = current | {
-        "runtime": {"python": {"status": "available", "version": sys.version.split()[0], "executable": sys.executable, "implementation": platform.python_implementation(), "architecture": platform.machine(), "features": features}},
+        "status": status,
+        "runtime": {"python": runtime_python},
         "modules": modules, "tools": tools,
         "capabilities": {"core": "ready" if required else "needs-repair", "pdf_check": "ready" if pdf_ready else "optional-missing", "screenshot_assistant": "ready" if screenshot_ready else "optional-missing"},
     }
@@ -363,36 +691,54 @@ def command_screenshots(args) -> dict:
 
 
 def command_update(args) -> dict:
-    if not args.package or not args.manifest or not args.installation:
-        raise MdocError("MDOC-UPDATE-PACKAGE-REQUIRED", "更新需要 --package、--manifest 和 --installation；联网获取前必须先获得用户同意。")
-    import hashlib
-    import zipfile
-    package, manifest, installation = args.package.resolve(), args.manifest.resolve(), args.installation.resolve()
-    release = json.loads(manifest.read_text(encoding="utf-8"))
-    actual = hashlib.sha256(package.read_bytes()).hexdigest()
-    if actual != release.get("sha256"):
-        raise MdocError("MDOC-UPDATE-SHA256-MISMATCH", "更新包 SHA-256 与 Release Manifest 不一致。")
-    if installation.name.lower() != "mdoc":
-        raise MdocError("MDOC-UPDATE-TARGET-INVALID", f"安装目录必须以 mdoc 命名：{installation}")
-    temporary = installation.with_name(installation.name + ".updating")
-    shutil.rmtree(temporary, ignore_errors=True)
-    with zipfile.ZipFile(package) as archive:
-        for member in archive.infolist():
-            name = member.filename.replace("\\", "/")
-            if name.startswith("/") or re.match(r"^[A-Za-z]:", name) or ".." in Path(name).parts:
-                raise MdocError("MDOC-UPDATE-PACKAGE-UNSAFE", f"更新包包含不安全路径：{member.filename}")
-        archive.extractall(temporary)
-    source = temporary / "skill" / "mdoc"
-    if not (source / "SKILL.md").is_file():
-        shutil.rmtree(temporary, ignore_errors=True)
-        raise MdocError("MDOC-UPDATE-PACKAGE-INVALID", "更新包不包含 skill/mdoc/SKILL.md。")
-    staged = installation.with_name(installation.name + ".new")
-    shutil.rmtree(staged, ignore_errors=True)
-    shutil.copytree(source, staged)
-    shutil.rmtree(installation, ignore_errors=True)
-    staged.replace(installation)
-    shutil.rmtree(temporary, ignore_errors=True)
-    return {"schema_version": SCHEMA_VERSION, "status": "updated", "version": release.get("version"), "installation": str(installation)}
+    transaction = load_transaction_module()
+    root = args.runtime_root.resolve()
+    try:
+        if args.plan:
+            if not args.package or not args.installation:
+                raise MdocError("MDOC-UPDATE-PACKAGE-REQUIRED", "更新计划需要 --package 和 --installation。")
+            if args.installation.name.lower() != "mdoc":
+                raise MdocError("MDOC-UPDATE-TARGET-INVALID", f"安装目录必须以 mdoc 命名：{args.installation}")
+            if args.manifest:
+                release = json.loads(args.manifest.read_text(encoding="utf-8"))
+                if transaction.sha256(args.package) != release.get("sha256"):
+                    raise MdocError("MDOC-UPDATE-SHA256-MISMATCH", "包外 Manifest SHA-256 不匹配。")
+            return transaction.create_plan(args.package.resolve(), args.installation.resolve(), root, "update")
+        if args.apply:
+            return transaction.apply_plan(root, args.confirm)
+        if args.package and args.manifest and args.installation:
+            release = json.loads(args.manifest.read_text(encoding="utf-8"))
+            if transaction.sha256(args.package) != release.get("sha256"):
+                raise MdocError("MDOC-UPDATE-SHA256-MISMATCH", "包外 Manifest SHA-256 不匹配。")
+            return transaction.create_plan(args.package.resolve(), args.installation.resolve(), root, "update")
+        raise MdocError("MDOC-UPDATE-MODE-REQUIRED", "请使用 --plan，或 --apply --confirm。")
+    except transaction.TransactionError as exc:
+        code = str(exc).split(":", 1)[0]
+        if code == "MDOC-PACKAGE-UNSAFE": code = "MDOC-UPDATE-PACKAGE-UNSAFE"
+        raise MdocError(code, str(exc)) from exc
+
+
+def load_transaction_module():
+    candidates = [
+        Path(__file__).resolve().parents[3] / "runtime-bootstrap" / "mdoc_install_transaction.py",
+        Path(__file__).resolve().parent.parent / "runtime-support" / "runtime-bootstrap" / "mdoc_install_transaction.py",
+    ]
+    source = next((path for path in candidates if path.is_file()), None)
+    if source is None:
+        raise MdocError("MDOC-TRANSACTION-UNAVAILABLE", "当前安装缺少共享安装事务组件。")
+    spec = importlib.util.spec_from_file_location("mdoc_install_transaction", source)
+    module = importlib.util.module_from_spec(spec)
+    assert spec and spec.loader
+    spec.loader.exec_module(module)
+    return module
+
+
+def command_runtime_cancel(args) -> dict:
+    transaction = load_transaction_module()
+    try:
+        return transaction.cancel(args.runtime_root.resolve(), args.confirm)
+    except transaction.TransactionError as exc:
+        raise MdocError(str(exc).split(":", 1)[0], str(exc)) from exc
 
 
 def emit(data: dict, as_json: bool) -> None:
@@ -443,7 +789,7 @@ def parser() -> argparse.ArgumentParser:
     switch.add_argument("--book", required=True)
     switch.add_argument("--json", action="store_true")
     doctor = sub.add_parser("doctor", help="检查核心与可选运行环境")
-    doctor.add_argument("--workspace", type=Path, required=True)
+    doctor.add_argument("--workspace", type=Path)
     doctor.add_argument("--repair", action="store_true", help="保留给经用户同意的受控修复流程")
     doctor.add_argument("--toolkit", type=Path)
     doctor.add_argument("--python", type=Path)
@@ -483,7 +829,56 @@ def parser() -> argparse.ArgumentParser:
     update.add_argument("--package", type=Path)
     update.add_argument("--manifest", type=Path)
     update.add_argument("--installation", type=Path)
+    update.add_argument("--runtime-root", type=Path, default=Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "mdoc")
+    update_mode = update.add_mutually_exclusive_group()
+    update_mode.add_argument("--plan", action="store_true")
+    update_mode.add_argument("--apply", action="store_true")
+    update.add_argument("--confirm", action="store_true")
     update.add_argument("--json", action="store_true")
+    runtime = sub.add_parser("runtime", help="运行时事务维护")
+    runtime_sub = runtime.add_subparsers(dest="runtime_command", required=True)
+    cancel_runtime = runtime_sub.add_parser("cancel", help="清理确认已停止的陈旧事务")
+    cancel_runtime.add_argument("--runtime-root", type=Path, default=Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "mdoc")
+    cancel_runtime.add_argument("--confirm", action="store_true")
+    cancel_runtime.add_argument("--json", action="store_true")
+    workspace = sub.add_parser("workspace", help="检查、接管、迁移和清理流程工作区")
+    workspace_sub = workspace.add_subparsers(dest="workspace_command", required=True)
+    inspect = workspace_sub.add_parser("inspect", help="只读检查工作区和 schema 状态")
+    inspect.add_argument("--workspace", type=Path, required=True)
+    inspect.add_argument("--json", action="store_true")
+    listing = workspace_sub.add_parser("list", help="列出本机登记的工作区")
+    listing.add_argument("--json", action="store_true")
+    register = workspace_sub.add_parser("register", help="登记一个工作区")
+    register.add_argument("--workspace", type=Path, required=True)
+    register.add_argument("--repository", type=Path, required=True)
+    register.add_argument("--json", action="store_true")
+    unregister = workspace_sub.add_parser("unregister", help="只注销登记，不删除目录")
+    unregister.add_argument("--workspace", type=Path, required=True)
+    unregister.add_argument("--confirm", action="store_true")
+    unregister.add_argument("--json", action="store_true")
+    prune = workspace_sub.add_parser("prune", help="移除确定不存在的本地登记")
+    prune.add_argument("--json", action="store_true")
+    registry = workspace_sub.add_parser("registry", help="注册表维护")
+    registry_sub = registry.add_subparsers(dest="registry_command", required=True)
+    repair_registry = registry_sub.add_parser("repair", help="从显式扫描根修复损坏注册表")
+    repair_registry.add_argument("--scan-root", type=Path, required=True)
+    registry_mode = repair_registry.add_mutually_exclusive_group(required=True)
+    registry_mode.add_argument("--plan", action="store_true")
+    registry_mode.add_argument("--apply", action="store_true")
+    repair_registry.add_argument("--confirm", action="store_true")
+    repair_registry.add_argument("--json", action="store_true")
+    for name, help_text in (
+        ("adopt", "接管已有 schema v2 工作区"),
+        ("migrate", "迁移旧版工作区 schema"),
+        ("cleanup", "清理已识别的可再生缓存和开发残留"),
+    ):
+        operation = workspace_sub.add_parser(name, help=help_text)
+        operation.add_argument("--workspace", type=Path, required=True)
+        mode = operation.add_mutually_exclusive_group(required=True)
+        mode.add_argument("--plan", action="store_true")
+        mode.add_argument("--apply", action="store_true")
+        operation.add_argument("--confirm", action="store_true")
+        operation.add_argument("--json", action="store_true")
     return root
 
 
@@ -503,8 +898,28 @@ def main() -> int:
             "configure": command_configure, "bind-local": command_bind_local,
             "screenshots": command_screenshots, "update": command_update,
         }
-        data = handlers[args.command](args)
+        if args.command == "runtime":
+            data = {"cancel": command_runtime_cancel}[args.runtime_command](args)
+        elif args.command == "workspace":
+            workspace_handlers = {
+                "inspect": command_workspace_inspect,
+                "list": command_workspace_list,
+                "register": command_workspace_register,
+                "unregister": command_workspace_unregister,
+                "prune": command_workspace_prune,
+                "adopt": command_workspace_adopt,
+                "migrate": command_workspace_migrate,
+                "cleanup": command_workspace_cleanup,
+            }
+            if args.workspace_command == "registry":
+                data = {"repair": command_workspace_registry_repair}[args.registry_command](args)
+            else:
+                data = workspace_handlers[args.workspace_command](args)
+        else:
+            data = handlers[args.command](args)
         emit(data, args.json)
+        if args.command == "doctor":
+            return {"migration_required": 3, "repair_required": 4}.get(data.get("status"), 0)
         return 0
     except MdocError as exc:
         print(f"{exc.code}: {exc.message}", file=sys.stderr)

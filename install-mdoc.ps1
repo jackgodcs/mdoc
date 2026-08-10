@@ -39,6 +39,15 @@ if (-not $SkipRuntimeRepair) {
   & $repair -Profile $Profile -Python $Python -Toolkit $Toolkit -Installation $Destination -RuntimeRoot $RuntimeRoot -Proxy $Proxy -AllowNetworkDownload:$AllowNetworkDownload | Write-Host
   if ($LASTEXITCODE -ne 0) { throw "MDOC-INSTALL-RUNTIME-REPAIR-FAILED: $LASTEXITCODE" }
 }
-if (Test-Path -LiteralPath $Destination) { Remove-Item -LiteralPath $Destination -Recurse -Force }
-Move-Item -LiteralPath $staging -Destination $Destination
+$transaction = Join-Path $packageRoot 'runtime-bootstrap\mdoc_install_transaction.py'
+if (-not (Test-Path -LiteralPath $transaction -PathType Leaf)) { throw 'MDOC-INSTALL-TRANSACTION-MISSING: 缺少共享安装事务。' }
+$pythonCommand = if ($Python) { $Python } else {
+  $candidate = Join-Path $RuntimeRoot 'runtime\Scripts\python.exe'
+  if (Test-Path -LiteralPath $candidate -PathType Leaf) { $candidate } else { (Get-Command python.exe -ErrorAction Stop).Source }
+}
+& $pythonCommand $transaction --operation install --package $packageRoot --installation $Destination --runtime-root $RuntimeRoot --plan
+if ($LASTEXITCODE -ne 0) { throw "MDOC-INSTALL-PLAN-FAILED: $LASTEXITCODE" }
+& $pythonCommand $transaction --operation install --runtime-root $RuntimeRoot --apply --confirm
+if ($LASTEXITCODE -ne 0) { throw "MDOC-INSTALL-APPLY-FAILED: $LASTEXITCODE" }
+if (Test-Path -LiteralPath $staging) { Remove-Item -LiteralPath $staging -Recurse -Force }
 Write-Host "mdoc $($manifest.version) installed to $Destination"

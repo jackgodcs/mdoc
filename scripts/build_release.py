@@ -38,7 +38,7 @@ def zip_info(name: str, executable: bool = False) -> zipfile.ZipInfo:
 def collect() -> list[tuple[Path, str]]:
     result = [(path, path.name) for path in FILES]
     result.extend((ROOT / name, name) for name in ("安装 mdoc.cmd", "install-mdoc.ps1", "repair-mdoc-runtime.ps1", "开始使用.txt"))
-    result.extend((path, path.relative_to(ROOT).as_posix()) for folder in ("bootstrap", "runtime") for path in sorted((ROOT / folder).rglob("*")) if path.is_file())
+    result.extend((path, path.relative_to(ROOT).as_posix()) for folder in ("bootstrap", "runtime", "runtime-bootstrap") for path in sorted((ROOT / folder).rglob("*")) if path.is_file() and not path.name.startswith("test_") and "__pycache__" not in path.parts)
     skill = ROOT / "skill" / "mdoc"
     for path in sorted(skill.rglob("*")):
         if path.is_file() and "__pycache__" not in path.parts:
@@ -56,6 +56,8 @@ def main() -> int:
                 path.unlink()
     STAGED_ASSET.unlink(missing_ok=True)
     collected = collect()
+    requirements = ROOT / "runtime" / "requirements-v1.json"
+    bootstrap = json.loads((ROOT / "bootstrap" / "toolchain-bootstrap.json").read_text(encoding="utf-8"))
     package_manifest = {
         "schema_version": 2,
         "product": "mdoc",
@@ -63,6 +65,13 @@ def main() -> int:
         "platform": "windows-x86_64",
         "license": "Apache-2.0",
         "copyright": "Copyright 2026 cshuan",
+        "runtime_contract": {
+            "toolchain_version": bootstrap["catalog_version"],
+            "python": ">=3.12.0,<3.13.0",
+            "profile": "Full",
+            "requirements_sha256": hashlib.sha256(requirements.read_bytes()).hexdigest(),
+            "runtime_rebuild_required": False,
+        },
         "files": [
             {"path": name, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
             for path, name in sorted(collected, key=lambda item: item[1])
