@@ -22,7 +22,7 @@ QUICK = {
     "MDOC-LINK-LEVEL", "MDOC-HTML-IMG-SYNTAX", "MDOC-HTML-BLOCK-SYNTAX",
     "MDOC-HEADING-SYNTAX", "MDOC-FENCE-UNCLOSED", "MDOC-EMPHASIS-SYNTAX",
     "MDOC-PLACEHOLDER", "MDOC-IMAGE-SYNTAX", "MDOC-IMAGE-READABLE",
-    "MDOC-TABLE-SYNTAX", "MDOC-TABLE-HTML",
+    "MDOC-TABLE-SYNTAX", "MDOC-TABLE-HTML", "MDOC-EN-CHINESE",
 }
 FULL = QUICK | {
     "MDOC-LINK-AMBIGUOUS", "MDOC-ANCHOR-MISSING", "MDOC-ANCHOR-DUPLICATE",
@@ -46,6 +46,10 @@ HEADING_RE = re.compile(r"^(?P<marks>#{1,6})(?P<space>\s*)(?P<title>.*?)(?:\s+#+
 SUPPRESS_NEXT_RE = re.compile(r"<!--\s*mdoc-lint-disable-next-line\s+(MDOC-[A-Z0-9-]+)\s+reason=[\"']([^\"']+)[\"']\s*-->")
 SUPPRESS_START_RE = re.compile(r"<!--\s*mdoc-lint-disable\s+(MDOC-[A-Z0-9-]+)\s+reason=[\"']([^\"']+)[\"']\s*-->")
 SUPPRESS_END_RE = re.compile(r"<!--\s*mdoc-lint-enable\s+(MDOC-[A-Z0-9-]+)\s*-->")
+CHINESE_RE = re.compile(
+    "[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff"
+    "\U00020000-\U0002ebef\U00030000-\U000323af]"
+)
 DEFAULTS = {"validation": {
     "mode": "advisory", "auto_run": False, "default_profile": "full",
     "publish_policy": {"required_before_publish": False, "block_on": ["error"]},
@@ -319,6 +323,7 @@ class Linter:
             if match:
                 active.pop(match.group(1), None)
             suppressions[number] = dict(active) | next_suppression.get(number, {})
+            self.check_english_chinese(rel, number, line, locale_for(self.root, path), suppressions)
             if re.match(r"^\s*(?:\x60{3}|~~~)", line):
                 if not in_fence:
                     in_fence, fence_line = True, number
@@ -558,6 +563,21 @@ class Linter:
                 unknown = sorted({word for word in re.findall(r"[A-Za-z][A-Za-z'-]{2,}", text) if word.casefold() not in self.dictionary})
                 if unknown:
                     self.add(Finding("MDOC-SPELLING", "suggestion", "review", rel, number, "Words are absent from the configured offline dictionary", {"words": unknown[:20]}), suppressions)
+
+    def check_english_chinese(self, rel, number, line, locale, suppressions):
+        if locale != "en":
+            return
+        match = CHINESE_RE.search(line)
+        if match:
+            self.add(Finding(
+                "MDOC-EN-CHINESE",
+                "error",
+                "exact",
+                rel,
+                number,
+                "English Markdown contains Chinese text",
+                {"character": match.group(0), "text": line.strip()},
+            ), suppressions)
 
     def finish_locale_image_widths(self):
         if not self.config["validation"].get("images", {}).get("require_locale_width_consistency", True):

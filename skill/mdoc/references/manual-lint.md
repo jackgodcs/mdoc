@@ -14,7 +14,7 @@ python scripts/manual_lint.py fix --book-root <book-root> --product-profile <pro
 
 ## Profiles and policy
 
-- `quick`: missing targets, path case, absolute paths, filename spaces, definite Markdown/HTML defects, and placeholders.
+- `quick`: missing targets, path case, absolute paths, filename spaces, definite Markdown/HTML defects, placeholders, and Chinese text in English Markdown.
 - `full`: all quick rules plus every FAQ-derived image, layout, list, paragraph, URL, terminology, spelling, punctuation, and table rule.
 - `release`: full plus configured build adapters and visual-review state.
 
@@ -28,7 +28,7 @@ Markdown and HTML: `MDOC-HTML-IMG-SYNTAX`, `MDOC-HTML-BLOCK-SYNTAX`, `MDOC-HTML-
 
 Images: `MDOC-IMAGE-SYNTAX`, `MDOC-IMAGE-WIDTH`, `MDOC-IMAGE-WIDTH-STEP`, `MDOC-IMAGE-DIMENSION`, `MDOC-IMAGE-READABLE`, `MDOC-IMAGE-LOCALE-WIDTH`, `MDOC-IMAGE-INLINE-WIDTH`.
 
-URLs, language, and terminology: `MDOC-BARE-URL`, `MDOC-AUTOLINK-POLICY`, `MDOC-PRODUCT-NAME`, `MDOC-TERM-FORBIDDEN`, `MDOC-TERM-CASE`, `MDOC-TERM-INCONSISTENT`, `MDOC-SPELLING`, `MDOC-SPELLING-UNAVAILABLE`, `MDOC-LOCALE-PUNCT`, `MDOC-PUNCT-SPACING`, `MDOC-FULLWIDTH-MIXED`, `MDOC-QUOTE-STYLE`.
+URLs, language, and terminology: `MDOC-BARE-URL`, `MDOC-AUTOLINK-POLICY`, `MDOC-PRODUCT-NAME`, `MDOC-TERM-FORBIDDEN`, `MDOC-TERM-CASE`, `MDOC-TERM-INCONSISTENT`, `MDOC-SPELLING`, `MDOC-SPELLING-UNAVAILABLE`, `MDOC-EN-CHINESE`, `MDOC-LOCALE-PUNCT`, `MDOC-PUNCT-SPACING`, `MDOC-FULLWIDTH-MIXED`, `MDOC-QUOTE-STYLE`. `MDOC-EN-CHINESE` is an exact error in every profile. It scans every raw line under `en/**/*.md`, including headings, link text and targets, HTML, inline code, and fenced code. Chinese content required as source evidence needs a narrow, reasoned suppression.
 
 Tables: `MDOC-TABLE-SYNTAX`, `MDOC-TABLE-STYLE`, `MDOC-TABLE-HTML`, `MDOC-TABLE-VISUAL`.
 

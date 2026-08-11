@@ -5,7 +5,7 @@
 1. Configuration: schemas, overrides, IDs, allowed roots, and state consistency.
 2. Structure: declared pages, category indexes, locale structure, scope boundaries, and preservation.
 3. Markdown/resources: summary links, image links, internal links, readable images, placeholders, and local paths.
-4. Content: localized UI terms, cross-locale scope, evidence, limitations, terminology, spelling, and locale style.
+4. Content: localized UI terms, cross-locale scope, evidence, limitations, terminology, spelling, and locale style. English-locale Markdown must not contain Chinese Han characters; `MDOC-EN-CHINESE` reports an exact error with file and line location in every Quality Gate profile.
 
 ## Optional Quality Gate
 

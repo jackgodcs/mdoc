@@ -34,8 +34,31 @@ class ManualLintTests(unittest.TestCase):
         return linter
 
     def test_full_rule_profiles_cover_faq_catalog(self):
-        expected = {"MDOC-PATH-CASE", "MDOC-HTML-BLANK-LINE", "MDOC-LIST-COMPAT", "MDOC-PARAGRAPH-LONG", "MDOC-IMAGE-WIDTH", "MDOC-HTML-IMG-SYNTAX", "MDOC-FILENAME-SPACE", "MDOC-IMAGE-DIMENSION", "MDOC-LINK-LEVEL", "MDOC-BARE-URL", "MDOC-PRODUCT-NAME", "MDOC-LOCALE-PUNCT", "MDOC-TERM-CASE", "MDOC-SPELLING", "MDOC-PATH-ABSOLUTE", "MDOC-TABLE-SYNTAX"}
+        expected = {"MDOC-PATH-CASE", "MDOC-HTML-BLANK-LINE", "MDOC-LIST-COMPAT", "MDOC-PARAGRAPH-LONG", "MDOC-IMAGE-WIDTH", "MDOC-HTML-IMG-SYNTAX", "MDOC-FILENAME-SPACE", "MDOC-IMAGE-DIMENSION", "MDOC-LINK-LEVEL", "MDOC-BARE-URL", "MDOC-PRODUCT-NAME", "MDOC-LOCALE-PUNCT", "MDOC-TERM-CASE", "MDOC-SPELLING", "MDOC-PATH-ABSOLUTE", "MDOC-TABLE-SYNTAX", "MDOC-EN-CHINESE"}
         self.assertTrue(expected <= manual_lint.PROFILES["full"])
+        self.assertIn("MDOC-EN-CHINESE", manual_lint.PROFILES["quick"])
+
+    def test_english_markdown_rejects_chinese_in_prose_paths_and_code_fences(self):
+        (self.root / "en").mkdir()
+        (self.root / "zh").mkdir()
+        (self.root / "en" / "Page.md").write_text(
+            "# English page 含中文\n\n[link](中文路径.md)\n\n```text\n中文输出\n```\n",
+            encoding="utf-8",
+        )
+        (self.root / "zh" / "Page.md").write_text("# 中文页面\n", encoding="utf-8")
+        findings = [item for item in self.lint().findings if item.rule_id == "MDOC-EN-CHINESE"]
+        self.assertEqual([1, 3, 6], [item.line for item in findings])
+        self.assertTrue(all(item.severity == "error" and item.confidence == "exact" for item in findings))
+
+    def test_english_chinese_rule_supports_explicit_reasoned_suppression(self):
+        (self.root / "en").mkdir()
+        (self.root / "en" / "Page.md").write_text(
+            "<!-- mdoc-lint-disable-next-line MDOC-EN-CHINESE reason=\"Required source label\" -->\n中文标签\n",
+            encoding="utf-8",
+        )
+        findings = [item for item in self.lint().findings if item.rule_id == "MDOC-EN-CHINESE"]
+        self.assertEqual(1, len(findings))
+        self.assertTrue(findings[0].suppressed)
 
     def test_exact_and_review_findings(self):
         png(self.root / "en" / "images" / "Shot.PNG", 800, 400)
