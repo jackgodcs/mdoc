@@ -6,7 +6,7 @@ Copyright 2026 cshuan. Licensed under Apache-2.0. 该许可证只覆盖 mdoc 源
 
 ## 第一次安装
 
-当前候选版从公开 GitHub RC Release 只下载 `mdoc-1.2.0-rc.1-windows-x64.zip`，完整解压后双击“安装 mdoc.cmd”。安装器默认安装到 `%USERPROFILE%\.codex\skills\mdoc`；用户同意后，它会下载并校验固定版本的 Toolchain，创建独立运行环境，并把 mdoc 命令目录加入当前用户 PATH。v1.1.0 升级到 v1.2.0 必须使用新版 ZIP 内的安装器桥接。
+从公开 GitHub Stable Release 只下载 `mdoc-1.2.0-windows-x64.zip`，完整解压后双击“安装 mdoc.cmd”。安装器默认安装到 `%USERPROFILE%\.codex\skills\mdoc`；用户同意后，它会下载并校验固定版本的 Toolchain，创建独立运行环境，并把 mdoc 命令目录加入当前用户 PATH。v1.1.0 升级到 v1.2.0 必须使用新版 ZIP 内的安装器桥接。RC 版本仅用于内部或自动化验证，不创建公开 Release 资产。
 
 如果已安装 Codex，可让 AI 在你明确同意联网和下载后执行安装。AI 必须先展示下载地址、目标目录、版本、SHA-256 和许可证，再进行下载。官方来源：
 

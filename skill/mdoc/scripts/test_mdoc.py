@@ -48,7 +48,7 @@ class MdocCliTests(unittest.TestCase):
 
     def test_version_is_stable_product_version(self):
         result = self.run_cli("--version")
-        self.assertEqual("mdoc 1.2.0-rc.1", result.stdout.strip())
+        self.assertEqual("mdoc 1.2.0", result.stdout.strip())
 
     def test_human_output_uses_utf8_when_windows_locale_is_not_chinese(self):
         self.run_cli("setup", "--repository", str(self.repo), "--workspace", str(self.workspace), "--book", "Book-A")
@@ -251,7 +251,7 @@ class MdocCliTests(unittest.TestCase):
         import zipfile
         package = self.root / "release.zip"
         files = {"skill/mdoc/SKILL.md": b"# mdoc\n", "skill/mdoc/scripts/mdoc.py": b"print('new')\n"}
-        manifest = {"schema_version": 2, "product": "mdoc", "platform": "windows-x86_64", "version": "1.2.0-rc.1", "files": [{"path": name, "sha256": hashlib.sha256(data).hexdigest()} for name, data in files.items()]}
+        manifest = {"schema_version": 2, "product": "mdoc", "platform": "windows-x86_64", "version": "1.2.0", "files": [{"path": name, "sha256": hashlib.sha256(data).hexdigest()} for name, data in files.items()]}
         with zipfile.ZipFile(package, "w") as archive:
             for name, data in files.items():
                 archive.writestr(name, data)

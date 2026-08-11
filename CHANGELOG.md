@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.0 - 2026-08-11
+
+- Promoted the validated 1.2.0 release candidate to the first stable 1.2 release.
+- Release tags without prerelease suffixes publish one Windows x64 ZIP automatically; RC tags run validation only.
+- Removed the manual deployment-approval requirement from stable release publication.
+
 ## 1.2.0-rc.1 - 2026-08-10
 
 - Added explicit workspace inspection, adoption, schema v1-to-v2 migration, cleanup, registry management, and repair commands.

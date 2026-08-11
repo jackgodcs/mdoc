@@ -21,7 +21,7 @@ def product_version() -> str:
     source_version = Path(__file__).resolve().parents[3] / "VERSION"
     if source_version.is_file():
         return source_version.read_text(encoding="utf-8").strip()
-    return "1.2.0-rc.1"
+    return "1.2.0"
 
 
 VERSION = product_version()

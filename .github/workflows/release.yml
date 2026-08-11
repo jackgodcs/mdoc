@@ -29,9 +29,9 @@ jobs:
           name: release-assets
           path: dist/*
   publish:
+    if: ${{ !contains(inputs.tag || github.ref_name, '-') }}
     needs: build
     runs-on: windows-latest
-    environment: release
     permissions:
       contents: write
     steps:
@@ -42,6 +42,6 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.tag || github.ref_name }}
-          prerelease: ${{ contains(inputs.tag || github.ref_name, '-') }}
+          prerelease: false
           files: dist/mdoc-*-windows-x64.zip
           fail_on_unmatched_files: true
