@@ -63,7 +63,7 @@ def cmd_quality(args):
         state = load_state(task.directory / "task-state.json", task.task_id)
         if args.locale or args.path or args.changed:
             raise MdocError("MDOC-QUALITY-SCOPE-INVALID", "--locale, --path, and --changed apply only to --book.")
-        report = quality_task(task, state, published=args.published)
+        report = task_check(task, state, published=args.published)
     else:
         if args.published:
             raise MdocError("MDOC-QUALITY-SCOPE-INVALID", "--published applies only to --task.")
@@ -103,7 +103,7 @@ def parser():
         item = ts.add_parser(name); item.add_argument("--task", required=True); item.add_argument("--workspace", type=Path); item.add_argument("--no-gui", action="store_true")
     cancel = ts.add_parser("cancel"); cancel.add_argument("--task", required=True); cancel.add_argument("--workspace", type=Path); cancel.add_argument("--confirm", action="store_true"); cancel.add_argument("--no-gui", action="store_true")
     status = ts.add_parser("screenshot-status"); status.add_argument("--task", required=True); status.add_argument("--workspace", type=Path); status.add_argument("--item", required=True); status.add_argument("--status", choices=sorted(screenshots.USER_SETTABLE), required=True); status.add_argument("--no-gui", action="store_true")
-    review = ts.add_parser("review"); review.add_argument("--task", required=True); review.add_argument("--workspace", type=Path); review.add_argument("--review", choices=("factual_accuracy", "language_quality", "visual_accuracy"), required=True); review.add_argument("--status", choices=("passed", "failed"), required=True); review.add_argument("--no-gui", action="store_true")
+    review = ts.add_parser("review"); review.add_argument("--task", required=True); review.add_argument("--workspace", type=Path); review.add_argument("--review", choices=("factual_accuracy", "language_quality", "visual_accuracy", "pdf_visual_quality"), required=True); review.add_argument("--status", choices=("human_accepted", "failed"), required=True); review.add_argument("--no-gui", action="store_true")
     deletion = ts.add_parser("approve-deletion"); deletion.add_argument("--task", required=True); deletion.add_argument("--workspace", type=Path); deletion.add_argument("--target", required=True); deletion.add_argument("--no-gui", action="store_true")
     quality = sub.add_parser("quality"); qs = quality.add_subparsers(dest="quality_action", required=True); check = qs.add_parser("check"); check.add_argument("--workspace", type=Path); targets = check.add_mutually_exclusive_group(required=True); targets.add_argument("--book"); targets.add_argument("--task"); check.add_argument("--profile", choices=("standard", "full", "release")); check.add_argument("--locale"); check.add_argument("--path"); check.add_argument("--changed", action="store_true"); check.add_argument("--published", action="store_true"); check.add_argument("--enforce", action="store_true")
     return root

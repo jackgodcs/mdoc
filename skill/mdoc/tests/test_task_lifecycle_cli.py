@@ -117,7 +117,10 @@ class TaskLifecycleCliTests(unittest.TestCase):
                 {"locale": "en", "path": "Main/Copied.md", "evidence": ["spec"]},
             ], "update": [], "delete": []},
             "assets": {"create": [], "update": [], "delete": []},
-            "navigation": {"update": []},
+            "navigation": {"update": [
+                {"locale": "zh", "path": "Summary.md"},
+                {"locale": "en", "path": "Summary.md"},
+            ]},
         }
         draft["locale_plan"] = {"source": "zh", "targets": {"en": {"content": {"copy_from": "zh"}, "screenshots": "not_applicable"}}}
         draft["evidence"] = [{"id": "spec", "kind": "official_document", "location": "local:spec", "supports": ["zh/Main/Copied.md", "en/Main/Copied.md"], "required": False, "critical": True}]
@@ -125,10 +128,15 @@ class TaskLifecycleCliTests(unittest.TestCase):
         cli("task", "define", "--workspace", str(self.workspace), "--task", "copy-locale", "--json")
         cli("task", "confirm-definition", "--workspace", str(self.workspace), "--task", "copy-locale", "--no-gui", "--json")
         request = json.loads((directory / "authoring-request.json").read_text(encoding="utf-8"))
-        self.assertEqual(["zh/Main/Copied.md"], [f"{item['locale']}/{item['path']}" for item in request["files"]])
+        self.assertEqual(
+            ["zh/Main/Copied.md", "en/Summary.md", "zh/Summary.md"],
+            [f"{item['locale']}/{item['path']}" for item in request["files"]],
+        )
         source = directory / "staging" / "zh" / "Main" / "Copied.md"
         source.parent.mkdir(parents=True)
         source.write_bytes(b"# Exact bytes\r\n\r\nCopied by CLI.\r\n")
+        (directory / "staging" / "zh" / "Summary.md").write_text("# Guide\n\n- [Copied](Main/Copied.md)\n", encoding="utf-8")
+        (directory / "staging" / "en" / "Summary.md").write_text("# Guide\n\n- [Copied](Main/Copied.md)\n", encoding="utf-8")
         state = cli("task", "submit-authoring", "--workspace", str(self.workspace), "--task", "copy-locale", "--no-gui", "--json")
         self.assertEqual("ready_for_review", state["status"])
         self.assertEqual(source.read_bytes(), (en / "Main" / "Copied.md").read_bytes())

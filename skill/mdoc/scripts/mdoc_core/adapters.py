@@ -145,3 +145,46 @@ def import_generator_outputs(task) -> None:
         target = inside(task.directory / "staging" / locale, destination_root / Path(relative))
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, target)
+
+
+def run_build(workspace, view, adapter_id: str, record_root: Path) -> dict:
+    adapter = workspace.config.get("build_adapters", {}).get(adapter_id)
+    if not isinstance(adapter, Mapping):
+        return {"status": "not_configured", "adapter": adapter_id}
+    started = time.monotonic()
+    run_root = record_root / str(time.time_ns())
+    candidate = run_root / "candidate"
+    artifact_root = run_root / "artifacts"
+    tools_root = run_root / "tools"
+    artifact_root.mkdir(parents=True)
+    tools_root.mkdir()
+    view.materialize(candidate)
+    command, source_script = _adapter_command(workspace, adapter, tools_root)
+    environment = {
+        "PATH": os.environ.get("PATH", ""), "SYSTEMROOT": os.environ.get("SYSTEMROOT", ""),
+        "TEMP": str(run_root), "TMP": str(run_root), "MDOC_ARTIFACT_DIR": str(artifact_root),
+    }
+    try:
+        result = subprocess.run(
+            command, cwd=candidate, stdin=subprocess.DEVNULL, capture_output=True, text=True,
+            encoding="utf-8", errors="replace", timeout=int(adapter.get("timeout_seconds", 600)),
+            env=environment, check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return {
+            "status": "timed_out", "adapter": adapter_id, "config_digest": canonical_digest(adapter),
+            "input_digest": view.digest(), "duration_ms": int((time.monotonic() - started) * 1000),
+        }
+    artifact_relative = relative_path(adapter["artifact"], "build_adapter.artifact")
+    artifact = inside(artifact_root, artifact_relative)
+    status = "passed" if result.returncode == 0 and artifact.is_file() else "failed"
+    record = {
+        "status": status, "adapter": adapter_id, "exit_code": result.returncode,
+        "config_digest": canonical_digest(adapter), "implementation_digest": file_digest(source_script),
+        "input_digest": view.digest(), "artifact": str(artifact),
+        "artifact_sha256": file_digest(artifact) if artifact.is_file() else None,
+        "stdout": result.stdout[-4000:], "stderr": result.stderr[-4000:],
+        "duration_ms": int((time.monotonic() - started) * 1000),
+    }
+    write_json_atomic(run_root / "build-record.json", record)
+    return record

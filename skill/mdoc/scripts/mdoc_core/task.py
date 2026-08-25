@@ -100,7 +100,10 @@ def continue_task(task, state: dict, *, no_gui: bool = False, quality_check=task
     if previous.get("status") != "passed" or previous.get("input_digest") != gate_input:
         transition(state, "verifying", "quality_gate_started")
         report = quality_check(task, state)
-        state["quality_gate"] = {"status": report["status"], "digest": report["digest"], "input_digest": gate_input}
+        state["quality_gate"] = {
+            "status": report["status"], "digest": report["digest"], "input_digest": gate_input,
+            "reviews": report.get("reviews", {}), "build": report.get("build", {}),
+        }
         if report["status"] != "passed":
             return transition(state, "waiting_for_resolution", "quality_gate_blocked", {"kind": "quality_gate_findings", "report": report["path"], "blocking_count": report.get("blocking_count", 0)})
     transition(state, "publishing", "quality_gate_passed")
@@ -182,7 +185,6 @@ def act(workspace_path: Path, task_id: str, action: str, *, no_gui: bool = False
                 raise MdocError("MDOC-REVISION-NOT-READY", "任务尚未准备好输出修订。")
             state["authoring_submission"] = None
             state["quality_gate"] = None
-            state["reviews"] = {}
             state["baselines"] = baselines(task)
             prepare_authoring(task)
             transition(state, "waiting_for_authoring", "revision_requested", {"kind": "authoring", "request": str(task.directory / "authoring-request.json")})
