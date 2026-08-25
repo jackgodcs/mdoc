@@ -7,7 +7,6 @@
     "schema_version": {"const": 1},
     "applications": {"type": "object", "additionalProperties": {"type": "object"}},
     "resources": {"type": "object", "additionalProperties": {"type": "object"}},
-    "runtimes": {"type": "object", "additionalProperties": {"type": "object"}},
-    "ui": {"type": "object", "additionalProperties": true}
+    "runtimes": {"type": "object", "additionalProperties": {"type": "object"}}
   }
 }

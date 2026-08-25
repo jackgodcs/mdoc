@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""mdoc 2.0: one state machine, one Quality Gate, one publishing path."""
+"""mdoc 1.2.0 command line entry point."""
 from __future__ import annotations
 
 import argparse
@@ -15,7 +15,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from mdoc_core import VERSION, claims, screenshots
+from mdoc_core import VERSION, claims, screenshots, workspace as workspace_lifecycle
 from mdoc_core.authoring import prepare as prepare_authoring, submit as submit_authoring
 from mdoc_core.config import load_task, load_workspace, task_directory, validate_schema, validate_task_definition
 from mdoc_core.errors import MdocError
@@ -26,15 +26,35 @@ from mdoc_core.quality import book_check, task_check
 from mdoc_core.state import TERMINAL, book_publish_lock, load_state, save_state, task_lock, transition
 
 
-def emit(value, as_json=True):
+def configure_utf8_console() -> None:
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure:
+            reconfigure(encoding="utf-8", errors="replace")
+
+
+HUMAN_STATUS = {
+    "workspace_draft_created": "工作区草稿已创建。",
+    "waiting_for_workspace_confirmation": "工作区候选配置已生成，等待确认。",
+    "workspace_ready": "工作区配置已确认。",
+    "workspace_local_draft_created": "本机配置草稿已创建。",
+    "waiting_for_workspace_local_confirmation": "本机候选配置已生成，等待确认。",
+    "workspace_local_ready": "本机配置已确认。",
+}
+
+
+def emit(value, as_json=False):
     if as_json:
         print(json.dumps(value, ensure_ascii=False, indent=2))
     else:
-        print(value.get("status", "ok"))
+        if "error" in value:
+            print(value["error"].get("message", "mdoc 命令执行失败。"))
+        else:
+            print(HUMAN_STATUS.get(value.get("status"), value.get("status", "完成。")))
 
 
 def context(args):
-    return load_workspace(args.repository or Path.cwd())
+    return load_workspace(args.workspace or Path.cwd())
 
 
 def task_and_state(args):
@@ -125,7 +145,7 @@ def publish(task, state):
 def launch_screenshot_assistant(task):
     subprocess = __import__("subprocess")
     subprocess.Popen(
-        [sys.executable, str(SCRIPT_DIR / "screenshot_assistant.py"), "--repository", str(task.workspace.repository), "--task", task.task_id],
+        [sys.executable, str(SCRIPT_DIR / "screenshot_assistant.py"), "--workspace", str(task.workspace.repository), "--task", task.task_id],
         cwd=task.workspace.repository,
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
@@ -387,39 +407,53 @@ def cmd_quality(args):
 def parser():
     root = argparse.ArgumentParser(prog="mdoc")
     root.add_argument("--version", action="version", version=f"mdoc {VERSION}")
-    root.add_argument("--repository", type=Path)
-    root.add_argument("--json", action="store_true", default=True)
+    root.add_argument("--workspace", type=Path)
+    root.add_argument("--json", action="store_true")
     sub = root.add_subparsers(dest="command", required=True)
     workspace = sub.add_parser("workspace"); ws = workspace.add_subparsers(dest="workspace_action", required=True)
-    init = ws.add_parser("init"); init.add_argument("--repository", type=Path, required=True); init.add_argument("--draft", type=Path, required=True)
-    apply = ws.add_parser("apply"); apply.add_argument("--repository", type=Path, required=True); apply.add_argument("--confirm", action="store_true")
+    init = ws.add_parser("init"); init.add_argument("--workspace", type=Path, required=True)
+    apply = ws.add_parser("apply"); apply.add_argument("--workspace", type=Path, required=True)
+    confirm = ws.add_parser("confirm"); confirm.add_argument("--workspace", type=Path, required=True)
+    revise = ws.add_parser("revise"); revise.add_argument("--workspace", type=Path, required=True)
+    local = ws.add_parser("local"); local_actions = local.add_subparsers(dest="workspace_local_action", required=True)
+    for name in ("init", "apply", "confirm", "revise"):
+        item = local_actions.add_parser(name); item.add_argument("--workspace", type=Path, required=True)
     task = sub.add_parser("task"); ts = task.add_subparsers(dest="task_action", required=True)
-    create = ts.add_parser("create"); create.add_argument("--repository", type=Path); create.add_argument("--draft", type=Path, required=True); create.add_argument("--no-gui", action="store_true")
+    create = ts.add_parser("create"); create.add_argument("--workspace", type=Path); create.add_argument("--draft", type=Path, required=True); create.add_argument("--no-gui", action="store_true")
     for name in ("continue", "confirm-definition", "accept-screenshots", "submit-authoring", "accept", "cancel", "revise"):
-        item = ts.add_parser(name); item.add_argument("--task", required=True); item.add_argument("--repository", type=Path); item.add_argument("--no-gui", action="store_true")
-    status = ts.add_parser("screenshot-status"); status.add_argument("--task", required=True); status.add_argument("--repository", type=Path); status.add_argument("--item", required=True); status.add_argument("--status", choices=sorted(screenshots.USER_SETTABLE), required=True); status.add_argument("--no-gui", action="store_true")
-    review = ts.add_parser("review"); review.add_argument("--task", required=True); review.add_argument("--repository", type=Path); review.add_argument("--review", choices=("factual_accuracy", "language_quality", "visual_accuracy"), required=True); review.add_argument("--status", choices=("passed", "failed"), required=True); review.add_argument("--no-gui", action="store_true")
-    deletion = ts.add_parser("approve-deletion"); deletion.add_argument("--task", required=True); deletion.add_argument("--repository", type=Path); deletion.add_argument("--target", required=True); deletion.add_argument("--no-gui", action="store_true")
-    quality = sub.add_parser("quality"); qs = quality.add_subparsers(dest="quality_action", required=True); check = qs.add_parser("check"); check.add_argument("--repository", type=Path); targets = check.add_mutually_exclusive_group(required=True); targets.add_argument("--book"); targets.add_argument("--task"); check.add_argument("--profile", choices=("standard", "full", "release")); check.add_argument("--locale"); check.add_argument("--path"); check.add_argument("--changed", action="store_true"); check.add_argument("--published", action="store_true"); check.add_argument("--enforce", action="store_true")
+        item = ts.add_parser(name); item.add_argument("--task", required=True); item.add_argument("--workspace", type=Path); item.add_argument("--no-gui", action="store_true")
+    status = ts.add_parser("screenshot-status"); status.add_argument("--task", required=True); status.add_argument("--workspace", type=Path); status.add_argument("--item", required=True); status.add_argument("--status", choices=sorted(screenshots.USER_SETTABLE), required=True); status.add_argument("--no-gui", action="store_true")
+    review = ts.add_parser("review"); review.add_argument("--task", required=True); review.add_argument("--workspace", type=Path); review.add_argument("--review", choices=("factual_accuracy", "language_quality", "visual_accuracy"), required=True); review.add_argument("--status", choices=("passed", "failed"), required=True); review.add_argument("--no-gui", action="store_true")
+    deletion = ts.add_parser("approve-deletion"); deletion.add_argument("--task", required=True); deletion.add_argument("--workspace", type=Path); deletion.add_argument("--target", required=True); deletion.add_argument("--no-gui", action="store_true")
+    quality = sub.add_parser("quality"); qs = quality.add_subparsers(dest="quality_action", required=True); check = qs.add_parser("check"); check.add_argument("--workspace", type=Path); targets = check.add_mutually_exclusive_group(required=True); targets.add_argument("--book"); targets.add_argument("--task"); check.add_argument("--profile", choices=("standard", "full", "release")); check.add_argument("--locale"); check.add_argument("--path"); check.add_argument("--changed", action="store_true"); check.add_argument("--published", action="store_true"); check.add_argument("--enforce", action="store_true")
     return root
 
 
 def main():
-    args = parser().parse_args()
+    configure_utf8_console()
+    arguments = sys.argv[1:]
+    if "--json" in arguments:
+        arguments = ["--json", *[item for item in arguments if item != "--json"]]
+    args = parser().parse_args(arguments)
     try:
         if args.command == "workspace":
-            result = cmd_workspace_init(args) if args.workspace_action == "init" else cmd_workspace_apply(args)
+            if args.workspace_action == "local":
+                actions = {"init": workspace_lifecycle.local_init, "apply": workspace_lifecycle.local_apply, "confirm": workspace_lifecycle.local_confirm, "revise": workspace_lifecycle.local_revise}
+                result = actions[args.workspace_local_action](args.workspace)
+            else:
+                actions = {"init": workspace_lifecycle.init, "apply": workspace_lifecycle.apply, "confirm": workspace_lifecycle.confirm, "revise": workspace_lifecycle.revise}
+                result = actions[args.workspace_action](args.workspace)
         elif args.command == "task":
             result = cmd_task_create(args) if args.task_action == "create" else cmd_task_action(args)
         else:
             result = cmd_quality(args)
-        emit(result)
+        emit(result, args.json)
         return result.get("exit_code", 0)
     except MdocError as exc:
-        emit(exc.payload())
+        emit(exc.payload(), args.json)
         return 2
     except Exception as exc:
-        emit(MdocError("MDOC-INTERNAL-ERROR", "mdoc encountered an unexpected error.", {"cause": str(exc)}).payload())
+        emit(MdocError("MDOC-INTERNAL-ERROR", "mdoc 遇到内部错误。", {"cause": str(exc)}).payload(), args.json)
         return 2
 
 
