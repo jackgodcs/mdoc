@@ -1,68 +1,25 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
-  "required": [
-    "schema_version",
-    "phase",
-    "task_status",
-    "checks",
-    "blockers"
-  ],
+  "additionalProperties": false,
+  "required": ["schema_version", "task_id", "status", "revision", "definition_confirmation", "definition_snapshot", "screenshots", "screenshot_acceptance", "authoring_submission", "quality_gate", "baselines", "exception_approvals", "scope_claimed", "publish", "waiting_on", "reviews", "history"],
   "properties": {
-    "schema_version": {
-      "const": 2
-    },
-    "phase": {
-      "type": "string"
-    },
-    "task_status": {
-      "enum": [
-        "draft",
-        "generated",
-        "validation_failed",
-        "ready_for_review",
-        "accepted"
-      ]
-    },
-    "checks": {
-      "type": "object"
-    },
-    "blockers": {
-      "type": "array"
-    },
-    "quality_gate": {
-      "type": "object",
-      "properties": {
-        "status": {"enum": ["not_requested", "not_configured", "running", "passed", "completed_with_findings", "blocked", "stale"]},
-        "profile": {"type": ["string", "null"]},
-        "staging_report_digest": {"type": ["string", "null"]},
-        "formal_report_digest": {"type": ["string", "null"]},
-        "build_status": {"type": "string"},
-        "pdf_check_status": {"type": "string"}
-      }
-    },
-    "screenshot_acceptance": {
-      "type": "object",
-      "required": [
-        "status",
-        "method",
-        "manifest_digest"
-      ],
-      "properties": {
-        "status": {
-          "enum": [
-            "pending",
-            "user_accepted",
-            "stale"
-          ]
-        },
-        "method": {
-          "const": "user_screenshot_acceptance"
-        },
-        "manifest_digest": {
-          "type": "string"
-        }
-      }
-    }
+    "schema_version": {"const": 1},
+    "task_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
+    "status": {"enum": ["draft", "waiting_for_definition_confirmation", "waiting_for_screenshots", "waiting_for_screenshot_acceptance", "waiting_for_authoring", "verifying", "waiting_for_resolution", "publishing", "ready_for_review", "accepted", "cancelled"]},
+    "revision": {"type": "integer", "minimum": 0},
+    "definition_confirmation": {"type": ["object", "null"]},
+    "definition_snapshot": {"type": ["object", "null"]},
+    "screenshots": {"type": "object"},
+    "screenshot_acceptance": {"type": ["object", "null"]},
+    "authoring_submission": {"type": ["object", "null"]},
+    "quality_gate": {"type": ["object", "null"]},
+    "baselines": {"type": "object"},
+    "exception_approvals": {"type": "object"},
+    "scope_claimed": {"type": "boolean"},
+    "publish": {"type": "object", "additionalProperties": false, "required": ["transactions"], "properties": {"transactions": {"type": "array"}}},
+    "waiting_on": {"type": ["object", "null"]},
+    "reviews": {"type": "object"},
+    "history": {"type": "array"}
   }
 }

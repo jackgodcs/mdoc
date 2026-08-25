@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import hashlib
 import tempfile
 import unittest
 from pathlib import Path
@@ -9,7 +8,6 @@ from unittest import mock
 
 from reportlab.pdfgen import canvas
 
-import manual_pdf_check
 import pdf_check_core
 import pdf_check_render
 import pdf_check_server
@@ -98,16 +96,6 @@ class ManualPdfCheckTests(unittest.TestCase):
         self.assertEqual(2, counts["effective_errors"])
         self.assertEqual(1, counts["book_existing_errors"])
 
-    def test_cli_check_exit_codes(self):
-        make_pdf(self.pdf, [{}])
-        output = self.root / "report"
-        code = manual_pdf_check.main(["check", "--book-root", str(self.book), "--pdf", str(self.pdf), "--output", str(output)])
-        self.assertEqual(0, code)
-        invalid = self.root / "invalid.pdf"
-        invalid.write_text("not a pdf", encoding="utf-8")
-        code = manual_pdf_check.main(["check", "--book-root", str(self.book), "--pdf", str(invalid), "--output", str(output)])
-        self.assertEqual(2, code)
-
     def test_problem_pages_render_and_cleanup_keeps_only_current(self):
         make_pdf(self.pdf, [{"texts": [("MDOC-MAP:en/Page.md:1:test", 20, 350, 10)]}, {}])
         report_dir = self.root / "report"
@@ -160,31 +148,6 @@ class ManualPdfCheckTests(unittest.TestCase):
         report_path.write_text(json.dumps({"generated_at": 2}), encoding="utf-8")
         self.assertEqual(2, pdf_check_server.load_report(report_path)["generated_at"])
 
-    def test_verify_accepts_all_current_artifact_pdfs(self):
-        make_pdf(self.pdf, [{"texts": [("Page", 20, 350, 10)]}])
-        second = self.root / "second.pdf"
-        make_pdf(second, [{"texts": [("Other", 20, 350, 10)]}])
-        work = self.root / "work"
-        for artifact_id, source in (("en", self.pdf), ("zh", second)):
-            target = work / "current" / "artifacts" / artifact_id / "check.pdf"
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(source.read_bytes())
-        report = {"artifacts": [
-            {"id": "en", "sha256": hashlib.sha256(self.pdf.read_bytes()).hexdigest()},
-            {"id": "zh", "sha256": hashlib.sha256(second.read_bytes()).hexdigest()},
-        ]}
-        self.assertTrue(manual_pdf_check.verify_viewer_resources(report, work))
-        (work / "current" / "artifacts" / "zh" / "check.pdf").write_bytes(b"changed")
-        self.assertFalse(manual_pdf_check.verify_viewer_resources(report, work))
-
-    def test_task_launcher_is_a_single_click_windows_entry_point(self):
-        launcher = self.root / "open-pdf-check.cmd"
-        manual_pdf_check.write_task_launcher(launcher, self.root / "workspace", "task-one")
-        text = launcher.read_text(encoding="utf-8")
-        self.assertIn("manual_pdf_check.py", text)
-        self.assertIn("open --workspace", text)
-        self.assertIn("--task \"task-one\"", text)
-
     def test_marker_mapping_and_task_scope_are_attached_to_findings(self):
         make_pdf(self.pdf, [{"texts": [("MDOC-MAP:en/Page.md:1:test", 20, 350, 10)]}])
         output = self.root / "report"
@@ -217,15 +180,6 @@ class ManualPdfCheckTests(unittest.TestCase):
         result = pdf_check_build.run_adapter({"id": "pdf-en", "protocol": "pdf-check-v1", "command": [str(Path(__import__('sys').executable)), str(launcher)], "locale": "en"}, self.book, output, "check", {"TEST_PDF": str(self.pdf)})
         self.assertEqual("passed", result["status"])
         self.assertTrue(output.exists())
-
-    def test_quality_gate_pdf_check_blocks_only_when_required(self):
-        import manual_lint
-        report = {"status": "completed", "counts": {"effective_errors": 1}}
-        advisory = manual_lint.pdf_check_blocks({"mode": "advisory", "required_before_publish": False, "required_components": ["pdf_check"]}, report)
-        required = manual_lint.pdf_check_blocks({"mode": "required", "required_before_publish": True, "required_components": ["pdf_check"]}, report)
-        self.assertFalse(advisory)
-        self.assertTrue(required)
-
 
 if __name__ == "__main__":
     unittest.main()

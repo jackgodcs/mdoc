@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "applications": {"type": "object", "additionalProperties": {"type": "object"}},
+    "resources": {"type": "object", "additionalProperties": {"type": "object"}},
+    "runtimes": {"type": "object", "additionalProperties": {"type": "object"}},
+    "ui": {"type": "object", "additionalProperties": true}
+  }
+}

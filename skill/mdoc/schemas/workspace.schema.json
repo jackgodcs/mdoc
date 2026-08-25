@@ -1,117 +1,29 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
-  "required": [
-    "schema_version",
-    "workspace",
-    "product",
-    "repository",
-    "manual",
-    "tasks"
-  ],
+  "additionalProperties": false,
+  "required": ["schema_version", "workspace", "product", "books", "quality_gate", "screenshots", "publishing"],
   "properties": {
-    "schema_version": {
-      "const": 2
-    },
-    "workspace": {
-      "type": "object",
-      "required": [
-        "id"
-      ]
-    },
-    "product": {
-      "type": "object",
-      "required": [
-        "profile"
-      ]
-    },
-    "repository": {
-      "type": "object",
-      "required": [
-        "root"
-      ]
-    },
-    "manual": {
-      "type": "object",
-      "required": [
-        "active_version"
-      ]
-    },
-    "tasks": {
-      "type": "object",
-      "required": [
-        "root"
-      ]
-    },
-    "defaults": {
-      "type": "object",
-      "properties": {
-        "interaction_mode": {
-          "enum": [
-            "guided",
-            "review",
-            "automation"
-          ]
-        },
-        "screenshot_capture_mode": {
-          "enum": [
-            "manual",
-            "assisted",
-            "automated"
-          ]
+    "schema_version": {"const": 1},
+    "workspace": {"type": "object", "additionalProperties": false, "required": ["id", "formal_vcs"], "properties": {"id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"}, "formal_vcs": {"enum": ["none", "git", "svn"]}}},
+    "product": {"type": "object", "additionalProperties": false, "required": ["id", "display_name"], "properties": {"id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"}, "display_name": {"type": "string", "minLength": 1}}},
+    "books": {
+      "type": "object", "minProperties": 1,
+      "additionalProperties": {
+        "type": "object", "additionalProperties": false,
+        "required": ["root", "source_locale", "locales", "content_root", "assets_root", "navigation"],
+        "properties": {
+          "root": {"$ref": "#/$defs/relativePath"}, "source_locale": {"type": "string", "minLength": 2},
+          "locales": {"type": "object", "minProperties": 1, "additionalProperties": {"type": "object", "additionalProperties": false, "required": ["root", "language"], "properties": {"root": {"$ref": "#/$defs/relativePath"}, "language": {"enum": ["zh", "en", "ja", "other"]}}}},
+          "content_root": {"$ref": "#/$defs/relativePath"}, "assets_root": {"$ref": "#/$defs/relativePath"},
+          "navigation": {"type": "object", "additionalProperties": false, "required": ["summary"], "properties": {"summary": {"$ref": "#/$defs/relativePath"}}},
+          "release_build_adapter": {"type": "string", "minLength": 1}
         }
       }
     },
-    "validation": {
-      "type": "object",
-      "properties": {
-        "baseline": {"type": "string"},
-        "report_root": {"type": "string"},
-        "build_adapters": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "required": ["id", "command"],
-            "properties": {
-              "id": {"type": "string"},
-              "command": {"type": "array", "minItems": 1, "items": {"type": "string"}},
-              "working_directory": {"type": "string"},
-              "timeout_seconds": {"type": "integer", "minimum": 1},
-              "required": {"type": "boolean"},
-              "component": {"enum": ["html", "pdf", "other"]},
-              "locale": {"type": "string"},
-              "protocol": {"enum": ["legacy", "pdf-check-v1"]}
-            }
-          }
-        },
-        "pdf_check": {
-          "type": "object",
-          "properties": {
-            "artifacts": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "required": ["id", "locale", "source"],
-                "properties": {
-                  "id": {"type": "string"},
-                  "locale": {"type": "string"},
-                  "required": {"type": "boolean"},
-                  "source": {
-                    "type": "object",
-                    "required": ["mode"],
-                    "properties": {
-                      "mode": {"enum": ["existing-pdf", "build"]},
-                      "path": {"type": "string"},
-                      "protocol": {"enum": ["legacy", "pdf-check-v1"]},
-                      "command": {"type": "array", "items": {"type": "string"}}
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
+    "quality_gate": {"type": "object", "additionalProperties": false, "required": ["default_profile", "required_reviews", "safe_fixes"], "properties": {"default_profile": {"enum": ["standard", "full", "release"]}, "required_reviews": {"type": "array", "items": {"enum": ["factual_accuracy", "language_quality", "visual_accuracy"]}, "uniqueItems": true}, "forbidden_terms": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}, "require_summary_links": {"type": "boolean"}, "safe_fixes": {"type": "boolean"}, "rules": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["id", "kind", "pattern", "severity"], "properties": {"id": {"type": "string"}, "kind": {"enum": ["forbid_regex", "require_regex"]}, "pattern": {"type": "string"}, "severity": {"enum": ["error", "warning"]}}}}, "build_adapters": {"type": "object", "additionalProperties": {"type": "object", "additionalProperties": false, "required": ["command"], "properties": {"command": {"type": "array", "minItems": 1, "items": {"type": "string"}}, "artifact": {"$ref": "#/$defs/relativePath"}, "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": 3600}}}}}},
+    "screenshots": {"type": "object", "additionalProperties": false, "required": ["auto_open_assistant"], "properties": {"auto_open_assistant": {"type": "boolean"}}},
+    "publishing": {"type": "object", "additionalProperties": false, "required": ["atomic", "deletion_requires_confirmation", "allow_deletions"], "properties": {"atomic": {"const": true}, "deletion_requires_confirmation": {"const": true}, "allow_deletions": {"type": "boolean"}}}
+  },
+  "$defs": {"relativePath": {"type": "string", "minLength": 1, "pattern": "^(?![A-Za-z]:[\\\\/])(?![/\\\\])(?!.*(?:^|[/\\\\])\\.\\.(?:[/\\\\]|$)).+$"}}
 }
