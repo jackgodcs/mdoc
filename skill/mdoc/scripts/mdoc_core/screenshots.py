@@ -70,7 +70,7 @@ def synchronize(task, state: dict) -> dict:
         if explicit:
             status = explicit
         elif info:
-            status = "accepted" if old.get("status") == "accepted" and old.get("file") == info else "captured"
+            status = "captured"
         else:
             status = "pending"
         current[key] = {
@@ -112,7 +112,7 @@ def accept(task, state: dict) -> dict:
     copies = []
     for requirement, key, locale, capture in declared(task):
         item = state["screenshots"][key]
-        if item["status"] not in {"captured", "accepted"}:
+        if item["status"] != "captured":
             continue
         destination = requirement["destinations"].get(locale)
         if not destination:
@@ -125,7 +125,6 @@ def accept(task, state: dict) -> dict:
         temporary = target.with_name(f".{target.name}.tmp")
         shutil.copy2(capture, temporary)
         temporary.replace(target)
-        state["screenshots"][key]["status"] = "accepted"
     manifest = synchronize(task, state)
     state["screenshot_acceptance"] = {"status": "accepted", "manifest_digest": manifest["digest"], "at": int(time.time())}
     return manifest
