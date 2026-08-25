@@ -42,6 +42,7 @@ def prepare(task) -> dict:
         request_evidence.append({"id": item["id"], "kind": item["kind"], "location": item["location"], "value": value, "supports": list(item["supports"]), "critical": item["critical"]})
     request = {"schema_version": 1, "task_id": task.task_id, "definition_digest": task.digest, "files": files, "evidence": request_evidence}
     write_json_atomic(task.directory / "authoring-request.json", request)
+    write_json_atomic(task.directory / "evidence-request.json", {"schema_version": 1, "task_id": task.task_id, "definition_digest": task.digest, "evidence": request_evidence})
     return request
 
 

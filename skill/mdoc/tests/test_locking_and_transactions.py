@@ -8,6 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from skill.mdoc.scripts.mdoc_core.errors import MdocError
+from skill.mdoc.scripts.mdoc_core.io import file_digest
 from skill.mdoc.scripts.mdoc_core.locking import task_lock
 from skill.mdoc.scripts.mdoc_core.transactions import execute, recover
 
@@ -44,12 +45,37 @@ class LockingAndTransactionTests(unittest.TestCase):
             unrelated.write_text("keep", encoding="utf-8")
             task = SimpleNamespace(task_id="one", directory=directory)
             state = {"publish": {"transactions": []}}
-            plan = {"revision": 1, "operations": [{"action": "update", "target": "zh/page.md", "formal": str(formal), "staged": str(staged)}]}
+            plan = {"revision": 1, "operations": [{
+                "action": "update", "target": "zh/page.md", "formal": str(formal), "staged": str(staged),
+                "expected_before_sha256": file_digest(formal), "staged_sha256": file_digest(staged),
+            }]}
             with self.assertRaises(MdocError):
                 execute(task, state, plan, lambda: {"status": "blocked", "digest": "failed"})
             self.assertEqual("before", formal.read_text(encoding="utf-8"))
             self.assertEqual("keep", unrelated.read_text(encoding="utf-8"))
             self.assertEqual("rolled_back", state["publish"]["transactions"][0]["status"])
+
+    def test_transaction_rejects_target_changed_after_plan(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            directory = Path(root) / "task"
+            formal = Path(root) / "book" / "page.md"
+            staged = directory / "staging" / "page.md"
+            formal.parent.mkdir(parents=True)
+            staged.parent.mkdir(parents=True)
+            formal.write_text("baseline", encoding="utf-8")
+            staged.write_text("candidate", encoding="utf-8")
+            baseline = file_digest(formal)
+            formal.write_text("external", encoding="utf-8")
+            task = SimpleNamespace(task_id="one", directory=directory)
+            state = {"publish": {"transactions": []}}
+            plan = {"revision": 1, "operations": [{
+                "action": "update", "target": "zh/page.md", "formal": str(formal), "staged": str(staged),
+                "expected_before_sha256": baseline, "staged_sha256": file_digest(staged),
+            }]}
+            with self.assertRaises(MdocError) as caught:
+                execute(task, state, plan, lambda: {"status": "passed"})
+            self.assertEqual("MDOC-PUBLISH-CONFLICT", caught.exception.code)
+            self.assertEqual("external", formal.read_text(encoding="utf-8"))
 
     def test_started_transaction_is_recovered_idempotently(self) -> None:
         with tempfile.TemporaryDirectory() as root:

@@ -4,6 +4,7 @@ import shutil
 import struct
 import time
 import zlib
+from collections.abc import Mapping
 from pathlib import Path
 
 from .errors import MdocError
@@ -61,6 +62,24 @@ def declared(task) -> list[tuple[dict, str, str, Path]]:
 
 
 def synchronize(task, state: dict) -> dict:
+    plan = task.definition["locale_plan"]
+    requirements = {item["id"]: item for item in task.definition["screenshots"]}
+    for requirement_id, requirement in requirements.items():
+        for locale in requirement["locales"]:
+            strategy = plan["targets"].get(locale, {}).get("screenshots")
+            if not isinstance(strategy, Mapping):
+                continue
+            source_locale = strategy["copy_from"]
+            if source_locale not in requirement["locales"]:
+                raise MdocError("MDOC-SCREENSHOT-COPY-SOURCE-MISSING", "截图 copy_from 来源语言未声明同一截图。", {"id": requirement_id, "locale": locale, "source": source_locale})
+            source = task.directory / "captures" / source_locale / requirement["filename"]
+            target = task.directory / "captures" / locale / requirement["filename"]
+            source_info = png_info(source)
+            if source_info and (not target.is_file() or file_digest(target) != source_info["sha256"]):
+                target.parent.mkdir(parents=True, exist_ok=True)
+                temporary = target.with_name(f".{target.name}.tmp")
+                shutil.copyfile(source, temporary)
+                temporary.replace(target)
     previous = state.get("screenshots", {})
     current = {}
     for requirement, key, locale, target in declared(task):

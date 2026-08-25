@@ -3,6 +3,7 @@ from __future__ import annotations
 import subprocess
 import sys
 import time
+import copy
 from pathlib import Path
 
 from . import claims, screenshots
@@ -10,7 +11,7 @@ from .adapters import import_generator_outputs
 from .authoring import prepare as prepare_authoring, submit as submit_authoring
 from .config import load_task, load_workspace
 from .errors import MdocError
-from .io import canonical_digest, file_digest, write_json_atomic
+from .io import canonical_digest, file_digest, write_json_atomic, write_yaml_atomic
 from .locking import book_publish_lock, task_lock
 from .models import thaw
 from .paths import changes
@@ -20,7 +21,7 @@ from .state import TERMINAL, load_state, save_state, transition
 from .transactions import execute as execute_transaction, recover as recover_transactions
 
 
-SCRIPT_DIR = Path(__file__).resolve().parents[1] / "scripts"
+SCRIPT_DIR = Path(__file__).resolve().parents[1]
 
 
 def load(workspace_path: Path, task_id: str):
@@ -108,9 +109,9 @@ def continue_task(task, state: dict, *, no_gui: bool = False, quality_check=task
             return transition(state, "waiting_for_resolution", "quality_gate_blocked", {"kind": "quality_gate_findings", "report": report["path"], "blocking_count": report.get("blocking_count", 0)})
     transition(state, "publishing", "quality_gate_passed")
     try:
-        plan = publish_plan(task, state)
-        write_json_atomic(task.directory / "reports" / f"publish-plan-r{plan['revision']}.json", plan)
         with book_publish_lock(task):
+            plan = publish_plan(task, state)
+            write_json_atomic(task.directory / "reports" / f"publish-plan-r{plan['revision']}.json", plan)
             execute_transaction(task, state, plan, lambda: quality_check(task, state, published=True))
     except MdocError as exc:
         if exc.code == "MDOC-PUBLISH-CONFLICT":
@@ -129,6 +130,8 @@ def act(workspace_path: Path, task_id: str, action: str, *, no_gui: bool = False
         screenshots.synchronize(task, state)
         return state
     with task_lock(task):
+        if state["status"] in TERMINAL and action != "continue":
+            raise MdocError("MDOC-TASK-TERMINAL", "终态任务不能再次修改。")
         if action == "continue":
             continue_task(task, state, no_gui=no_gui)
         elif action == "confirm-definition":
@@ -150,6 +153,9 @@ def act(workspace_path: Path, task_id: str, action: str, *, no_gui: bool = False
         elif action == "screenshot-status":
             screenshots.set_status(task, state, item or "", screenshot_status or "")
             continue_task(task, state, no_gui=no_gui)
+        elif action == "screenshots-open":
+            launch_screenshot_assistant(task)
+            return {"status": "screenshot_assistant_opened", "task_id": task.task_id}
         elif action == "submit-authoring":
             submit_authoring(task, state)
             state["quality_gate"] = None
@@ -188,5 +194,24 @@ def act(workspace_path: Path, task_id: str, action: str, *, no_gui: bool = False
             state["baselines"] = baselines(task)
             prepare_authoring(task)
             transition(state, "waiting_for_authoring", "revision_requested", {"kind": "authoring", "request": str(task.directory / "authoring-request.json")})
+        elif action == "revise":
+            if state["status"] in TERMINAL:
+                raise MdocError("MDOC-TASK-TERMINAL", "终态任务不能修订。")
+            draft = copy.deepcopy(thaw(task.definition))
+            draft.pop("manifest", None)
+            draft.pop("definition_digest", None)
+            if "generator" in draft:
+                draft["generator"] = {"id": draft["generator"]["id"], "inputs": draft["generator"].get("inputs", {})}
+            write_yaml_atomic(task.directory / "task-draft.yaml", draft)
+            if state.get("scope_claimed"):
+                claims.release(task)
+                state["scope_claimed"] = False
+            state["definition_confirmation"] = None
+            state["definition_snapshot"] = None
+            state["screenshot_acceptance"] = None
+            state["authoring_submission"] = None
+            state["quality_gate"] = None
+            state["reviews"] = {}
+            transition(state, "draft", "definition_revision_requested", {"kind": "definition_draft", "draft": str(task.directory / "task-draft.yaml")})
         save_state(state_path, state)
     return state

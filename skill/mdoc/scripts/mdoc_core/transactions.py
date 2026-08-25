@@ -55,6 +55,13 @@ def execute(task, state: dict, publish_plan: dict, post_check) -> dict:
     try:
         for operation in publish_plan["operations"]:
             target = Path(operation["formal"])
+            current = file_digest(target) if target.is_file() else None
+            if current != operation.get("expected_before_sha256"):
+                raise MdocError("MDOC-PUBLISH-CONFLICT", "发布锁内目标已发生变化。", {"target": operation["target"]})
+            if operation["action"] != "delete":
+                staged = Path(operation["staged"])
+                if not staged.is_file() or file_digest(staged) != operation.get("staged_sha256"):
+                    raise MdocError("MDOC-PUBLISH-SOURCE-CHANGED", "发布锁内 staging 源已发生变化。", {"target": operation["target"]})
             backup = backups / operation["target"]
             existed = target.is_file()
             if existed:
@@ -67,8 +74,10 @@ def execute(task, state: dict, publish_plan: dict, post_check) -> dict:
             else:
                 target.parent.mkdir(parents=True, exist_ok=True)
                 temporary = target.with_name(f".{target.name}.{transaction_id}.tmp")
-                shutil.copy2(operation["staged"], temporary)
+                shutil.copy2(staged, temporary)
                 os.replace(temporary, target)
+            record["files"][-1]["after_sha256"] = file_digest(target) if target.is_file() else None
+            write_json_atomic(root / "transaction.json", record)
         report = post_check()
         if report["status"] != "passed":
             raise MdocError("MDOC-PUBLISHED-QUALITY-FAILED", "发布后的 Quality Gate 未通过。", {"report": report.get("digest")})

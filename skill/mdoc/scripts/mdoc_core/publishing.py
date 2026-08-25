@@ -27,7 +27,12 @@ def plan(task, state: dict) -> dict:
             conflicts.append({"target": key, "reason": "target_changed"})
         elif item["action"] == "delete" and not state["exception_approvals"].get(f"delete:{key}"):
             conflicts.append({"target": key, "reason": "deletion_not_approved"})
-        operations.append({"action": item["action"], "target": key, "formal": str(formal), "staged": str(staged) if item["action"] != "delete" else None})
+        operations.append({
+            "action": item["action"], "target": key, "formal": str(formal),
+            "staged": str(staged) if item["action"] != "delete" else None,
+            "expected_before_sha256": current,
+            "staged_sha256": file_digest(staged) if item["action"] != "delete" and staged.is_file() else None,
+        })
     if conflicts:
         raise MdocError("MDOC-PUBLISH-CONFLICT", "发布目标需要人工处理。", {"conflicts": conflicts})
     return {"schema_version": 1, "task_id": task.task_id, "revision": state["revision"] + 1, "operations": operations}

@@ -84,7 +84,7 @@ class TaskLifecycleCliTests(unittest.TestCase):
         state = cli("task", "continue", "--workspace", str(self.workspace), "--task", "screenshots", "--no-gui", "--json")
         self.assertEqual("waiting_for_screenshot_acceptance", state["status"])
         self.assertEqual("captured", state["screenshots"]["MAIN-WINDOW:zh"]["status"])
-        state = cli("task", "accept-screenshots", "--workspace", str(self.workspace), "--task", "screenshots", "--no-gui", "--json")
+        state = cli("task", "screenshots", "accept", "--workspace", str(self.workspace), "--task", "screenshots", "--no-gui", "--json")
         self.assertEqual("waiting_for_authoring", state["status"])
         self.assertEqual("captured", state["screenshots"]["MAIN-WINDOW:zh"]["status"])
         self.assertEqual(capture.read_bytes(), (directory / "staging" / "zh" / "images" / "window.png").read_bytes())
@@ -140,6 +140,64 @@ class TaskLifecycleCliTests(unittest.TestCase):
         state = cli("task", "submit-authoring", "--workspace", str(self.workspace), "--task", "copy-locale", "--no-gui", "--json")
         self.assertEqual("ready_for_review", state["status"])
         self.assertEqual(source.read_bytes(), (en / "Main" / "Copied.md").read_bytes())
+
+    def test_definition_revision_releases_scope_and_requires_confirmation_again(self) -> None:
+        directory = self.define_simple_task("revision-owner")
+        cli("task", "confirm-definition", "--workspace", str(self.workspace), "--task", "revision-owner", "--no-gui", "--json")
+        revised = cli("task", "revise", "--workspace", str(self.workspace), "--task", "revision-owner", "--no-gui", "--json")
+        self.assertEqual("draft", revised["status"])
+        self.assertFalse(revised["scope_claimed"])
+        draft_path = directory / "task-draft.yaml"
+        draft = YAML(typ="safe").load(draft_path.read_text(encoding="utf-8"))
+        draft["scope"]["pages"]["create"][0]["path"] = "Main/Revised.md"
+        draft["evidence"][0]["supports"] = ["zh/Main/Revised.md"]
+        write_yaml(draft_path, draft)
+        defined = cli("task", "define", "--workspace", str(self.workspace), "--task", "revision-owner", "--json")
+        self.assertEqual("waiting_for_definition_confirmation", defined["status"])
+        state = cli("task", "confirm-definition", "--workspace", str(self.workspace), "--task", "revision-owner", "--no-gui", "--json")
+        self.assertEqual("waiting_for_authoring", state["status"])
+        self.assertEqual("Main/Revised.md", state["definition_snapshot"]["manifest"][0]["path"])
+
+    def test_cancel_releases_scope_and_terminal_tasks_cannot_reopen(self) -> None:
+        self.define_simple_task("cancelled-owner")
+        cli("task", "confirm-definition", "--workspace", str(self.workspace), "--task", "cancelled-owner", "--no-gui", "--json")
+        plan = cli("task", "cancel", "--workspace", str(self.workspace), "--task", "cancelled-owner", "--json")
+        self.assertEqual("cancellation_planned", plan["status"])
+        state = cli("task", "cancel", "--workspace", str(self.workspace), "--task", "cancelled-owner", "--confirm", "--json")
+        self.assertEqual("cancelled", state["status"])
+        self.assertFalse(state["scope_claimed"])
+        error = cli("task", "revise", "--workspace", str(self.workspace), "--task", "cancelled-owner", "--json", expected=2)
+        self.assertEqual("MDOC-TASK-TERMINAL", error["error"]["code"])
+
+    def test_screenshot_copy_from_is_cli_owned_and_byte_identical(self) -> None:
+        en = self.workspace / "Guide" / "en"
+        (en / "Main").mkdir(parents=True)
+        (en / "images").mkdir()
+        (en / "Summary.md").write_text("# Guide\n", encoding="utf-8")
+        cli("workspace", "revise", "--workspace", str(self.workspace), "--json")
+        write_yaml(self.workspace / ".mdoc" / "workspace-draft.yaml", valid_workspace())
+        cli("workspace", "apply", "--workspace", str(self.workspace), "--json")
+        cli("workspace", "confirm", "--workspace", str(self.workspace), "--json")
+        directory = self.define_simple_task("screenshot-copy")
+        path = directory / "task-draft.yaml"
+        draft = YAML(typ="safe").load(path.read_text(encoding="utf-8"))
+        draft["scope"]["locales"] = ["zh", "en"]
+        draft["scope"]["assets"]["create"] = [
+            {"locale": "zh", "path": "images/window.png"},
+            {"locale": "en", "path": "images/window.png"},
+        ]
+        draft["locale_plan"] = {"source": "zh", "targets": {"en": {"content": "not_applicable", "screenshots": {"copy_from": "zh"}}}}
+        draft["screenshots"] = [{"id": "WINDOW", "filename": "window.png", "locales": ["zh", "en"], "required": True, "destinations": {"zh": "images/window.png", "en": "images/window.png"}}]
+        write_yaml(path, draft)
+        cli("task", "define", "--workspace", str(self.workspace), "--task", "screenshot-copy", "--json")
+        cli("task", "confirm-definition", "--workspace", str(self.workspace), "--task", "screenshot-copy", "--no-gui", "--json")
+        source = directory / "captures" / "zh" / "window.png"
+        source.parent.mkdir(parents=True)
+        Image.new("RGB", (14, 9), "green").save(source)
+        state = cli("task", "continue", "--workspace", str(self.workspace), "--task", "screenshot-copy", "--no-gui", "--json")
+        self.assertEqual("waiting_for_screenshot_acceptance", state["status"])
+        copied = directory / "captures" / "en" / "window.png"
+        self.assertEqual(source.read_bytes(), copied.read_bytes())
 
 
 if __name__ == "__main__":

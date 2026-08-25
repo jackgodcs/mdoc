@@ -70,8 +70,8 @@ class RegionSelector:
 
 
 class Assistant:
-    def __init__(self, repository: Path, task_id: str):
-        self.repository = repository.resolve()
+    def __init__(self, workspace_path: Path, task_id: str):
+        self.repository = workspace_path.resolve()
         self.task_id = task_id
         self.workspace = load_workspace(self.repository)
         self.task = load_task(self.workspace, task_id)
@@ -112,7 +112,7 @@ class Assistant:
         self.detail.pack(fill="x", pady=8)
 
     def command(self, *arguments):
-        complete = subprocess.run([sys.executable, str(SCRIPT_DIR / "mdoc.py"), *arguments, "--repository", str(self.repository), "--no-gui"], capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
+        complete = subprocess.run([sys.executable, str(SCRIPT_DIR / "mdoc.py"), *arguments, "--workspace", str(self.repository), "--no-gui", "--json"], capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
         if complete.returncode not in {0, 3}:
             messagebox.showerror("mdoc", complete.stdout or complete.stderr)
             return None
@@ -180,11 +180,11 @@ class Assistant:
     def set_status(self, status):
         key = self.selected()
         if key:
-            self.command("task", "screenshot-status", "--task", self.task_id, "--item", key, "--status", status)
+            self.command("task", "screenshots", "set-status", "--task", self.task_id, "--item", key, "--status", status)
             self.refresh()
 
     def accept(self):
-        result = self.command("task", "accept-screenshots", "--task", self.task_id)
+        result = self.command("task", "screenshots", "accept", "--task", self.task_id)
         if result is not None:
             messagebox.showinfo("mdoc", "截图已验收，任务可以继续编写。")
             self.refresh()
@@ -195,10 +195,10 @@ class Assistant:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--repository", type=Path, required=True)
+    parser.add_argument("--workspace", type=Path, required=True)
     parser.add_argument("--task", required=True)
     args = parser.parse_args()
-    Assistant(args.repository, args.task).run()
+    Assistant(args.workspace, args.task).run()
     return 0
 
 

@@ -7,7 +7,7 @@ from .adapters import define_generator
 from .config import load_workspace, task_directory, validate_schema
 from .errors import MdocError
 from .io import canonical_digest, read_yaml, relative_path, write_yaml_atomic
-from .state import initial_state, save_state, transition
+from .state import initial_state, load_state, save_state, transition
 
 
 INTENTS = {"create_module", "add_feature", "update_content", "add_locale"}
@@ -174,7 +174,17 @@ def define(workspace_path: Path, task_id: str) -> dict:
     normalized["definition_digest"] = canonical_digest(normalized)
     validate_schema(normalized, "task.schema.json", "task.yaml")
     write_yaml_atomic(directory / "task.yaml", normalized)
-    state = initial_state(task_id)
+    state_path = directory / "task-state.json"
+    state = load_state(state_path, task_id) if state_path.is_file() else initial_state(task_id)
+    state["definition_confirmation"] = None
+    state["definition_snapshot"] = None
+    state["screenshots"] = {}
+    state["screenshot_acceptance"] = None
+    state["authoring_submission"] = None
+    state["quality_gate"] = None
+    state["baselines"] = {}
+    state["exception_approvals"] = {}
+    state["reviews"] = {}
     transition(state, "waiting_for_definition_confirmation", "task_defined", {"kind": "definition_confirmation", "digest": normalized["definition_digest"]})
-    save_state(directory / "task-state.json", state)
+    save_state(state_path, state)
     return {"status": state["status"], "task_id": task_id, "definition_digest": normalized["definition_digest"], "manifest": manifest}
