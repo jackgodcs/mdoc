@@ -24,7 +24,7 @@ def _lock(workspace):
 
 def _targets(task) -> list[str]:
     book = task.definition["task"]["book"]
-    return sorted(f"{book}/{item['locale']}/{item['path'].replace(chr(92), '/')}" for item in task.definition["changes"])
+    return sorted(f"{book}/{item['locale']}/{item['path'].replace(chr(92), '/')}" for item in task.definition["manifest"])
 
 
 def claim(task) -> None:

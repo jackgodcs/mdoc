@@ -24,6 +24,7 @@ from mdoc_core.models import thaw
 from mdoc_core.paths import changes
 from mdoc_core.quality import book_check, task_check
 from mdoc_core.state import TERMINAL, book_publish_lock, load_state, save_state, task_lock, transition
+from mdoc_core.task_definition import create as create_task_draft, define as define_task
 
 
 def configure_utf8_console() -> None:
@@ -40,6 +41,9 @@ HUMAN_STATUS = {
     "workspace_local_draft_created": "本机配置草稿已创建。",
     "waiting_for_workspace_local_confirmation": "本机候选配置已生成，等待确认。",
     "workspace_local_ready": "本机配置已确认。",
+    "task_draft_created": "任务草稿已创建。",
+    "waiting_for_definition_confirmation": "任务定义已生成，等待确认。",
+    "waiting_for_authoring": "等待在受控 staging 中完成编写。",
 }
 
 
@@ -192,7 +196,7 @@ def continue_task(task, state, no_gui=False):
                 return transition(state, "waiting_for_authoring", "authoring_incomplete", {"kind": "authoring", "request": str(request_path), "error": exc.payload()["error"]})
             return transition(state, "waiting_for_resolution", "authoring_scope_blocked", {"kind": "authoring", "error": exc.payload()["error"]})
     current_files = {f"{item['locale']}/{item['path']}": file_digest(staged) for item, _formal, staged in changes(task) if item["action"] != "delete" and staged.is_file()}
-    expected_count = sum(item["action"] != "delete" for item in task.definition["changes"])
+    expected_count = sum(item["action"] != "delete" for item in task.definition["manifest"])
     if len(current_files) != expected_count:
         return transition(state, "waiting_for_authoring", "authoring_incomplete", {"kind": "authoring", "request": str(request_path)})
     if state["authoring_submission"].get("files") != current_files:
@@ -344,7 +348,7 @@ def cmd_task_action(args):
         elif args.task_action == "approve-deletion":
             if (state.get("waiting_on") or {}).get("kind") in {"definition_changed", "workspace_changed"}:
                 raise MdocError("MDOC-DELETION-APPROVAL-NOT-EDITABLE", "Deletion approval cannot be changed until configuration drift is resolved.")
-            declared = {f"{item['locale']}/{item['path']}" for item in task.definition["changes"] if item["action"] == "delete"}
+            declared = {f"{item['locale']}/{item['path']}" for item in task.definition["manifest"] if item["action"] == "delete"}
             if args.target not in declared:
                 raise MdocError("MDOC-DELETION-TARGET-INVALID", "Deletion approval must name a declared delete target.", {"target": args.target})
             if state["status"] in TERMINAL or state["status"] == "ready_for_review":
@@ -419,7 +423,8 @@ def parser():
     for name in ("init", "apply", "confirm", "revise"):
         item = local_actions.add_parser(name); item.add_argument("--workspace", type=Path, required=True)
     task = sub.add_parser("task"); ts = task.add_subparsers(dest="task_action", required=True)
-    create = ts.add_parser("create"); create.add_argument("--workspace", type=Path); create.add_argument("--draft", type=Path, required=True); create.add_argument("--no-gui", action="store_true")
+    create = ts.add_parser("create"); create.add_argument("--workspace", type=Path, required=True); create.add_argument("--task", required=True); create.add_argument("--book", required=True); create.add_argument("--intent", choices=("create_module", "add_feature", "update_content", "add_locale"), required=True)
+    define = ts.add_parser("define"); define.add_argument("--workspace", type=Path, required=True); define.add_argument("--task", required=True)
     for name in ("continue", "confirm-definition", "accept-screenshots", "submit-authoring", "accept", "cancel", "revise"):
         item = ts.add_parser(name); item.add_argument("--task", required=True); item.add_argument("--workspace", type=Path); item.add_argument("--no-gui", action="store_true")
     status = ts.add_parser("screenshot-status"); status.add_argument("--task", required=True); status.add_argument("--workspace", type=Path); status.add_argument("--item", required=True); status.add_argument("--status", choices=sorted(screenshots.USER_SETTABLE), required=True); status.add_argument("--no-gui", action="store_true")
@@ -444,7 +449,12 @@ def main():
                 actions = {"init": workspace_lifecycle.init, "apply": workspace_lifecycle.apply, "confirm": workspace_lifecycle.confirm, "revise": workspace_lifecycle.revise}
                 result = actions[args.workspace_action](args.workspace)
         elif args.command == "task":
-            result = cmd_task_create(args) if args.task_action == "create" else cmd_task_action(args)
+            if args.task_action == "create":
+                result = create_task_draft(args.workspace, args.task, args.book, args.intent)
+            elif args.task_action == "define":
+                result = define_task(args.workspace, args.task)
+            else:
+                result = cmd_task_action(args)
         else:
             result = cmd_quality(args)
         emit(result, args.json)

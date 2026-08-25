@@ -31,5 +31,5 @@ def staged_target(task, locale: str, raw: str) -> Path:
 
 
 def changes(task) -> Iterable[tuple[dict, Path, Path]]:
-    for change in task.definition["changes"]:
+    for change in task.definition["manifest"]:
         yield change, formal_target(task, change["locale"], change["path"]), staged_target(task, change["locale"], change["path"])

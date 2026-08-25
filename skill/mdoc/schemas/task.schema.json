@@ -1,18 +1,24 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "type": "object", "additionalProperties": false,
-  "required": ["schema_version", "task", "changes", "locales", "screenshots", "evidence", "quality_gate"],
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "task", "scope", "locale_plan", "screenshots", "evidence", "quality_gate", "manifest", "definition_digest"],
   "properties": {
     "schema_version": {"const": 1},
-    "task": {"type": "object", "additionalProperties": false, "required": ["id", "book", "intent", "title"], "properties": {"id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"}, "book": {"type": "string", "minLength": 1}, "intent": {"enum": ["create_module", "add_feature", "update_content", "add_locale"]}, "title": {"type": "string", "minLength": 1}}},
-    "changes": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["action", "locale", "path", "kind"], "properties": {"action": {"enum": ["create", "update", "delete"]}, "locale": {"type": "string", "minLength": 2}, "path": {"$ref": "#/$defs/relativePath"}, "kind": {"enum": ["page", "asset", "navigation"]}, "template": {"type": "string"}, "evidence": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}}}},
-    "locales": {"type": "object", "minProperties": 1, "additionalProperties": {"type": "object", "additionalProperties": false, "required": ["content", "screenshots"], "properties": {"content": {"$ref": "#/$defs/strategy"}, "screenshots": {"$ref": "#/$defs/strategy"}}}},
-    "screenshots": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["id", "filename", "locales", "required", "destinations"], "properties": {"id": {"type": "string", "pattern": "^[A-Z0-9][A-Z0-9-]*$"}, "filename": {"type": "string", "pattern": "^[^/\\\\]+\\.png$"}, "required": {"type": "boolean"}, "locales": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}}, "description": {"type": "string"}, "destinations": {"type": "object", "minProperties": 1, "additionalProperties": {"$ref": "#/$defs/relativePath"}}}}},
-    "evidence": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["id", "kind", "binding", "supports", "required", "critical"], "properties": {"id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"}, "kind": {"enum": ["official_document", "application", "source", "existing_manual", "screenshot", "inference"]}, "binding": {"type": "string", "pattern": "^(applications|resources|runtimes)\\.[a-zA-Z0-9_-]+$"}, "supports": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}}, "required": {"type": "boolean"}, "critical": {"type": "boolean"}}}},
-    "quality_gate": {"type": "object", "additionalProperties": false, "required": ["profile", "required_reviews"], "properties": {"profile": {"enum": ["standard", "full", "release"]}, "required_reviews": {"type": "array", "uniqueItems": true, "items": {"enum": ["factual_accuracy", "language_quality", "visual_accuracy"]}}, "build_adapter": {"type": "string", "minLength": 1}}}
-  },
-  "$defs": {
-    "relativePath": {"type": "string", "minLength": 1, "pattern": "^(?![A-Za-z]:[\\\\/])(?![/\\\\])(?!.*(?:^|[/\\\\])\\.\\.(?:[/\\\\]|$)).+$"},
-    "strategy": {"oneOf": [{"enum": ["rewrite", "independent", "not_applicable"]}, {"type": "object", "additionalProperties": false, "required": ["copy_from"], "properties": {"copy_from": {"type": "string", "minLength": 2}}}]}
+    "task": {"type": "object", "additionalProperties": false, "required": ["id", "book", "intent", "title"], "properties": {"id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"}, "book": {"type": "string"}, "intent": {"enum": ["create_module", "add_feature", "update_content", "add_locale"]}, "title": {"type": "string", "minLength": 1}}},
+    "scope": {"type": "object"},
+    "locale_plan": {"type": "object"},
+    "screenshots": {"type": "array"},
+    "evidence": {"type": "array"},
+    "generator": {"type": "object"},
+    "quality_gate": {"type": "object"},
+    "manifest": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["action", "locale", "path", "kind", "evidence"],
+        "properties": {"action": {"enum": ["create", "update", "delete"]}, "locale": {"type": "string"}, "path": {"type": "string", "minLength": 1}, "kind": {"enum": ["page", "asset", "navigation"]}, "evidence": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}, "template": {"type": "string"}}
+      }
+    },
+    "definition_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
   }
 }

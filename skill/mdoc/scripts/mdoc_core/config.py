@@ -231,5 +231,13 @@ def validate_task_definition(
 
 def load_task(workspace: WorkspaceContext, task_id: str) -> TaskContext:
     directory = task_directory(workspace, task_id)
-    return validate_task_definition(workspace, task_id, read_yaml(directory / "task.yaml"))
-
+    definition = read_yaml(directory / "task.yaml")
+    validate_schema(definition, "task.schema.json", "task.yaml")
+    if definition["task"]["id"] != task_id:
+        raise MdocError("MDOC-TASK-ID-MISMATCH", "任务目录与 task.yaml ID 不一致。")
+    expected = definition.pop("definition_digest")
+    actual = canonical_digest(definition)
+    definition["definition_digest"] = expected
+    if expected != actual:
+        raise MdocError("MDOC-TASK-DEFINITION-DIGEST-INVALID", "task.yaml 内容与 definition_digest 不一致。", {"expected": expected, "actual": actual})
+    return TaskContext(workspace, task_id, directory, freeze(definition), expected)

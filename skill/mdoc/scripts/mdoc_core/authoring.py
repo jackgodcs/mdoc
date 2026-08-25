@@ -22,7 +22,12 @@ def prepare(task) -> dict:
             "kind": change["kind"], "staging_path": str(staged),
         })
     local = task.workspace.local
-    request = {"schema_version": 1, "task_id": task.task_id, "definition_digest": task.digest, "files": files, "evidence": [{"id": item["id"], "kind": item["kind"], "binding": item["binding"], "value": thaw(local.get(item["binding"].split(".", 1)[0], {}).get(item["binding"].split(".", 1)[1])), "supports": list(item["supports"]), "critical": item["critical"]} for item in task.definition["evidence"]]}
+    request_evidence = []
+    for item in task.definition["evidence"]:
+        binding = item["location"].split(":", 1)[1]
+        value = thaw(local.get("resources", {}).get(binding) or local.get("applications", {}).get(binding))
+        request_evidence.append({"id": item["id"], "kind": item["kind"], "location": item["location"], "value": value, "supports": list(item["supports"]), "critical": item["critical"]})
+    request = {"schema_version": 1, "task_id": task.task_id, "definition_digest": task.digest, "files": files, "evidence": request_evidence}
     write_json_atomic(task.directory / "authoring-request.json", request)
     return request
 

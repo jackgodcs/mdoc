@@ -132,7 +132,7 @@ def _summary_findings(locale: Path, locale_id: str, book: dict, files: Iterable[
 def _task_summary_findings(task, published: bool) -> list[dict]:
     book = book_definition(task)
     results = []
-    for locale_id in task.definition["locales"]:
+    for locale_id in task.definition["scope"]["locales"]:
         root = locale_root(task, locale_id)
         content = (root / book["content_root"]).resolve()
         page_records = [(item, formal, staged) for item, formal, staged in changes(task) if item["locale"] == locale_id and item["kind"] == "page" and item["action"] != "delete" and content in formal.resolve().parents]
