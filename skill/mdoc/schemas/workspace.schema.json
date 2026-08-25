@@ -67,7 +67,16 @@
       "type": "object", "additionalProperties": false, "required": ["command"],
       "properties": {
         "command": {"type": "array", "minItems": 1, "items": {"type": "string"}},
-        "inputs": {"type": "array", "items": {"$ref": "#/$defs/relativePath"}}, "outputs": {"type": "object"},
+        "inputs": {"type": "array", "items": {"$ref": "#/$defs/relativePath"}, "uniqueItems": true},
+        "outputs": {
+          "type": "object", "additionalProperties": false,
+          "required": ["root", "pattern", "kind", "locale"],
+          "properties": {
+            "root": {"$ref": "#/$defs/relativePath"}, "pattern": {"type": "string", "minLength": 1},
+            "kind": {"enum": ["page", "asset"]}, "locale": {"type": "string", "minLength": 1},
+            "min_count": {"type": "integer", "minimum": 1}, "max_count": {"type": "integer", "minimum": 1}
+          }
+        },
         "artifact": {"$ref": "#/$defs/relativePath"}, "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": 3600}
       }
     }

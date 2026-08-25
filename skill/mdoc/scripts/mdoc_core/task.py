@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 
 from . import claims, screenshots
+from .adapters import import_generator_outputs
 from .authoring import prepare as prepare_authoring, submit as submit_authoring
 from .config import load_task, load_workspace
 from .errors import MdocError
@@ -135,6 +136,7 @@ def act(workspace_path: Path, task_id: str, action: str, *, no_gui: bool = False
             state["definition_confirmation"] = {"digest": task.digest, "workspace_digest": task.workspace.digest, "at": int(time.time())}
             state["definition_snapshot"] = thaw(task.definition)
             state["baselines"] = baselines(task)
+            import_generator_outputs(task)
             transition(state, "draft", "definition_confirmed")
             continue_task(task, state, no_gui=no_gui)
         elif action == "accept-screenshots":

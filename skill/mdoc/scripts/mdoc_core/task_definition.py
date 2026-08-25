@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 from pathlib import Path
 
+from .adapters import define_generator
 from .config import load_workspace, task_directory, validate_schema
 from .errors import MdocError
 from .io import canonical_digest, read_yaml, relative_path, write_yaml_atomic
@@ -156,10 +157,19 @@ def define(workspace_path: Path, task_id: str) -> dict:
         raise MdocError("MDOC-TASK-BOOK-MISSING", f"任务引用了未注册书册：{book_id}")
     _validate_locale_plan(draft, workspace.config["books"][book_id])
     manifest = _manifest(draft["scope"])
+    generator_record = None
+    if "generator" in draft:
+        generated, generator_record = define_generator(
+            workspace, directory, draft["generator"], [item["id"] for item in draft["evidence"]]
+        )
+        manifest.extend(generated)
+        manifest.sort(key=lambda item: ({"page": 0, "asset": 1, "navigation": 2}[item["kind"]], item["locale"], item["path"], item["action"]))
     if not manifest:
         raise MdocError("MDOC-TASK-MANIFEST-EMPTY", "任务 manifest 不能为空。")
     _validate_manifest(workspace, draft, manifest)
     normalized = copy.deepcopy(draft)
+    if generator_record is not None:
+        normalized["generator"] = generator_record
     normalized["manifest"] = manifest
     normalized["definition_digest"] = canonical_digest(normalized)
     validate_schema(normalized, "task.schema.json", "task.yaml")
