@@ -71,7 +71,7 @@ def safe_extract(package: Path, destination: Path) -> dict:
     if not manifest_path.is_file():
         raise TransactionError("MDOC-PACKAGE-MANIFEST-MISSING")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if manifest.get("product") != "mdoc" or manifest.get("platform") != "windows-x86_64":
+    if manifest.get("schema_version") != 1 or manifest.get("product") != "mdoc" or manifest.get("platform") != "windows-x86_64":
         raise TransactionError("MDOC-PACKAGE-INCOMPATIBLE")
     root = destination.resolve()
     for item in manifest.get("files", []):

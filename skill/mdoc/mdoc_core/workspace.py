@@ -100,6 +100,97 @@ def _diff(before: dict | None, after: dict) -> dict:
     return {"kind": "revise", "changed_sections": [key for key in keys if before.get(key) != after.get(key)]}
 
 
+def _active_task_references(control: Path, authority: dict) -> list[dict]:
+    tasks = control / "tasks"
+    if not tasks.is_dir():
+        return []
+    references: list[dict] = []
+    for directory in sorted(path for path in tasks.iterdir() if path.is_dir()):
+        definition_path = directory / "task.yaml"
+        if not definition_path.is_file():
+            continue
+        state_path = directory / "task-state.json"
+        if state_path.is_file():
+            state = read_json(state_path)
+            if state.get("status") in {"accepted", "cancelled"}:
+                continue
+        definition = read_yaml(definition_path)
+        task = definition.get("task", {})
+        book_id = task.get("book")
+        record = {
+            "task_id": task.get("id", directory.name),
+            "book": book_id,
+            "locales": sorted(_task_locales(definition)),
+            "generator": (definition.get("generator") or {}).get("id"),
+            "build_adapter": (definition.get("quality_gate") or {}).get("build_adapter"),
+            "reviews": sorted((definition.get("quality_gate") or {}).get("required_reviews", [])),
+        }
+        if book_id in authority.get("books", {}):
+            book_adapter = authority["books"][book_id].get("release_build_adapter")
+            if record["build_adapter"] is None and book_adapter:
+                record["build_adapter"] = book_adapter
+        references.append(record)
+    return references
+
+
+def _task_locales(definition: dict) -> set[str]:
+    locales = set((definition.get("scope") or {}).get("locales", []))
+    plan = definition.get("locale_plan") or {}
+    if plan.get("source"):
+        locales.add(plan["source"])
+    locales.update((plan.get("targets") or {}).keys())
+    for item in definition.get("manifest", []):
+        if item.get("locale"):
+            locales.add(item["locale"])
+    for screenshot in definition.get("screenshots", []):
+        locales.update(screenshot.get("locales", []))
+        locales.update((screenshot.get("destinations") or {}).keys())
+    return locales
+
+
+def _reject_removed_active_references(control: Path, before: dict | None, after: dict) -> None:
+    if before is None:
+        return
+    active = _active_task_references(control, before)
+    if not active:
+        return
+    after_books = after.get("books", {})
+    after_generators = after.get("generators", {})
+    after_build_adapters = after.get("build_adapters", {})
+    after_reviews = set(after.get("quality_gate", {}).get("required_reviews", []))
+    after_rules = {rule["id"] for rule in after.get("quality_gate", {}).get("rules", [])}
+    before_rules = {rule["id"] for rule in before.get("quality_gate", {}).get("rules", [])}
+    before_reviews = set(before.get("quality_gate", {}).get("required_reviews", []))
+    removed_global_rules = sorted(before_rules - after_rules)
+    removed_global_reviews = sorted(before_reviews - after_reviews)
+    conflicts: list[dict] = []
+    for reference in active:
+        book_id = reference["book"]
+        task_id = reference["task_id"]
+        if book_id not in after_books:
+            conflicts.append({"task_id": task_id, "kind": "book", "id": book_id})
+            continue
+        after_locales = set(after_books[book_id].get("locales", {}))
+        for locale in reference["locales"]:
+            if locale not in after_locales:
+                conflicts.append({"task_id": task_id, "kind": "locale", "book": book_id, "id": locale})
+        generator_id = reference.get("generator")
+        if generator_id and generator_id not in after_generators:
+            conflicts.append({"task_id": task_id, "kind": "generator", "id": generator_id})
+        adapter_id = reference.get("build_adapter")
+        if adapter_id and adapter_id not in after_build_adapters:
+            conflicts.append({"task_id": task_id, "kind": "build_adapter", "id": adapter_id})
+        for review in reference.get("reviews", []):
+            if review not in after_reviews:
+                conflicts.append({"task_id": task_id, "kind": "review", "id": review})
+        for rule_id in removed_global_rules:
+            conflicts.append({"task_id": task_id, "kind": "quality_rule", "id": rule_id})
+        for review in removed_global_reviews:
+            conflicts.append({"task_id": task_id, "kind": "required_review", "id": review})
+    if conflicts:
+        raise MdocError("MDOC-WORKSPACE-ACTIVE-TASK-REFERENCE", "候选配置删除了未结束任务仍引用的对象。", {"conflicts": conflicts})
+
+
 def apply(workspace: Path) -> dict:
     control = _control(workspace)
     draft_path = control / "workspace-draft.yaml"
@@ -107,6 +198,7 @@ def apply(workspace: Path) -> dict:
     draft = read_yaml(draft_path)
     normalized = validate_portable(workspace.resolve(), draft)
     authority = read_yaml(authority_path) if authority_path.is_file() else None
+    _reject_removed_active_references(control, authority, normalized)
     candidate = {
         "schema_version": 1,
         "kind": "workspace_candidate",

@@ -4,6 +4,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 from collections.abc import Mapping, Sequence
@@ -147,6 +148,36 @@ def import_generator_outputs(task) -> None:
         shutil.copyfile(source, target)
 
 
+def _pdf_check(artifact: Path, *, adapter_id: str, adapter: Mapping, book_root: Path, output: Path) -> dict:
+    scripts_root = Path(__file__).resolve().parents[1] / "scripts"
+    if str(scripts_root) not in sys.path:
+        sys.path.insert(0, str(scripts_root))
+    try:
+        from pdf_check_core import PdfCheckError, check_existing_pdf
+    except Exception as exc:  # pragma: no cover - depends on runtime packaging
+        return {"status": "failed", "error": f"PDF Check runtime is unavailable: {exc}"}
+    try:
+        report = check_existing_pdf(
+            book_root,
+            artifact,
+            output,
+            {"artifact_id": adapter_id, "locale": adapter.get("locale", "unknown")},
+        )
+    except PdfCheckError as exc:
+        return {"status": "failed", "error": str(exc)}
+    except Exception as exc:  # pragma: no cover - defensive boundary for adapter records
+        return {"status": "failed", "error": f"PDF Check failed unexpectedly: {exc}"}
+    counts = report.get("counts", {})
+    status = "failed" if counts.get("effective_errors", 0) else "passed"
+    return {
+        "status": status,
+        "report": str(output / "pdf-check.json"),
+        "summary": str(output / "pdf-check-summary.md"),
+        "input_digest": report.get("input_digest"),
+        "counts": counts,
+    }
+
+
 def run_build(workspace, view, adapter_id: str, record_root: Path) -> dict:
     adapter = workspace.config.get("build_adapters", {}).get(adapter_id)
     if not isinstance(adapter, Mapping):
@@ -178,6 +209,11 @@ def run_build(workspace, view, adapter_id: str, record_root: Path) -> dict:
     artifact_relative = relative_path(adapter["artifact"], "build_adapter.artifact")
     artifact = inside(artifact_root, artifact_relative)
     status = "passed" if result.returncode == 0 and artifact.is_file() else "failed"
+    pdf_check = None
+    if status == "passed" and adapter.get("artifact_kind", "generic") == "pdf":
+        pdf_check = _pdf_check(artifact, adapter_id=adapter_id, adapter=adapter, book_root=candidate, output=run_root / "pdf-check")
+        if pdf_check["status"] != "passed":
+            status = "failed"
     record = {
         "status": status, "adapter": adapter_id, "exit_code": result.returncode,
         "config_digest": canonical_digest(adapter), "implementation_digest": file_digest(source_script),
@@ -186,5 +222,7 @@ def run_build(workspace, view, adapter_id: str, record_root: Path) -> dict:
         "stdout": result.stdout[-4000:], "stderr": result.stderr[-4000:],
         "duration_ms": int((time.monotonic() - started) * 1000),
     }
+    if pdf_check is not None:
+        record["pdf_check"] = pdf_check
     write_json_atomic(run_root / "build-record.json", record)
     return record

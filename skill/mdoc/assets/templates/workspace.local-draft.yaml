@@ -1,0 +1,6 @@
+schema_version: 1
+resources: {}
+applications: {}
+runtimes:
+  python:
+    executable: <python-executable>

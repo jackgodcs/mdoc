@@ -161,6 +161,14 @@ def _blocking(findings: list[dict]) -> list[dict]:
     return [item for item in findings if item["severity"] == "error" and item.get("required", True)]
 
 
+def _build_blocking_count(build: dict) -> int:
+    if build["status"] in {"not_requested", "passed"}:
+        return 0
+    pdf_check = build.get("pdf_check") or {}
+    counts = pdf_check.get("counts") or {}
+    return int(counts.get("effective_errors") or 1)
+
+
 def _task_file_digest(task) -> str:
     values = {}
     for item in task.definition["manifest"]:
@@ -222,9 +230,10 @@ def task_check(task, state: dict, *, published: bool = False) -> dict:
         task.workspace, view, profile, task.definition["quality_gate"].get("build_adapter"),
         execute=profile == "release" or published, record_root=task.directory / "builds",
     )
-    status = "passed" if not _blocking(findings) and not pending and build["status"] in {"not_requested", "passed"} else "blocked"
+    blocking_count = len(_blocking(findings)) + _build_blocking_count(build)
+    status = "passed" if blocking_count == 0 and not pending else "blocked"
     changed = {f"{item['locale']}/{item['path']}" for item in task.definition["manifest"]}
-    report = {"schema_version": 1, "context": "published-task" if published else "task", "task_id": task.task_id, "book": task.definition["task"]["book"], "profile": profile, "status": status, "input_digest": input_digest, "candidate_digest": view.digest(), "files_scanned": scanned, "findings": _classify(findings, changed), "blocking_count": len(_blocking(findings)), "fixes": fixes, "reviews": reviews, "pending_reviews": pending, "build": build, "created_at": int(time.time())}
+    report = {"schema_version": 1, "context": "published-task" if published else "task", "task_id": task.task_id, "book": task.definition["task"]["book"], "profile": profile, "status": status, "input_digest": input_digest, "candidate_digest": view.digest(), "files_scanned": scanned, "findings": _classify(findings, changed), "blocking_count": blocking_count, "fixes": fixes, "reviews": reviews, "pending_reviews": pending, "build": build, "created_at": int(time.time())}
     return _store(task.workspace, report, "tasks", task.task_id)
 
 
@@ -255,8 +264,9 @@ def book_check(workspace, book_id: str, *, profile: str | None = None, locale: s
         execute=not path and not changed and locale is None,
         record_root=workspace.control / "cache" / "builds" / book_id,
     )
-    status = "passed" if not _blocking(findings) and build["status"] in {"not_requested", "passed"} else "blocked"
-    report = {"schema_version": 1, "context": "book", "book": book_id, "profile": selected_profile, "status": status, "scope": {"locale": locale, "path": path, "changed": changed}, "input_digest": view.digest(), "files_scanned": scanned, "findings": _classify(findings, set()), "blocking_count": len(_blocking(findings)), "fixes": fixes, "reviews": {}, "pending_reviews": [], "build": build, "created_at": int(time.time())}
+    blocking_count = len(_blocking(findings)) + _build_blocking_count(build)
+    status = "passed" if blocking_count == 0 else "blocked"
+    report = {"schema_version": 1, "context": "book", "book": book_id, "profile": selected_profile, "status": status, "scope": {"locale": locale, "path": path, "changed": changed}, "input_digest": view.digest(), "files_scanned": scanned, "findings": _classify(findings, set()), "blocking_count": blocking_count, "fixes": fixes, "reviews": {}, "pending_reviews": [], "build": build, "created_at": int(time.time())}
     return _store(workspace, report, "books", book_id)
 
 

@@ -2,17 +2,16 @@
 
 ## 1.2.0 - 2026-08-11
 
-- Promoted the validated 1.2.0 release candidate to the first stable 1.2 release.
-- Release tags without prerelease suffixes publish one Windows x64 ZIP automatically; RC tags run validation only.
-- Removed the manual deployment-approval requirement from stable release publication.
+- Rebuilt mdoc around the schema_version 1 workspace and task model: one `.mdoc/` control directory, explicit book registry, task manifest freezing, controlled staging, and transactional publishing.
+- Made `mdoc task continue --workspace <manual-repository-root> --task <id>` the normal idempotent state-machine entrypoint through definition confirmation, screenshots, authoring, Quality Gate, publishing, and final review.
+- Unified task verification and existing-book audit under Quality Gate, including release build adapters and PDF Check blocking for effective PDF errors.
+- Replaced old public docs, templates, examples, and release hygiene with product-neutral schema_version 1 materials.
 
 ## 1.2.0-rc.1 - 2026-08-10
 
-- Added explicit workspace inspection, adoption, schema v1-to-v2 migration, cleanup, registry management, and repair commands.
-- Added immutable plan/apply confirmation flows with SHA-256 input revalidation and compact latest records.
-- Added global Doctor operation without a workspace and stable workspace launchers through `%LOCALAPPDATA%\mdoc\bin\mdoc.cmd`.
-- Added shared package-bounded install/update transactions, active/stale locks, rollback, runtime cancellation, and embedded package-manifest verification.
-- Added CPython source classification, including compatible Codex runtime adoption and rejection of temporary/E2E runtimes.
+- Added deterministic Windows x64 package assembly with a package manifest, runtime contract, and install/update transaction verification.
+- Added shared runtime repair planning, CPython source classification, and package-bounded install/update records.
+- Added PDF Check runtime dependencies and local viewer support for release validation.
 - Kept the public release surface to one deterministic Windows x64 ZIP.
 
 ## 1.1.0 - 2026-08-08

@@ -23,7 +23,7 @@ class InstallTransactionTests(unittest.TestCase):
         self.installation = self.root / "skills" / "mdoc"
         self.package = self.root / "mdoc.zip"
         files = {"skill/mdoc/SKILL.md": b"# mdoc\n", "skill/mdoc/scripts/mdoc.py": b"print('new')\n"}
-        manifest = {"schema_version": 2, "product": "mdoc", "platform": "windows-x86_64", "version": "1.2.0", "runtime_contract": {"toolchain_version": "2026.08.1", "python": ">=3.12.0,<3.13.0", "profile": "Full", "requirements_sha256": "new-lock"}, "files": [{"path": name, "sha256": __import__("hashlib").sha256(data).hexdigest()} for name, data in files.items()]}
+        manifest = {"schema_version": 1, "product": "mdoc", "platform": "windows-x86_64", "version": "1.2.0", "runtime_contract": {"toolchain_version": "2026.08.1", "python": ">=3.12.0,<3.13.0", "profile": "Full", "requirements_sha256": "new-lock"}, "files": [{"path": name, "sha256": __import__("hashlib").sha256(data).hexdigest()} for name, data in files.items()]}
         with zipfile.ZipFile(self.package, "w") as archive:
             for name, data in files.items(): archive.writestr(name, data)
             archive.writestr("PACKAGE-MANIFEST.json", json.dumps(manifest))

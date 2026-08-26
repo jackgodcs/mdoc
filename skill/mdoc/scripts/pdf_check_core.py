@@ -138,7 +138,7 @@ def aggregate_reports(reports: list[dict], output: Path) -> dict:
         artifacts.extend(report.get("artifacts", []))
         pages.extend({**page, "artifact_id": report["artifacts"][0]["id"]} for page in report.get("pages", []))
     digest = hashlib.sha256("".join(item["sha256"] for item in artifacts).encode()).hexdigest()
-    data = {"schema_version": 2, "status": "completed", "generated_at": int(time.time()), "rule_version": RULE_VERSION, "input_digest": digest, "counts": count_findings(findings), "artifacts": artifacts, "pages": pages, "findings": findings}
+    data = {"schema_version": 1, "status": "completed", "generated_at": int(time.time()), "rule_version": RULE_VERSION, "input_digest": digest, "counts": count_findings(findings), "artifacts": artifacts, "pages": pages, "findings": findings}
     write_report(data, output)
     return data
 
@@ -171,7 +171,7 @@ def check_existing_pdf(book_root: Path, pdf_path: Path, output: Path, options: d
         item["id"] = f"PDF-{index:04d}"
     apply_overrides(findings, load_overrides(options.get("overrides")), digest)
     data = {
-        "schema_version": 2, "status": "completed", "generated_at": int(time.time()), "rule_version": RULE_VERSION,
+        "schema_version": 1, "status": "completed", "generated_at": int(time.time()), "rule_version": RULE_VERSION,
         "input_digest": digest, "book_root": book_root.as_posix(), "counts": count_findings(findings),
         "artifacts": [{"id": options.get("artifact_id", "pdf"), "locale": options.get("locale", "unknown"), "required": options.get("required", True), "file_name": pdf_path.name, "sha256": digest, "page_count": len(pages), "status": "completed"}],
         "pages": pages, "findings": findings,
@@ -186,7 +186,7 @@ def confirm_ignore(report: dict, finding_id: str, overrides_path: Path, reason: 
         raise PdfCheckError(f"Unknown finding: {finding_id}")
     artifact = next((entry for entry in report.get("artifacts", []) if entry.get("id") == item.get("artifact_id")), None)
     input_digest = artifact.get("sha256") if artifact else report["input_digest"]
-    existing = json.loads(overrides_path.read_text(encoding="utf-8")) if overrides_path.exists() else {"schema_version": 2, "overrides": []}
+    existing = json.loads(overrides_path.read_text(encoding="utf-8")) if overrides_path.exists() else {"schema_version": 1, "overrides": []}
     existing["overrides"] = [entry for entry in existing.get("overrides", []) if entry.get("finding_fingerprint") != item["fingerprint"]]
     existing["overrides"].append({"finding_fingerprint": item["fingerprint"], "rule_id": item["rule_id"], "action": "ignore", "reason": reason, "input_digest": input_digest, "rule_version": RULE_VERSION})
     overrides_path.parent.mkdir(parents=True, exist_ok=True)

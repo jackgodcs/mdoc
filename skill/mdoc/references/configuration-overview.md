@@ -1,33 +1,31 @@
 # Configuration Overview
 
-## Load order
+mdoc v1 uses one control directory under the manual repository root: `.mdoc/`.
 
-1. workspace.yaml
-2. product profile referenced by workspace.yaml
-3. workspace.local.yaml
-4. task.yaml
-5. task.local.yaml
+## Portable Authority
 
-Later layers override only compatible fields. Relative paths are resolved against the file that declares them unless the schema says otherwise.
+`.mdoc/workspace.yaml` is the only portable workspace configuration. It contains `schema_version: 1`, workspace identity, product identity, explicit books, locales, writing settings, screenshot settings, Quality Gate policy, publishing policy, generators, build adapters, and retention settings.
 
-## Files
+All portable paths are repository-relative. Book roots, locale roots, content roots, asset roots, navigation paths, generator inputs, adapter scripts, and adapter artifacts must stay inside the manual repository or the controlled adapter sandbox chosen for that field.
 
-- workspace.yaml: shared workspace identity and repository binding.
-- workspace.local.yaml: machine-specific application and local paths.
-- product-profile.yaml: product manual layout, locales, style, and policy.
-- task.yaml: operation, module/feature scope, interaction and capture modes.
-- task.local.yaml: task-specific machine paths and example data.
-- sources.yaml: evidence registry and snapshot policy.
-- structure.yaml: approved pages, hierarchy, templates, and summary placement.
-- screenshots.yaml: capture tasks and acceptance state.
-- terminology.csv: multilingual terminology.
-- decisions.yaml: confirmed decisions.
-- state.yaml: phase and check status.
-- publish-plan.yaml: planned add/update/delete operations; delete entries are proposals only.
+## Local Authority
 
-## User modes
+`.mdoc/workspace.local.yaml` is machine-local. It may provide local resources, applications, and runtimes. It cannot change registered books, task scope, Quality Gate rules, publishing authority, or generator/build definitions.
 
-Guided asks one decision at a time. Review validates prepared files and summarizes only meaningful questions. Automation continues while configurations are complete, but still stops for deletion, overwrite conflicts, sensitive actions, authentication, scope expansion, and critical uncertainty.
+Local resource changes affect only commands that actually consume those resources. Local editor and UI preferences must not invalidate completed task output.
 
-See references/config/ for field-level guidance. Templates live under assets/templates and neutral complete examples under assets/examples.
+## Draft Governance
 
+Portable and local configuration changes use the same pattern:
+
+```powershell
+mdoc workspace revise --workspace <manual-repository-root>
+mdoc workspace apply --workspace <manual-repository-root>
+mdoc workspace confirm --workspace <manual-repository-root>
+```
+
+The local variant inserts `local` after `workspace`. `apply` writes a candidate JSON file under `.mdoc/cache/`; `confirm` rechecks the draft hash, authority hash, and normalized candidate hash before replacing the authority file.
+
+## Task Files
+
+Task authority is `.mdoc/tasks/<task-id>/task.yaml` and `.mdoc/tasks/<task-id>/task-state.json`. The task draft is editable before `task define`; the defined task freezes a manifest so `task continue` can verify scope, baselines, staging, screenshots, Quality Gate input, and publishing transactions deterministically.

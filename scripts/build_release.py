@@ -41,7 +41,8 @@ def collect() -> list[tuple[Path, str]]:
     result.extend((path, path.relative_to(ROOT).as_posix()) for folder in ("bootstrap", "runtime", "runtime-bootstrap") for path in sorted((ROOT / folder).rglob("*")) if path.is_file() and not path.name.startswith("test_") and "__pycache__" not in path.parts)
     skill = ROOT / "skill" / "mdoc"
     for path in sorted(skill.rglob("*")):
-        if path.is_file() and "__pycache__" not in path.parts:
+        relative = path.relative_to(skill)
+        if path.is_file() and "__pycache__" not in path.parts and "tests" not in relative.parts and not path.name.startswith("test_"):
             result.append((path, (Path("skill") / "mdoc" / path.relative_to(skill)).as_posix()))
     return result
 
@@ -59,7 +60,7 @@ def main() -> int:
     requirements = ROOT / "runtime" / "requirements-v1.json"
     bootstrap = json.loads((ROOT / "bootstrap" / "toolchain-bootstrap.json").read_text(encoding="utf-8"))
     package_manifest = {
-        "schema_version": 2,
+        "schema_version": 1,
         "product": "mdoc",
         "version": VERSION,
         "platform": "windows-x86_64",

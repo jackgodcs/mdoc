@@ -9,6 +9,8 @@ from pathlib import Path
 
 from ruamel.yaml import YAML
 
+from skill.mdoc.tests.support import write_yaml
+
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "mdoc.py"
 YAML_WRITER = YAML()
@@ -149,6 +151,34 @@ class WorkspaceCliTests(unittest.TestCase):
             YAML_WRITER.dump({"schema_version": 1, "books": {}}, stream)
         error = self.run_cli("workspace", "local", "apply", "--workspace", str(self.repository), "--json", expected=2)
         self.assertEqual("MDOC-CONFIG-SCHEMA-INVALID", json.loads(error.stdout)["error"]["code"])
+
+    def test_workspace_revise_rejects_removing_references_used_by_unfinished_tasks(self) -> None:
+        self.run_cli("workspace", "init", "--workspace", str(self.repository), "--json")
+        self.write_draft(valid_workspace())
+        self.run_cli("workspace", "apply", "--workspace", str(self.repository), "--json")
+        self.run_cli("workspace", "confirm", "--workspace", str(self.repository), "--json")
+
+        self.run_cli("task", "create", "--workspace", str(self.repository), "--task", "active", "--book", "guide", "--intent", "add_feature", "--json")
+        task_draft = self.read_yaml(self.repository / ".mdoc" / "tasks" / "active" / "task-draft.yaml")
+        task_draft["task"]["title"] = "Active task"
+        task_draft["scope"] = {
+            "locales": ["zh"],
+            "pages": {"create": [{"locale": "zh", "path": "Main/Active.md", "evidence": ["spec"]}], "update": [], "delete": []},
+            "assets": {"create": [], "update": [], "delete": []},
+            "navigation": {"update": [{"locale": "zh", "path": "Summary.md"}]},
+        }
+        task_draft["locale_plan"] = {"source": "zh", "targets": {}}
+        task_draft["evidence"] = [{"id": "spec", "kind": "official_document", "location": "local:spec", "supports": ["zh/Main/Active.md"], "required": False, "critical": True}]
+        write_yaml(self.repository / ".mdoc" / "tasks" / "active" / "task-draft.yaml", task_draft)
+        self.run_cli("task", "define", "--workspace", str(self.repository), "--task", "active", "--json")
+
+        self.run_cli("workspace", "revise", "--workspace", str(self.repository), "--json")
+        changed = valid_workspace()
+        changed["books"]["guide"]["source_locale"] = "en"
+        changed["books"]["guide"]["locales"] = {"en": {"root": "en", "language": "en"}}
+        self.write_draft(changed)
+        error = self.run_cli("workspace", "apply", "--workspace", str(self.repository), "--json", expected=2)
+        self.assertEqual("MDOC-WORKSPACE-ACTIVE-TASK-REFERENCE", json.loads(error.stdout)["error"]["code"])
 
     @staticmethod
     def read_yaml(path: Path) -> dict:

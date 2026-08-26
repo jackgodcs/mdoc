@@ -1,0 +1,27 @@
+schema_version: 1
+task:
+  id: replace-me
+  book: user-guide
+  intent: add_feature
+  title: Replace me
+scope:
+  locales:
+    - zh
+  pages:
+    create: []
+    update: []
+    delete: []
+  assets:
+    create: []
+    update: []
+    delete: []
+  navigation:
+    update: []
+locale_plan:
+  source: zh
+  targets: {}
+screenshots: []
+evidence: []
+quality_gate:
+  profile: standard
+  required_reviews: []

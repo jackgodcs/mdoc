@@ -29,6 +29,8 @@ class ReleaseBuildTests(unittest.TestCase):
         self.assertIn("bootstrap/toolchain-bootstrap.json", names)
         self.assertIn("runtime/requirements-v1.json", names)
         self.assertIn("runtime-bootstrap/mdoc_install_transaction.py", names)
+        self.assertNotIn("skill/mdoc/tests/test_public_contract.py", names)
+        self.assertFalse(any("__pycache__" in name or name.endswith(".pyc") for name in names))
         self.assertEqual("2026.08.1", manifest["runtime_contract"]["toolchain_version"])
         self.assertEqual(">=3.12.0,<3.13.0", manifest["runtime_contract"]["python"])
 

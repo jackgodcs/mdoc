@@ -13,7 +13,7 @@ from pathlib import Path
 def run_adapter(adapter: dict, source_root: Path, output: Path, role: str, extra_environment: dict | None = None) -> dict:
     output.parent.mkdir(parents=True, exist_ok=True)
     manifest = output.with_suffix(".build.json")
-    manifest.write_text(json.dumps({"schema_version": 2, "adapter_id": adapter["id"], "locale": adapter.get("locale"), "role": role, "source_root": str(source_root.resolve()), "output_path": str(output.resolve())}, indent=2), encoding="utf-8")
+    manifest.write_text(json.dumps({"schema_version": 1, "adapter_id": adapter["id"], "locale": adapter.get("locale"), "role": role, "source_root": str(source_root.resolve()), "output_path": str(output.resolve())}, indent=2), encoding="utf-8")
     environment = os.environ.copy()
     environment.update(extra_environment or {})
     environment.update({"MDOC_SOURCE_ROOT": str(source_root.resolve()), "MDOC_OUTPUT_PATH": str(output.resolve()), "MDOC_LOCALE": adapter.get("locale", "unknown"), "MDOC_BUILD_ROLE": role, "MDOC_INSTRUMENTED": "true" if role == "mapping" else "false", "MDOC_BUILD_MANIFEST": str(manifest.resolve())})

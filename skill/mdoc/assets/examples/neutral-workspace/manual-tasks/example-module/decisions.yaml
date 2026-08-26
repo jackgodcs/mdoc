@@ -1,7 +1,0 @@
-schema_version: 2
-decisions:
-  - id: DEC-001
-    topic: deletion-policy
-    value: require-explicit-confirmation
-    status: confirmed
-

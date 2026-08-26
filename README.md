@@ -1,44 +1,63 @@
 # mdoc
 
-`mdoc` 是面向 Windows 10/11 x64 的多语言 Markdown 产品手册工作流。它把正式手册仓库与本机流程工作区分离，并在每次操作中明确显示“活动书册”和“本次操作书册”，避免任务误写到其他版本。
+`mdoc` 是面向 Windows 10/11 x64 的多语言 Markdown 产品手册工作流工具。产品版本是 `1.2.0`；新版工作区和任务协议统一使用 `schema_version: 1`。
+
+新版 mdoc 是一次干净重构：不识别、不迁移、不兼容旧工作区、旧配置、旧任务或旧状态文件。所有流程状态都由同一个 Python CLI 写入，正式手册内容只由发布事务修改；代理和人工编写只能先进入任务的受控 `staging/`。
 
 Copyright 2026 cshuan. Licensed under Apache-2.0. 该许可证只覆盖 mdoc 源码和随附通用模板，不自动覆盖用户手册、截图、PDF 或项目数据。
 
-## 第一次安装
+## 安装
 
-从公开 GitHub Stable Release 只下载 `mdoc-1.2.0-windows-x64.zip`，完整解压后双击“安装 mdoc.cmd”。安装器默认安装到 `%USERPROFILE%\.codex\skills\mdoc`；用户同意后，它会下载并校验固定版本的 Toolchain，创建独立运行环境，并把 mdoc 命令目录加入当前用户 PATH。v1.1.0 升级到 v1.2.0 必须使用新版 ZIP 内的安装器桥接。RC 版本仅用于内部或自动化验证，不创建公开 Release 资产。
+从 GitHub Stable Release 下载 `mdoc-1.2.0-windows-x64.zip`，完整解压后双击“安装 mdoc.cmd”。安装器默认安装到当前用户的 Codex skills 目录，并为 mdoc 创建独立运行环境；它不会修改外部 Python 的全局包。
 
-如果已安装 Codex，可让 AI 在你明确同意联网和下载后执行安装。AI 必须先展示下载地址、目标目录、版本、SHA-256 和许可证，再进行下载。官方来源：
+官方来源：
 
 - mdoc：`https://github.com/jackgodcs/mdoc/releases`
 - Python：`https://www.python.org/downloads/windows/`
 - mdoc Toolchain：`https://github.com/jackgodcs/mdoc-toolchain/releases`
 
-基础运行需要 CPython 3.12、`ruamel.yaml` 和 `jsonschema`。PDF Check 还需要 `pdfplumber`、`pypdf`、`pypdfium2` 和 Pillow；截图助手需要 Pillow、Tk/Tcl。安装器优先校验用户指定或机器已有 Python，并始终为 mdoc 创建独立 venv，不修改外部 Python 的全局包。缺失时可运行 `mdoc doctor --repair --allow-network-download`，或使用 `mdoc doctor --repair --toolkit <完整Toolchain ZIP>`。
+基础运行需要 CPython 3.12、`ruamel.yaml` 和 `jsonschema`。PDF 检查还需要 `pdfplumber`、`pypdf`、`pypdfium2` 和 Pillow；截图助手需要 Pillow、Tk/Tcl。
 
-## 首次使用
+## 核心流程
+
+mdoc 直接绑定正式手册仓库根目录，并在其中使用 `.mdoc/` 控制目录。没有全局活动书册；每个任务必须显式声明一个书册。
 
 ```powershell
-python skill/mdoc/scripts/mdoc.py setup --repository D:\manuals --workspace D:\manuals-manual-workspace --book Product_V1
-python skill/mdoc/scripts/mdoc.py status --workspace D:\manuals-manual-workspace
-python skill/mdoc/scripts/mdoc.py new-task --workspace D:\manuals-manual-workspace --id add-search --operation add_feature --title Search
+mdoc workspace init --workspace <manual-repository-root>
+mdoc workspace apply --workspace <manual-repository-root>
+mdoc workspace confirm --workspace <manual-repository-root>
+
+mdoc task create --workspace <manual-repository-root> --task add-search --book user-guide --intent add_feature
+mdoc task define --workspace <manual-repository-root> --task add-search
+mdoc task confirm-definition --workspace <manual-repository-root> --task add-search
+mdoc task continue --workspace <manual-repository-root> --task add-search
+mdoc task confirm-final --workspace <manual-repository-root> --task add-search
 ```
 
-也可双击流程工作区内的 `open-mdoc.cmd` 查看当前活动书册。全新项目默认源语言为简体中文，初始目标语言为英语；初始化只建立语言目录，首个模块任务才创建内容结构。
+正常推进只使用幂等的 `mdoc task continue`。它会停在下一个人工等待点，或在通过 Quality Gate 后自动执行普通增量发布。需要人工判断的情况包括定义确认、截图验收、最终成品验收、删除确认、目标冲突、基线变化、证据不足、人工复核未完成和发布异常。
 
-## 常用命令
+## 配置与任务
 
-```text
-mdoc setup | status | new-task | tasks | resume | switch-book
-mdoc configure | bind-local | doctor | doctor --repair
-mdoc check | pdf-check | screenshots | diagnose
-mdoc update | uninstall
-mdoc workspace inspect | adopt | migrate | cleanup | list | register | unregister | prune
-mdoc workspace registry repair | runtime cancel
+工作区权威配置只有 `.mdoc/workspace.yaml`，本机配置只有 `.mdoc/workspace.local.yaml`。草稿必须先 `apply` 生成候选，再 `confirm` 写入权威文件；候选会绑定草稿哈希和当前权威配置哈希，防止并发覆盖。
+
+任务权威制品只有 `.mdoc/tasks/<task-id>/task.yaml` 和 `.mdoc/tasks/<task-id>/task-state.json`。任务进入定义确认后会冻结 manifest；确认后的范围变化必须重新修订、定义并确认。
+
+## Quality Gate
+
+Quality Gate 是唯一检查引擎，服务任务验证和独立书册审计。任务发布前至少通过 `standard` 档位；`full` 和 `release` 逐级增加人工复核、构建和 PDF 检查。独立书册检查默认返回报告，只有显式 `--enforce` 且存在阻断项时才返回非零。
+
+```powershell
+mdoc quality check --workspace <manual-repository-root> --book user-guide
+mdoc quality check --workspace <manual-repository-root> --book user-guide --enforce
+mdoc quality check --workspace <manual-repository-root> --task add-search
 ```
 
-Quality Gate 默认是建议性能力，不是发布必选项。只有配置 `validation.mode: required` 且 `publish_policy.required_before_publish: true` 时才阻止发布。PDF Check 只展示问题页、PDF 页码和 Markdown 源位置，用户修改源文档后重新检查；机器规则确有缺陷时，可以在用户明确确认后对单项强制通过。
+## 开发
 
-正式手册默认只修改本地工作副本。Git/SVN 提交、推送和发布必须单独获得用户明确授权。v1.2.0 支持本地磁盘和 Windows 局域网共享，局域网场景仅支持轮流写入，不提供并发锁。正式图片支持 PNG/JPEG/JPG，不支持 SVG/GIF/WebP。
+开发与发布说明见 [CONTRIBUTING.md](CONTRIBUTING.md) 和 [docs/maintainers/releasing.md](docs/maintainers/releasing.md)。提交前至少运行：
 
-开发与发布说明见 [CONTRIBUTING.md](CONTRIBUTING.md) 和 [docs/maintainers/releasing.md](docs/maintainers/releasing.md)。
+```powershell
+python -m unittest discover -s skill/mdoc/tests -v
+python -m unittest discover -s skill/mdoc/scripts -p "test_*.py" -v
+python scripts/release_check.py
+```

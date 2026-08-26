@@ -16,7 +16,7 @@ def default_preferences_path() -> Path:
 
 def load_preferences(path: Path | None = None) -> dict:
     path = path or default_preferences_path()
-    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"schema_version": 2}
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"schema_version": 1}
 
 
 def save_preferences(path: Path, source_editor: dict):
@@ -25,7 +25,7 @@ def save_preferences(path: Path, source_editor: dict):
         raise ValueError("source editor must be an existing .exe file")
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(json.dumps({"schema_version": 2, "source_editor": source_editor}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    temporary.write_text(json.dumps({"schema_version": 1, "source_editor": source_editor}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     temporary.replace(path)
 
 

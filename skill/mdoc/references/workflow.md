@@ -1,34 +1,34 @@
 # Workflow
 
-## Phases
+mdoc runs one explicit state machine through the CLI. Normal work starts from a schema_version 1 workspace and advances with `mdoc task continue --workspace <manual-repository-root> --task <task-id>`.
 
-1. Discover or initialize the workspace.
-2. Validate the product profile and repository binding.
-3. Create or resume a task using one of: create_module, add_feature, update_feature, add_locale.
-4. Propose and approve structure.
-5. Propose and approve screenshot tasks.
-6. Generate the screenshot-assistant manifest and launcher, then capture required screenshots in the GUI. Capture completion requires an eligible target PNG or an explicit waived/not-applicable decision; retained exception PNGs are reference-only.
-7. Generate manuals in staging using only manifest `manual_assets`; never select images from path existence alone.
-8. Apply screenshot eligibility only to the task's fixed staging directory, validate that staging rejects remaining ineligible references, and create a publish plan. Before publishing, either complete independent screenshot review or record the user's aggregate visual acceptance of the current capture fingerprint. Existing formal references that become ineligible are publish conflicts and require explicit confirmation before removal.
-9. Apply minimal changes to the formal manual repository.
-10. If requested or configured, run the optional Quality Gate. In advisory mode, report findings without blocking publishing. In required mode, complete the configured profile and components before publishing.
-11. Validate the ordinary task invariants again and produce reports.
-12. Stop at ready_for_review until the user accepts.
+## Workspace Flow
 
-## Confirmation gates
+1. `mdoc workspace init` creates `.mdoc/workspace-draft.yaml`.
+2. Edit the draft.
+3. `mdoc workspace apply` validates the draft, writes `.mdoc/cache/workspace-candidate.json`, and reports the diff.
+4. `mdoc workspace confirm` rechecks the draft hash, authority hash, and normalized hash, then writes `.mdoc/workspace.yaml` atomically.
+5. Use `workspace revise/apply/confirm` for later portable changes.
 
-Workspace configuration is confirmed only when new or invalid. Structure, screenshot plan, and screenshot acceptance are the normal task gates. Configuration-driven review or automation may skip conversational repetition when approved state is internally consistent.
+Machine-local values use the matching `workspace local init/apply/confirm/revise` commands. Local configuration cannot change books, task scope, Quality Gate rules, or publishing authority.
 
-Quality Gate is not a normal confirmation gate. Missing validation configuration preserves the existing workflow. Run it explicitly for an audit, automatically only when configured, and make it a publishing prerequisite only when `validation.mode` is `required` and `publish_policy.required_before_publish` is true.
+## Task Flow
 
-## Task states
+1. `mdoc task create` creates `.mdoc/tasks/<task-id>/task-draft.yaml` after validating task id, book id, and intent.
+2. Edit the task draft.
+3. `mdoc task define` validates the draft, freezes the expanded manifest, writes `task.yaml`, creates or resets `task-state.json`, and waits for definition confirmation.
+4. `mdoc task confirm-definition` claims the scope, records the workspace and definition digests, captures baselines, imports generator output, and continues.
+5. `mdoc task continue` stops at screenshots, authoring, findings, publishing exceptions, or final review.
+6. `mdoc task confirm-final` moves a reviewed task to `accepted` and releases its scope claim.
 
-Use draft, generated, validation_failed, ready_for_review, and accepted. Do not set accepted without explicit user confirmation.
+The terminal states are `accepted` and `cancelled`. They cannot be reopened; use a new task for later work.
 
-## Source control and installation
+## Stable States
 
-The GitHub repository jackgodcs/mdoc on main is the single source of truth. Use the local checkout as the maintenance workspace and pull with --ff-only before editing. Make skill changes under skill/mdoc, validate them there, commit meaningful milestones, and push to main.
+`draft`, `waiting_for_definition_confirmation`, `waiting_for_screenshots`, `waiting_for_screenshot_acceptance`, `waiting_for_authoring`, `verifying`, `waiting_for_resolution`, `publishing`, `ready_for_review`, `accepted`, and `cancelled` are the only task states.
 
-Treat $CODEX_HOME/skills/mdoc as an installed runtime copy. Do not use it as the durable maintenance source. After GitHub-backed changes are validated and committed, synchronize skill/mdoc from the checkout into the installed directory. If the installed copy has uncommitted divergence, reconcile it back into the checkout and GitHub before replacing it.
+Waiting for user input is normal, not a failure. Business failures use stable `MDOC-*` error codes in JSON output.
 
-Git tracks the skill source and portable process assets only. Do not track formal manual Markdown, formal screenshots, staging manuals, source packages, local repository bindings, *.local.yaml, screenshot-assistant local files, captures, credentials, or other machine-specific paths.
+## Normal Pauses
+
+The three ordinary human gates are definition confirmation, screenshot acceptance, and final manual acceptance. Exception pauses cover exact deletion approval, target conflicts, baseline drift, missing evidence, human review findings, build failures, and interrupted publish recovery.

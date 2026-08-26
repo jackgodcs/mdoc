@@ -14,6 +14,10 @@ import pdf_check_server
 import pdf_check_source_opener
 import pdf_check_build
 import pdf_check_mapping
+import manual_pdf_check
+
+from skill.mdoc.tests.support import cli, write_yaml
+from skill.mdoc.tests.test_workspace_cli import valid_workspace
 
 
 def make_pdf(path: Path, pages: list[dict]):
@@ -137,9 +141,9 @@ class ManualPdfCheckTests(unittest.TestCase):
         self.assertEqual([str(exe.resolve()), "--goto", f"{(self.book / 'en' / 'Page.md').resolve()}:12"], command)
 
     def test_windows_default_preference_uses_normal_default_open(self):
-        preferences = {"schema_version": 2, "source_editor": {"mode": "windows-default"}}
+        preferences = {"schema_version": 1, "source_editor": {"mode": "windows-default"}}
         self.assertEqual("windows-default", pdf_check_source_opener.open_mode(preferences))
-        self.assertEqual("not-configured", pdf_check_source_opener.open_mode({"schema_version": 2}))
+        self.assertEqual("not-configured", pdf_check_source_opener.open_mode({"schema_version": 1}))
 
     def test_report_is_reloaded_after_file_changes(self):
         report_path = self.root / "pdf-check.json"
@@ -180,6 +184,66 @@ class ManualPdfCheckTests(unittest.TestCase):
         result = pdf_check_build.run_adapter({"id": "pdf-en", "protocol": "pdf-check-v1", "command": [str(Path(__import__('sys').executable)), str(launcher)], "locale": "en"}, self.book, output, "check", {"TEST_PDF": str(self.pdf)})
         self.assertEqual("passed", result["status"])
         self.assertTrue(output.exists())
+
+    def test_task_workspace_mode_uses_schema_v1_task_context(self):
+        workspace = self.root / "manual"
+        locale = workspace / "Guide" / "zh"
+        (locale / "Main").mkdir(parents=True)
+        (locale / "images").mkdir()
+        (locale / "Summary.md").write_text("# Guide\n\n", encoding="utf-8")
+        make_pdf(self.pdf, [{"texts": [("MDOC-MAP:zh/Main/pdf-task.md:1:test", 20, 350, 10)]}])
+        build_script = workspace / "tools" / "build_pdf.py"
+        build_script.parent.mkdir()
+        build_script.write_text(
+            "import os, shutil\n"
+            "from pathlib import Path\n"
+            f"source = Path({json.dumps(str(self.pdf))})\n"
+            "target = Path(os.environ['MDOC_ARTIFACT_DIR']) / 'manual.pdf'\n"
+            "shutil.copy2(source, target)\n",
+            encoding="utf-8",
+        )
+        config = valid_workspace()
+        config["books"]["guide"]["locales"] = {"zh": {"root": "zh", "language": "zh"}}
+        config["build_adapters"] = {"pdf": {"command": ["runtime:python", "tools/build_pdf.py"], "artifact": "manual.pdf", "artifact_kind": "pdf", "locale": "zh", "timeout_seconds": 30}}
+        cli("workspace", "init", "--workspace", str(workspace), "--json")
+        write_yaml(workspace / ".mdoc" / "workspace-draft.yaml", config)
+        cli("workspace", "apply", "--workspace", str(workspace), "--json")
+        cli("workspace", "confirm", "--workspace", str(workspace), "--json")
+        cli("workspace", "local", "init", "--workspace", str(workspace), "--json")
+        write_yaml(workspace / ".mdoc" / "workspace.local-draft.yaml", {"schema_version": 1, "applications": {}, "resources": {}, "runtimes": {"python": {"executable": str(Path(__import__('sys').executable))}}})
+        cli("workspace", "local", "apply", "--workspace", str(workspace), "--json")
+        cli("workspace", "local", "confirm", "--workspace", str(workspace), "--json")
+
+        cli("task", "create", "--workspace", str(workspace), "--task", "pdf-task", "--book", "guide", "--intent", "add_feature", "--json")
+        task_dir = workspace / ".mdoc" / "tasks" / "pdf-task"
+        draft_path = task_dir / "task-draft.yaml"
+        from ruamel.yaml import YAML
+        draft = YAML(typ="safe").load(draft_path.read_text(encoding="utf-8"))
+        draft["task"]["title"] = "PDF task"
+        draft["scope"] = {
+            "locales": ["zh"],
+            "pages": {"create": [{"locale": "zh", "path": "Main/pdf-task.md", "evidence": ["spec"]}], "update": [], "delete": []},
+            "assets": {"create": [], "update": [], "delete": []},
+            "navigation": {"update": [{"locale": "zh", "path": "Summary.md"}]},
+        }
+        draft["locale_plan"] = {"source": "zh", "targets": {}}
+        draft["evidence"] = [{"id": "spec", "kind": "official_document", "location": "local:spec", "supports": ["zh/Main/pdf-task.md"], "required": False, "critical": True}]
+        draft["quality_gate"] = {"profile": "release", "required_reviews": [], "build_adapter": "pdf"}
+        write_yaml(draft_path, draft)
+        cli("task", "define", "--workspace", str(workspace), "--task", "pdf-task", "--json")
+        cli("task", "confirm-definition", "--workspace", str(workspace), "--task", "pdf-task", "--no-gui", "--json")
+        staging = task_dir / "staging" / "zh"
+        (staging / "Main").mkdir(parents=True, exist_ok=True)
+        (staging / "Main" / "pdf-task.md").write_text("# PDF Task\n\nComplete.\n", encoding="utf-8")
+        (staging / "Summary.md").write_text("# Guide\n\n- [PDF Task](Main/pdf-task.md)\n", encoding="utf-8")
+
+        report, context, pdfs = manual_pdf_check.run_task(workspace, "pdf-task")
+        marker = next(item for item in report["findings"] if item["rule_id"] == "MDOC-PDF-MARKER-LEAK")
+        self.assertEqual("task", marker["scope"])
+        self.assertEqual(1, report["counts"]["effective_errors"])
+        self.assertTrue((task_dir / "reports" / "pdf-check" / "pdf-check.json").is_file())
+        self.assertTrue(pdfs["pdf"].is_file())
+        self.assertEqual("pdf", context["adapter_id"])
 
 if __name__ == "__main__":
     unittest.main()

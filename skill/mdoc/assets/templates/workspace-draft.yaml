@@ -1,0 +1,36 @@
+schema_version: 1
+workspace:
+  id: replace-me
+  formal_vcs: none
+product:
+  id: replace-me
+  display_name: Replace me
+books:
+  user-guide:
+    root: Guide
+    source_locale: zh
+    locales:
+      zh:
+        root: zh
+        language: zh
+      en:
+        root: en
+        language: en
+    content_root: Main
+    assets_root: images
+    navigation:
+      summary: Summary.md
+locales: {}
+writing: {}
+screenshots:
+  auto_open_assistant: true
+quality_gate:
+  default_profile: standard
+  required_reviews: []
+  safe_fixes: true
+  rules: []
+publishing:
+  allow_deletions: false
+generators: {}
+build_adapters: {}
+retention: {}
