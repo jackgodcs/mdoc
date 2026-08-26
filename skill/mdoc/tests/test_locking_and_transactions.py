@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest import mock
 
 from skill.mdoc.mdoc_core.errors import MdocError
 from skill.mdoc.mdoc_core.io import file_digest
@@ -20,15 +21,16 @@ class LockingAndTransactionTests(unittest.TestCase):
             task = SimpleNamespace(task_id="one", workspace=SimpleNamespace(control=control))
             lock = control / "locks" / "task-one.lock"
             lock.parent.mkdir(parents=True)
-            lock.write_text(json.dumps({"schema_version": 1, "pid": os.getpid()}), encoding="utf-8")
-            with self.assertRaises(MdocError) as caught:
-                with task_lock(task):
-                    pass
-            self.assertEqual("MDOC-TASK-LOCKED", caught.exception.code)
+            with mock.patch("skill.mdoc.mdoc_core.locking._alive", side_effect=(True, False)):
+                lock.write_text(json.dumps({"schema_version": 1, "pid": os.getpid()}), encoding="utf-8")
+                with self.assertRaises(MdocError) as caught:
+                    with task_lock(task):
+                        pass
+                self.assertEqual("MDOC-TASK-LOCKED", caught.exception.code)
 
-            lock.write_text(json.dumps({"schema_version": 1, "pid": 2_147_483_647}), encoding="utf-8")
-            with task_lock(task):
-                self.assertTrue(lock.is_file())
+                lock.write_text(json.dumps({"schema_version": 1, "pid": 2_147_483_647}), encoding="utf-8")
+                with task_lock(task):
+                    self.assertTrue(lock.is_file())
             self.assertFalse(lock.exists())
 
     def test_failed_post_check_rolls_back_only_transaction_files(self) -> None:
