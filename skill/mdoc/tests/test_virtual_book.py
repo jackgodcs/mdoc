@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from skill.mdoc.scripts.mdoc_core.virtual_book import VirtualBook
+from skill.mdoc.mdoc_core.virtual_book import VirtualBook
 
 
 class VirtualBookTests(unittest.TestCase):

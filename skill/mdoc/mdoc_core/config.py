@@ -15,7 +15,7 @@ except ImportError as exc:  # pragma: no cover
     raise MdocError("MDOC-RUNTIME-DEPENDENCY-MISSING", "jsonschema is required by the mdoc runtime.") from exc
 
 
-SKILL_ROOT = Path(__file__).resolve().parents[2]
+SKILL_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_ROOT = SKILL_ROOT / "schemas"
 
 

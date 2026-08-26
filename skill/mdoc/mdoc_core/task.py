@@ -21,7 +21,7 @@ from .state import TERMINAL, load_state, save_state, transition
 from .transactions import execute as execute_transaction, recover as recover_transactions
 
 
-SCRIPT_DIR = Path(__file__).resolve().parents[1]
+SCRIPT_DIR = Path(__file__).resolve().parents[1] / "scripts"
 
 
 def load(workspace_path: Path, task_id: str):

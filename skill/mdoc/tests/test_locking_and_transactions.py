@@ -7,10 +7,10 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from skill.mdoc.scripts.mdoc_core.errors import MdocError
-from skill.mdoc.scripts.mdoc_core.io import file_digest
-from skill.mdoc.scripts.mdoc_core.locking import task_lock
-from skill.mdoc.scripts.mdoc_core.transactions import execute, recover
+from skill.mdoc.mdoc_core.errors import MdocError
+from skill.mdoc.mdoc_core.io import file_digest
+from skill.mdoc.mdoc_core.locking import task_lock
+from skill.mdoc.mdoc_core.transactions import execute, recover
 
 
 class LockingAndTransactionTests(unittest.TestCase):
