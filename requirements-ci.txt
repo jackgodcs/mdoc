@@ -1,5 +1,8 @@
+jsonschema==4.25.1
 pdfplumber==0.11.9
 pypdf==6.10.0
 pypdfium2==5.12.1
 Pillow==12.2.0
 reportlab==4.4.9
+referencing==0.36.2
+ruamel.yaml==0.18.16

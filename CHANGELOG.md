@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.0 - 2026-08-26
+
+- Completed the schema_version 1 refactor, including strict workspace and task definition lifecycles, frozen manifests, controlled authoring staging, screenshot acceptance, and transactional publishing.
+- Added a unified Quality Gate for candidate-book, published-task, and independent book checks, with isolated generator and build adapter execution.
+- Added end-to-end lifecycle coverage for workspace governance, task revisions, screenshots, generators, locking, transactions, virtual books, and Quality Gate behavior.
+
 ## 1.2.0 - 2026-08-11
 
 - Rebuilt mdoc around the schema_version 1 workspace and task model: one `.mdoc/` control directory, explicit book registry, task manifest freezing, controlled staging, and transactional publishing.

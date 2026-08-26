@@ -13,7 +13,7 @@ class ReleaseBuildTests(unittest.TestCase):
     def test_release_build_is_deterministic_and_manifest_matches(self):
         command = [sys.executable, str(ROOT / "scripts" / "build_release.py")]
         subprocess.run(command, check=True, capture_output=True, text=True)
-        asset = ROOT / "dist" / "mdoc-1.2.0-windows-x64.zip"
+        asset = ROOT / "dist" / "mdoc-1.3.0-windows-x64.zip"
         first = hashlib.sha256(asset.read_bytes()).hexdigest()
         subprocess.run(command, check=True, capture_output=True, text=True)
         second = hashlib.sha256(asset.read_bytes()).hexdigest()
