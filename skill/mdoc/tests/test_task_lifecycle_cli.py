@@ -122,7 +122,10 @@ class TaskLifecycleCliTests(unittest.TestCase):
         result = cli("task", "create-contributor-launcher", "--workspace", str(self.workspace), "--task", "contributor-launcher", "--output", "Open-Task.cmd", "--json")
         launcher = self.workspace / "Open-Task.cmd"
         self.assertEqual(str(launcher), result["path"])
-        self.assertIn('mdoc task contribute --workspace "%~dp0" --task "contributor-launcher"', launcher.read_text(encoding="ascii"))
+        launcher_text = launcher.read_text(encoding="ascii")
+        self.assertIn('set "MDOC_CMD=%LOCALAPPDATA%\\mdoc\\bin\\mdoc.cmd"', launcher_text)
+        self.assertIn('call "%MDOC_CMD%" task contribute --workspace "%~dp0" --task "contributor-launcher"', launcher_text)
+        self.assertIn('call mdoc task contribute --workspace "%~dp0" --task "contributor-launcher"', launcher_text)
         error = cli("task", "create-contributor-launcher", "--workspace", str(self.workspace), "--task", "contributor-launcher", "--output", "nested\\Open-Task.cmd", "--json", expected=2)
         self.assertEqual("MDOC-CONTRIBUTOR-LAUNCHER-INVALID", error["error"]["code"])
 

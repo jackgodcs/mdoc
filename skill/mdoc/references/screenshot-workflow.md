@@ -44,7 +44,7 @@ The assistant previews declared captures, captures a screen region, and calls CL
 
 ## Shared-Workspace Collaboration
 
-For a shared manual workspace, the coordinator creates and confirms each task. Divide screenshot work by non-overlapping manual asset paths; a practical boundary is the first directory under the book's image root. Only the coordinator performs aggregate acceptance, task continuation, publishing, and final acceptance.
+For a shared manual workspace, the coordinator creates and confirms each task. Divide screenshot work by non-overlapping manual asset paths; a practical boundary is the first directory under the book's image root. Access control comes from the file share itself; mdoc does not identify or log in contributors. Only the coordinator performs aggregate acceptance, task continuation, publishing, and final acceptance.
 
 Generate a task-specific launcher in the shared workspace root:
 

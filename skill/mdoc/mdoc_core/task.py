@@ -64,7 +64,12 @@ def create_contributor_launcher(task, output: str | None = None) -> dict:
     content = (
         "@echo off\r\n"
         "setlocal\r\n"
-        f"mdoc task contribute --workspace \"%~dp0\" --task \"{task.task_id}\"\r\n"
+        "set \"MDOC_CMD=%LOCALAPPDATA%\\mdoc\\bin\\mdoc.cmd\"\r\n"
+        "if exist \"%MDOC_CMD%\" (\r\n"
+        f"  call \"%MDOC_CMD%\" task contribute --workspace \"%~dp0\" --task \"{task.task_id}\"\r\n"
+        ") else (\r\n"
+        f"  call mdoc task contribute --workspace \"%~dp0\" --task \"{task.task_id}\"\r\n"
+        ")\r\n"
         "if errorlevel 1 pause\r\n"
     )
     temporary = target.with_name(f".{target.name}.tmp")
