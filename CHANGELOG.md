@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.3 - 2026-08-28
+
+- Isolated Windows Python capability probes from PowerShell native stderr handling so incompatible Python candidates are skipped instead of aborting installation.
+
 ## 1.3.2 - 2026-08-28
 
 - Fixed Windows PowerShell 5.1 package-manifest decoding for packages containing Chinese filenames.

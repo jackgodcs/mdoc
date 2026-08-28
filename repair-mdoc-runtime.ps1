@@ -54,12 +54,40 @@ function Receive-MdocFile([string]$Uri, [string]$Destination) {
   if ($Proxy) { $parameters.Proxy = $Proxy; $parameters.ProxyUseDefaultCredentials = $false }
   Invoke-WebRequest @parameters
 }
+function Invoke-MdocProcess([string]$Executable, [string[]]$Arguments) {
+  $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+  $startInfo.FileName = $Executable
+  $startInfo.Arguments = (($Arguments | ForEach-Object { '"' + ([string]$_).Replace('"', '\"') + '"' }) -join ' ')
+  $startInfo.UseShellExecute = $false
+  $startInfo.CreateNoWindow = $true
+  $startInfo.RedirectStandardOutput = $true
+  $startInfo.RedirectStandardError = $true
+  $process = New-Object System.Diagnostics.Process
+  $process.StartInfo = $startInfo
+  try {
+    if (-not $process.Start()) { return $null }
+    $stdout = $process.StandardOutput.ReadToEnd()
+    $stderr = $process.StandardError.ReadToEnd()
+    $process.WaitForExit()
+    return [pscustomobject]@{ ExitCode = $process.ExitCode; Stdout = $stdout; Stderr = $stderr }
+  } catch {
+    return $null
+  } finally {
+    $process.Dispose()
+  }
+}
 function Test-MdocPython([string]$Executable) {
   if (-not $Executable -or -not (Test-Path -LiteralPath $Executable -PathType Leaf)) { return $null }
+  $probePath = Join-Path $env:TEMP ('mdoc-python-probe-' + [guid]::NewGuid().ToString('N') + '.py')
   $probe = 'import json,platform,struct,sys,venv,tkinter; print(json.dumps({"executable":sys.executable,"version":list(sys.version_info[:3]),"implementation":platform.python_implementation(),"bits":struct.calcsize("P")*8,"platform":sys.platform}))'
-  $result = & $Executable -I -S -c $probe 2>$null
-  if ($LASTEXITCODE -ne 0) { return $null }
-  try { $identity = $result | ConvertFrom-Json } catch { return $null }
+  [IO.File]::WriteAllText($probePath, $probe, [Text.UTF8Encoding]::new($false))
+  try {
+    $result = Invoke-MdocProcess $Executable @('-I', '-S', $probePath)
+    if (-not $result -or $result.ExitCode -ne 0) { return $null }
+    try { $identity = $result.Stdout.Trim() | ConvertFrom-Json } catch { return $null }
+  } finally {
+    Remove-Item -LiteralPath $probePath -Force -ErrorAction SilentlyContinue
+  }
   if ($identity.implementation -ne 'CPython' -or $identity.version[0] -ne 3 -or $identity.version[1] -ne 12 -or $identity.bits -ne 64 -or $identity.platform -ne 'win32') { return $null }
   return $identity
 }
@@ -67,8 +95,8 @@ function Find-MdocPython {
   $candidates = @($Python, (Join-Path $RuntimeRoot 'python\python.exe'), (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python312\python.exe'), (Join-Path $HOME '.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe'))
   $py = Get-Command py.exe -ErrorAction SilentlyContinue
   if ($py) {
-    $resolved = & $py.Source -3.12 -c 'import sys; print(sys.executable)' 2>$null
-    if ($LASTEXITCODE -eq 0) { $candidates += $resolved }
+    $resolved = Invoke-MdocProcess $py.Source @('-3.12', '-c', 'import sys;print(sys.executable)')
+    if ($resolved -and $resolved.ExitCode -eq 0 -and $resolved.Stdout.Trim()) { $candidates += $resolved.Stdout.Trim() }
   }
   foreach ($name in @('python.exe', 'python3.exe')) { $command = Get-Command $name -ErrorAction SilentlyContinue; if ($command) { $candidates += $command.Source } }
   foreach ($candidate in $candidates | Where-Object { $_ } | Select-Object -Unique) { $identity = Test-MdocPython $candidate; if ($identity) { return $identity } }

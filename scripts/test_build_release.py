@@ -16,7 +16,7 @@ class ReleaseBuildTests(unittest.TestCase):
     def test_release_build_is_deterministic_and_manifest_matches(self):
         command = [sys.executable, str(ROOT / "scripts" / "build_release.py")]
         subprocess.run(command, check=True, capture_output=True, text=True)
-        asset = ROOT / "dist" / "mdoc-1.3.2-windows-x64.zip"
+        asset = ROOT / "dist" / "mdoc-1.3.3-windows-x64.zip"
         first = hashlib.sha256(asset.read_bytes()).hexdigest()
         subprocess.run(command, check=True, capture_output=True, text=True)
         second = hashlib.sha256(asset.read_bytes()).hexdigest()
@@ -48,7 +48,7 @@ class ReleaseBuildTests(unittest.TestCase):
     def test_windows_powershell_installer_validates_chinese_manifest_filename(self):
         command = [sys.executable, str(ROOT / "scripts" / "build_release.py")]
         subprocess.run(command, check=True, capture_output=True, text=True)
-        asset = ROOT / "dist" / "mdoc-1.3.2-windows-x64.zip"
+        asset = ROOT / "dist" / "mdoc-1.3.3-windows-x64.zip"
         powershell = os.environ.get("WINDIR", r"C:\Windows")
         powershell = str(Path(powershell) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe")
         self.assertTrue(Path(powershell).is_file())
@@ -91,6 +91,40 @@ class ReleaseBuildTests(unittest.TestCase):
             ], capture_output=True, text=True, encoding="utf-8", errors="replace")
             self.assertEqual(0, result.returncode, result.stdout + result.stderr)
             self.assertTrue((installation / "SKILL.md").is_file())
+
+    @unittest.skipUnless(sys.platform == "win32", "Windows PowerShell runtime probe test")
+    def test_windows_powershell_runtime_probe_skips_failed_python_candidate(self):
+        powershell = os.environ.get("WINDIR", r"C:\Windows")
+        powershell = Path(powershell) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+        self.assertTrue(powershell.is_file())
+
+        with tempfile.TemporaryDirectory() as temporary:
+            script = Path(temporary) / "probe.ps1"
+            repair = ROOT / "repair-mdoc-runtime.ps1"
+            script.write_text(
+                "$ErrorActionPreference = 'Stop'\n"
+                f"$repair = '{str(repair).replace("'", "''")}'\n"
+                "$source = Get-Content -LiteralPath $repair -Encoding UTF8 -Raw\n"
+                "$start = $source.IndexOf('function Invoke-MdocProcess')\n"
+                "$end = $source.IndexOf('$work = Join-Path')\n"
+                ". ([ScriptBlock]::Create($source.Substring($start, $end - $start)))\n"
+                "$failed = Join-Path $env:WINDIR 'System32\\WindowsPowerShell\\v1.0\\powershell.exe'\n"
+                "if (Test-MdocPython $failed) { throw 'MDOC-TEST-FAILED-CANDIDATE-ACCEPTED' }\n"
+                f"$identity = Test-MdocPython '{str(Path(sys.executable)).replace("'", "''")}'\n"
+                "if (-not $identity) { throw 'MDOC-TEST-VALID-PYTHON-REJECTED' }\n"
+                "Write-Output 'MDOC-PYTHON-PROBE-OK'\n",
+                encoding="utf-8",
+            )
+            result = subprocess.run([
+                str(powershell),
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(script),
+            ], capture_output=True, text=True, encoding="utf-8", errors="replace")
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            self.assertIn("MDOC-PYTHON-PROBE-OK", result.stdout)
 
 if __name__ == "__main__":
     unittest.main()
