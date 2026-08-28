@@ -38,6 +38,14 @@ MIN_BOX_SIZE = 2.0
 SNAP_SCREEN_DISTANCE = 4.0
 
 
+def image_format(path: Path) -> str:
+    return "JPEG" if path.suffix.casefold() in {".jpg", ".jpeg"} else "PNG"
+
+
+def image_save_options(path: Path) -> dict:
+    return {"quality": 95, "subsampling": 0} if image_format(path) == "JPEG" else {}
+
+
 def _atomic_json(path: Path, value: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.tmp")
@@ -1236,10 +1244,11 @@ class ImageTextEditor(tk.Toplevel):
         self.base_image.convert("RGBA" if self.base_has_alpha else "RGB").save(self.snapshot_path, format="PNG")
         output.parent.mkdir(parents=True, exist_ok=True)
         temporary = output.with_name(f".{output.name}.tmp")
-        result.convert("RGBA" if self.base_has_alpha else "RGB").save(temporary, format="PNG")
+        converted = result.convert("RGB") if image_format(output) == "JPEG" else result.convert("RGBA" if self.base_has_alpha else "RGB")
+        converted.save(temporary, format=image_format(output), **image_save_options(output))
         if png_info(temporary) is None:
             temporary.unlink(missing_ok=True)
-            messagebox.showerror("mdoc", "生成的 PNG 无效，未保存。", parent=self)
+            messagebox.showerror("mdoc", "生成的图片无效，未保存。", parent=self)
             return False
         temporary.replace(output)
         _atomic_json(self.record_path, {

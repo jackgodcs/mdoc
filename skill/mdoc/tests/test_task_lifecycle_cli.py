@@ -94,6 +94,27 @@ class TaskLifecycleCliTests(unittest.TestCase):
         self.assertEqual("waiting_for_screenshot_acceptance", state["status"])
         self.assertEqual("stale", state["screenshot_acceptance"]["status"])
 
+    def test_manual_jpeg_capture_and_aggregate_acceptance_survive_sessions(self) -> None:
+        directory = self.define_simple_task("jpeg-screenshots")
+        draft_path = directory / "task-draft.yaml"
+        draft = YAML(typ="safe").load(draft_path.read_text(encoding="utf-8"))
+        draft["scope"]["assets"]["create"] = [{"locale": "zh", "path": "images/window.jpg", "evidence": []}]
+        draft["screenshots"] = [{"id": "MAIN-WINDOW", "filename": "window.jpg", "locales": ["zh"], "required": True, "destinations": {"zh": "images/window.jpg"}}]
+        write_yaml(draft_path, draft)
+        cli("task", "define", "--workspace", str(self.workspace), "--task", "jpeg-screenshots", "--json")
+        waiting = cli("task", "confirm-definition", "--workspace", str(self.workspace), "--task", "jpeg-screenshots", "--no-gui", "--json")
+        self.assertEqual("waiting_for_screenshots", waiting["status"])
+
+        capture = directory / "captures" / "zh" / "window.jpg"
+        capture.parent.mkdir(parents=True)
+        Image.new("RGB", (12, 8), "red").save(capture, format="JPEG", quality=95, subsampling=0)
+        state = cli("task", "continue", "--workspace", str(self.workspace), "--task", "jpeg-screenshots", "--no-gui", "--json")
+        self.assertEqual("waiting_for_screenshot_acceptance", state["status"])
+        self.assertEqual("JPEG", state["screenshots"]["MAIN-WINDOW:zh"]["file"]["format"])
+        state = cli("task", "screenshots", "accept", "--workspace", str(self.workspace), "--task", "jpeg-screenshots", "--no-gui", "--json")
+        self.assertEqual("waiting_for_authoring", state["status"])
+        self.assertEqual(capture.read_bytes(), (directory / "staging" / "zh" / "images" / "window.jpg").read_bytes())
+
     def test_contributor_submission_does_not_accept_or_publish_screenshots(self) -> None:
         directory = self.define_simple_task("contributor")
         draft_path = directory / "task-draft.yaml"

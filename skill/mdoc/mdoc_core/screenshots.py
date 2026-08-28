@@ -17,37 +17,75 @@ USER_SETTABLE = {"pending", "needs_retake", "waived", "not_applicable"}
 
 
 def png_info(path: Path) -> dict | None:
+    """Return validated PNG or JPEG metadata for declared screenshot assets.
+
+    The legacy function name remains part of the public Python surface. New
+    screenshot tasks may use .png, .jpg, or .jpeg capture filenames.
+    """
+
     try:
         data = path.read_bytes()
-        if data[:8] != b"\x89PNG\r\n\x1a\n":
-            return None
-        offset = 8
-        width = height = None
-        seen_iend = False
-        seen_idat = False
-        while offset + 12 <= len(data):
-            length = struct.unpack(">I", data[offset:offset + 4])[0]
-            chunk_type = data[offset + 4:offset + 8]
-            end = offset + 12 + length
-            if end > len(data):
-                return None
-            payload = data[offset + 8:offset + 8 + length]
-            expected = struct.unpack(">I", data[offset + 8 + length:end])[0]
-            if zlib.crc32(chunk_type + payload) & 0xFFFFFFFF != expected:
-                return None
-            if offset == 8:
-                if chunk_type != b"IHDR" or length != 13:
+        if data[:8] == b"\x89PNG\r\n\x1a\n":
+            offset = 8
+            width = height = None
+            seen_iend = False
+            seen_idat = False
+            while offset + 12 <= len(data):
+                length = struct.unpack(">I", data[offset:offset + 4])[0]
+                chunk_type = data[offset + 4:offset + 8]
+                end = offset + 12 + length
+                if end > len(data):
                     return None
-                width, height = struct.unpack(">II", payload[:8])
-            if chunk_type == b"IDAT":
-                seen_idat = True
-            if chunk_type == b"IEND":
-                seen_iend = length == 0 and end == len(data)
-                break
-            offset = end
-        if not seen_iend or not seen_idat or not width or not height:
+                payload = data[offset + 8:offset + 8 + length]
+                expected = struct.unpack(">I", data[offset + 8 + length:end])[0]
+                if zlib.crc32(chunk_type + payload) & 0xFFFFFFFF != expected:
+                    return None
+                if offset == 8:
+                    if chunk_type != b"IHDR" or length != 13:
+                        return None
+                    width, height = struct.unpack(">II", payload[:8])
+                if chunk_type == b"IDAT":
+                    seen_idat = True
+                if chunk_type == b"IEND":
+                    seen_iend = length == 0 and end == len(data)
+                    break
+                offset = end
+            if not seen_iend or not seen_idat or not width or not height:
+                return None
+            return {"sha256": file_digest(path), "width": width, "height": height, "bytes": len(data), "format": "PNG"}
+        if data[:2] != b"\xff\xd8" or data[-2:] != b"\xff\xd9":
             return None
-        return {"sha256": file_digest(path), "width": width, "height": height, "bytes": len(data)}
+        offset = 2
+        start_of_frame = {0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF}
+        standalone = {0x01, *range(0xD0, 0xD8)}
+        while offset + 1 < len(data):
+            if data[offset] != 0xFF:
+                offset += 1
+                continue
+            while offset < len(data) and data[offset] == 0xFF:
+                offset += 1
+            if offset >= len(data):
+                return None
+            marker = data[offset]
+            offset += 1
+            if marker == 0xD9:
+                return None
+            if marker in standalone:
+                continue
+            if offset + 2 > len(data):
+                return None
+            length = struct.unpack(">H", data[offset:offset + 2])[0]
+            if length < 2 or offset + length > len(data):
+                return None
+            if marker in start_of_frame:
+                if length < 8:
+                    return None
+                height, width = struct.unpack(">HH", data[offset + 3:offset + 7])
+                if not width or not height:
+                    return None
+                return {"sha256": file_digest(path), "width": width, "height": height, "bytes": len(data), "format": "JPEG"}
+            offset += length
+        return None
     except (OSError, struct.error):
         return None
 

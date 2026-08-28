@@ -36,6 +36,14 @@ LABELS = {
     "accepted": "已验收",
 }
 
+
+def image_format(path: Path) -> str:
+    return "JPEG" if path.suffix.casefold() in {".jpg", ".jpeg"} else "PNG"
+
+
+def image_save_options(path: Path) -> dict:
+    return {"quality": 95, "subsampling": 0} if image_format(path) == "JPEG" else {}
+
 CF_DIB = 8
 GMEM_MOVEABLE = 0x0002
 
@@ -284,7 +292,7 @@ class Assistant:
             label.configure(image=preview_image, text="")
         except Exception:
             setattr(self, attribute, None)
-            label.configure(image="", text="PNG 无法预览")
+            label.configure(image="", text="图片无法预览")
 
     def open_image(self, kind: str):
         key = self.selected()
@@ -329,14 +337,14 @@ class Assistant:
             return
         source_name = filedialog.askopenfilename(
             parent=self.root,
-            title="选择已编辑的 PNG 图片",
-            filetypes=[("PNG 图片", "*.png"), ("所有文件", "*.*")],
+            title="选择已编辑的图片",
+            filetypes=[("支持的图片", "*.png *.jpg *.jpeg"), ("所有文件", "*.*")],
         )
         if not source_name:
             return
         source = Path(source_name)
-        if source.suffix.lower() != ".png" or png_info(source) is None:
-            messagebox.showerror("mdoc", "只能导入有效的 PNG 图片。")
+        if source.suffix.casefold() not in {".png", ".jpg", ".jpeg"} or png_info(source) is None:
+            messagebox.showerror("mdoc", "只能导入有效的 PNG 或 JPEG 图片。")
             return
         target = self.items[key]["capture"]
         original = self.items[key]["original"]
@@ -355,10 +363,12 @@ class Assistant:
         target.parent.mkdir(parents=True, exist_ok=True)
         try:
             temporary = target.with_name(f".{target.name}.tmp")
-            shutil.copy2(source, temporary)
+            with Image.open(source) as edited:
+                converted = edited.convert("RGB") if image_format(target) == "JPEG" else edited.copy()
+                converted.save(temporary, format=image_format(target), **image_save_options(target))
             if png_info(temporary) is None:
                 temporary.unlink(missing_ok=True)
-                raise OSError("导入后的文件不是有效 PNG")
+                raise OSError("导入后的文件不是有效图片")
             temporary.replace(target)
         except OSError as exc:
             messagebox.showerror("mdoc", f"无法导入图片：\n{exc}")
@@ -388,7 +398,8 @@ class Assistant:
         if selector.result is None:
             return
         path.parent.mkdir(parents=True, exist_ok=True)
-        selector.result.save(path, format="PNG")
+        captured = selector.result.convert("RGB") if image_format(path) == "JPEG" else selector.result
+        captured.save(path, format=image_format(path), **image_save_options(path))
         if not self.contributor:
             self.command("task", "continue", "--task", self.task_id)
         self.refresh()

@@ -7,10 +7,10 @@ Screenshots are declared in `task.yaml` and captured under the task directory. T
 Declared captures live at:
 
 ```text
-.mdoc/tasks/<task-id>/captures/<locale>/<filename>.png
+.mdoc/tasks/<task-id>/captures/<locale>/<filename>.(png|jpg|jpeg)
 ```
 
-A user may place a valid PNG at the declared path in any session. `mdoc task continue` and the screenshot assistant both discover the file, read its PNG header and digest, and update `task-state.json` through the shared core logic.
+A user may place a valid PNG or JPEG at the declared path in any session. `mdoc task continue` and the screenshot assistant both discover the file, validate its dimensions and digest, and update `task-state.json` through the shared core logic.
 
 ## Item Status
 
