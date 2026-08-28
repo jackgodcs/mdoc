@@ -42,6 +42,8 @@ mdoc task screenshots open --workspace <manual-repository-root> --task <task-id>
 
 The assistant previews declared captures, captures a screen region, and calls CLI-equivalent actions for status changes and aggregate acceptance. It must not write formal manual files directly.
 
+When OCR candidates include a false positive and the contributor confirms that the original image needs no replacement, use **原图作为新截图** for the selected item. It copies the original reference image byte-for-byte into that item's controlled capture path, validates the image, and clears prior text-editor layers for that item. The item is then shown as captured and can be submitted normally; the formal manual image remains untouched until coordinator acceptance and publishing.
+
 ## Shared-Workspace Collaboration
 
 For a shared manual workspace, the coordinator creates and confirms each task. Divide screenshot work by non-overlapping manual asset paths; a practical boundary is the first directory under the book's image root. Access control comes from the file share itself; mdoc does not identify or log in contributors. Only the coordinator performs aggregate acceptance, task continuation, publishing, and final acceptance.

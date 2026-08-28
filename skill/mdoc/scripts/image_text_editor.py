@@ -46,6 +46,20 @@ def image_save_options(path: Path) -> dict:
     return {"quality": 95, "subsampling": 0} if image_format(path) == "JPEG" else {}
 
 
+def image_edit_artifact_paths(task, entry: dict) -> tuple[Path, Path]:
+    """Return the task-local record and base snapshot for one screenshot item."""
+    locale = entry["item"]["locale"]
+    identifier = entry["item"]["id"].replace("/", "_").replace(":", "_")
+    directory = task.directory / "image-edits" / locale
+    return directory / f"{identifier}.json", directory / f"{identifier}.base.png"
+
+
+def clear_image_edit_artifacts(task, entry: dict) -> None:
+    """Discard stale editor layers when a capture is replaced outside the editor."""
+    for path in image_edit_artifact_paths(task, entry):
+        path.unlink(missing_ok=True)
+
+
 def _atomic_json(path: Path, value: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.tmp")
@@ -215,10 +229,7 @@ class ImageTextEditor(tk.Toplevel):
         self.after(120, self._restore_or_fit)
 
     def _record_paths(self) -> tuple[Path, Path]:
-        locale = self.entry["item"]["locale"]
-        identifier = self.entry["item"]["id"].replace("/", "_").replace(":", "_")
-        directory = self.task.directory / "image-edits" / locale
-        return directory / f"{identifier}.json", directory / f"{identifier}.base.png"
+        return image_edit_artifact_paths(self.task, self.entry)
 
     def _load_image(self, path: Path) -> None:
         with Image.open(path) as source:

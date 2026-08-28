@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.8 - 2026-08-28
+
+- Added **原图作为新截图** for confirmed OCR false positives. It creates a validated, byte-identical capture from the original reference image and clears stale text-editor layers for that item.
+
 ## 1.3.7 - 2026-08-28
 
 - Fixed contributor screenshot launchers so a Windows UNC share is mapped before its workspace path is passed to the assistant; this prevents a trailing UNC separator from consuming the task argument.

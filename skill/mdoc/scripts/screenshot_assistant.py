@@ -25,7 +25,7 @@ if str(SKILL_DIR) not in sys.path:
 from mdoc_core.config import load_task, load_workspace
 from mdoc_core.screenshots import declared, png_info, synchronize
 from mdoc_core.state import load_state
-from image_text_editor import ImageTextEditor
+from image_text_editor import ImageTextEditor, clear_image_edit_artifacts
 
 LABELS = {
     "pending": "待截图",
@@ -43,6 +43,33 @@ def image_format(path: Path) -> str:
 
 def image_save_options(path: Path) -> dict:
     return {"quality": 95, "subsampling": 0} if image_format(path) == "JPEG" else {}
+
+def copy_reference_to_capture(source: Path, target: Path) -> dict:
+    """Copy a valid original image byte-for-byte into a declared capture slot."""
+    source_info = png_info(source)
+    if source_info is None:
+        raise OSError("原手册图片不是有效的 PNG 或 JPEG 文件。")
+    if source_info["format"] != image_format(target):
+        raise OSError("原手册图片格式与当前截图目标格式不一致，不能原样复制。")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = target.with_name(f".{target.name}.tmp")
+    try:
+        shutil.copyfile(source, temporary)
+        target_info = png_info(temporary)
+        if (
+            target_info is None
+            or target_info["format"] != source_info["format"]
+            or target_info["width"] != source_info["width"]
+            or target_info["height"] != source_info["height"]
+            or target_info["sha256"] != source_info["sha256"]
+        ):
+            raise OSError("原图复制后的校验结果不一致。")
+        temporary.replace(target)
+    except Exception:
+        temporary.unlink(missing_ok=True)
+        raise
+    return source_info
+
 
 CF_DIB = 8
 GMEM_MOVEABLE = 0x0002
@@ -162,6 +189,7 @@ class Assistant:
         ttk.Button(toolbar, text="编辑当前项", command=self.edit_current).pack(side="left", padx=(6, 0))
         ttk.Button(toolbar, text="截取区域", command=self.capture).pack(side="left", padx=6)
         ttk.Button(toolbar, text="导入已编辑图片", command=self.import_image).pack(side="left")
+        ttk.Button(toolbar, text="原图作为新截图", command=self.use_original_as_capture).pack(side="left", padx=(6, 0))
         ttk.Button(toolbar, text="用默认程序打开原图", command=lambda: self.open_image("original")).pack(side="left", padx=6)
         ttk.Button(toolbar, text="用默认程序打开新截图", command=lambda: self.open_image("capture")).pack(side="left", padx=6)
         ttk.Button(toolbar, text="需重拍", command=lambda: self.set_status("needs_retake")).pack(side="left")
@@ -329,6 +357,35 @@ class Assistant:
             messagebox.showerror("mdoc", f"无法复制原图到剪贴板：\n{exc}")
             return
         self.detail.configure(text=self.detail.cget("text") + "\n原图已复制到剪贴板，可在图片编辑软件中直接粘贴。")
+
+    def use_original_as_capture(self):
+        key = self.selected()
+        if not key:
+            messagebox.showwarning("mdoc", "请先选择一项截图任务。")
+            return
+        entry = self.items[key]
+        source = entry["original"]
+        target = entry["capture"]
+        if not source.is_file():
+            messagebox.showwarning("mdoc", f"原手册图片不存在：\n{source}")
+            return
+        if target.is_file() and not messagebox.askyesno(
+            "替换当前截图",
+            "将用原手册图片原样替换当前新截图，并清除该项之前的文字编辑记录。\n\n是否继续？",
+            parent=self.root,
+        ):
+            return
+        try:
+            copy_reference_to_capture(source, target)
+            clear_image_edit_artifacts(self.task, entry)
+        except OSError as exc:
+            messagebox.showerror("mdoc", f"无法将原图作为当前新截图：\n{exc}")
+            return
+        arguments = ["task", "screenshots", "set-status", "--task", self.task_id, "--item", key, "--status", "pending"]
+        if self.contributor:
+            arguments.append("--contributor")
+        if self.command(*arguments) is not None:
+            self.refresh()
 
     def import_image(self):
         key = self.selected()
