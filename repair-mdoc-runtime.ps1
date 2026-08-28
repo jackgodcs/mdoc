@@ -42,17 +42,60 @@ function Expand-SafeZip([string]$Archive, [string]$Destination) {
   New-Item -ItemType Directory -Path $Destination -Force | Out-Null
   [IO.Compression.ZipFile]::ExtractToDirectory($Archive, $Destination)
 }
-function Receive-MdocFile([string]$Uri, [string]$Destination) {
-  if ($Proxy -and $Proxy.StartsWith('socks', [StringComparison]::OrdinalIgnoreCase)) {
-    $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
-    if (-not $curl) { throw 'MDOC-RUNTIME-SOCKS-CURL-MISSING: SOCKS5 downloads require Windows curl.exe.' }
-    & $curl.Source --fail --location --silent --show-error --proxy $Proxy --output $Destination $Uri
+function Assert-MdocDownloadedFile([string]$Destination) {
+  if (-not (Test-Path -LiteralPath $Destination -PathType Leaf)) { throw "MDOC-RUNTIME-DOWNLOAD-MISSING: $Destination" }
+  if ((Get-Item -LiteralPath $Destination).Length -le 0) { throw "MDOC-RUNTIME-DOWNLOAD-EMPTY: $Destination" }
+}
+function Invoke-MdocCurlDownload([string]$Uri, [string]$Destination) {
+  $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
+  if (-not $curl) { throw 'MDOC-RUNTIME-DOWNLOAD-CURL-MISSING: Windows curl.exe is not available.' }
+  $arguments = @('--fail', '--location', '--silent', '--show-error', '--retry', '3', '--retry-delay', '2', '--output', $Destination)
+  if ($Proxy) { $arguments += @('--proxy', $Proxy) }
+  $arguments += $Uri
+  try {
+    & $curl.Source @arguments
     if ($LASTEXITCODE -ne 0) { throw "MDOC-RUNTIME-DOWNLOAD-FAILED: $Uri" }
-    return
+    Assert-MdocDownloadedFile $Destination
+  } catch {
+    if (Test-Path -LiteralPath $Destination -PathType Leaf) { Remove-Item -LiteralPath $Destination -Force -ErrorAction SilentlyContinue }
+    throw
   }
+}
+function Invoke-MdocWebDownload([string]$Uri, [string]$Destination) {
   $parameters = @{UseBasicParsing=$true; Uri=$Uri; OutFile=$Destination}
   if ($Proxy) { $parameters.Proxy = $Proxy; $parameters.ProxyUseDefaultCredentials = $false }
   Invoke-WebRequest @parameters
+  Assert-MdocDownloadedFile $Destination
+}
+function Receive-MdocFile([string]$Uri, [string]$Destination) {
+  $parent = Split-Path -Parent $Destination
+  if ($parent) { New-Item -ItemType Directory -Path $parent -Force | Out-Null }
+  if ($Proxy -and $Proxy.StartsWith('socks', [StringComparison]::OrdinalIgnoreCase)) {
+    try {
+      Invoke-MdocCurlDownload $Uri $Destination
+    } catch {
+      if ($_.Exception.Message -like 'MDOC-RUNTIME-DOWNLOAD-CURL-MISSING:*') { throw 'MDOC-RUNTIME-SOCKS-CURL-MISSING: SOCKS5 downloads require Windows curl.exe.' }
+      throw
+    }
+    return
+  }
+  $lastWebError = $null
+  for ($attempt = 1; $attempt -le 3; $attempt++) {
+    try {
+      if (Test-Path -LiteralPath $Destination -PathType Leaf) { Remove-Item -LiteralPath $Destination -Force -ErrorAction SilentlyContinue }
+      Invoke-MdocWebDownload $Uri $Destination
+      return
+    } catch {
+      $lastWebError = $_.Exception.Message
+      if (Test-Path -LiteralPath $Destination -PathType Leaf) { Remove-Item -LiteralPath $Destination -Force -ErrorAction SilentlyContinue }
+      if ($attempt -lt 3) { Start-Sleep -Seconds $attempt }
+    }
+  }
+  try {
+    Invoke-MdocCurlDownload $Uri $Destination
+  } catch {
+    throw "MDOC-RUNTIME-DOWNLOAD-FAILED: $Uri. Invoke-WebRequest failed after 3 attempts. Last error: $lastWebError. curl fallback error: $($_.Exception.Message)"
+  }
 }
 function Invoke-MdocProcess([string]$Executable, [string[]]$Arguments) {
   $startInfo = New-Object System.Diagnostics.ProcessStartInfo

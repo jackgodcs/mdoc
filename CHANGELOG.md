@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.4 - 2026-08-28
+
+- Retried interrupted toolchain downloads, discarded partial files, and used Windows curl as a verified fallback when Invoke-WebRequest cannot complete the download.
+
 ## 1.3.3 - 2026-08-28
 
 - Isolated Windows Python capability probes from PowerShell native stderr handling so incompatible Python candidates are skipped instead of aborting installation.

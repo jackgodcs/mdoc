@@ -16,7 +16,7 @@ class ReleaseBuildTests(unittest.TestCase):
     def test_release_build_is_deterministic_and_manifest_matches(self):
         command = [sys.executable, str(ROOT / "scripts" / "build_release.py")]
         subprocess.run(command, check=True, capture_output=True, text=True)
-        asset = ROOT / "dist" / "mdoc-1.3.3-windows-x64.zip"
+        asset = ROOT / "dist" / "mdoc-1.3.4-windows-x64.zip"
         first = hashlib.sha256(asset.read_bytes()).hexdigest()
         subprocess.run(command, check=True, capture_output=True, text=True)
         second = hashlib.sha256(asset.read_bytes()).hexdigest()
@@ -48,7 +48,7 @@ class ReleaseBuildTests(unittest.TestCase):
     def test_windows_powershell_installer_validates_chinese_manifest_filename(self):
         command = [sys.executable, str(ROOT / "scripts" / "build_release.py")]
         subprocess.run(command, check=True, capture_output=True, text=True)
-        asset = ROOT / "dist" / "mdoc-1.3.3-windows-x64.zip"
+        asset = ROOT / "dist" / "mdoc-1.3.4-windows-x64.zip"
         powershell = os.environ.get("WINDIR", r"C:\Windows")
         powershell = str(Path(powershell) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe")
         self.assertTrue(Path(powershell).is_file())
@@ -125,6 +125,45 @@ class ReleaseBuildTests(unittest.TestCase):
             ], capture_output=True, text=True, encoding="utf-8", errors="replace")
             self.assertEqual(0, result.returncode, result.stdout + result.stderr)
             self.assertIn("MDOC-PYTHON-PROBE-OK", result.stdout)
+
+    @unittest.skipUnless(sys.platform == "win32", "Windows PowerShell download retry test")
+    def test_windows_powershell_runtime_download_retries_unexpected_eof(self):
+        powershell = os.environ.get("WINDIR", r"C:\Windows")
+        powershell = Path(powershell) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+        self.assertTrue(powershell.is_file())
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            script = root / "download-retry.ps1"
+            repair = ROOT / "repair-mdoc-runtime.ps1"
+            destination = root / "downloaded-toolchain.zip"
+            script.write_text(
+                "$ErrorActionPreference = 'Stop'\n"
+                "$Proxy = $null\n"
+                f"$repair = '{str(repair).replace("'", "''")}'\n"
+                "$source = Get-Content -LiteralPath $repair -Encoding UTF8 -Raw\n"
+                "$start = $source.IndexOf('function Assert-MdocDownloadedFile')\n"
+                "$end = $source.IndexOf('function Invoke-MdocProcess')\n"
+                ". ([ScriptBlock]::Create($source.Substring($start, $end - $start)))\n"
+                "$script:attempts = 0\n"
+                "function Invoke-MdocWebDownload { param([string]$Uri, [string]$Destination) $script:attempts++; if ($script:attempts -eq 1) { throw [IO.IOException]::new('Received an unexpected EOF or 0 bytes from the transport stream.') }; [IO.File]::WriteAllText($Destination, 'toolchain') }\n"
+                "function Start-Sleep { param([int]$Seconds) }\n"
+                f"Receive-MdocFile 'https://example.invalid/toolchain.zip' '{str(destination).replace("'", "''")}'\n"
+                "if ($script:attempts -ne 2) { throw ('MDOC-TEST-UNEXPECTED-ATTEMPTS: ' + $script:attempts) }\n"
+                f"if ([IO.File]::ReadAllText('{str(destination).replace("'", "''")}') -ne 'toolchain') {{ throw 'MDOC-TEST-DOWNLOAD-CONTENT-INVALID' }}\n"
+                "Write-Output 'MDOC-DOWNLOAD-RETRY-OK'\n",
+                encoding="utf-8",
+            )
+            result = subprocess.run([
+                str(powershell),
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(script),
+            ], capture_output=True, text=True, encoding="utf-8", errors="replace")
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            self.assertIn("MDOC-DOWNLOAD-RETRY-OK", result.stdout)
 
 if __name__ == "__main__":
     unittest.main()
