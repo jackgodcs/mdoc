@@ -11,6 +11,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $packageRoot = $PSScriptRoot
+$originalPackageRoot = [IO.Path]::GetFullPath($packageRoot)
 $sourcePackageStaging = $null
 
 function Get-Sha256([string]$Path) {
@@ -22,6 +23,17 @@ function Get-Sha256([string]$Path) {
     $stream.Dispose()
     $algorithm.Dispose()
   }
+}
+function Find-MdocLocalToolkit([string]$Root, [object]$Bootstrap) {
+  $name = [IO.Path]::GetFileName(([Uri]$Bootstrap.toolkit_url).AbsolutePath)
+  $candidates = @(
+    (Join-Path $Root $name),
+    (Join-Path $Root 'mdoc-toolchain.zip')
+  )
+  foreach ($candidate in $candidates | Select-Object -Unique) {
+    if (Test-Path -LiteralPath $candidate -PathType Leaf) { return [IO.Path]::GetFullPath($candidate) }
+  }
+  return $null
 }
 
 if (-not (Test-Path -LiteralPath (Join-Path $packageRoot 'PACKAGE-MANIFEST.json') -PathType Leaf)) {
@@ -68,6 +80,15 @@ try {
   }
   $source = Join-Path $packageRoot 'skill\mdoc'
   if (-not (Test-Path -LiteralPath (Join-Path $source 'SKILL.md'))) { throw 'MDOC-INSTALL-PACKAGE-INVALID: 缺少 skill/mdoc/SKILL.md。' }
+  if (-not $Toolkit) {
+    $bootstrapPath = Join-Path $packageRoot 'bootstrap\toolchain-bootstrap.json'
+    $bootstrap = Get-Content -LiteralPath $bootstrapPath -Encoding UTF8 -Raw | ConvertFrom-Json
+    $Toolkit = Find-MdocLocalToolkit $packageRoot $bootstrap
+    if (-not $Toolkit -and [IO.Path]::GetFullPath($packageRoot) -ne $originalPackageRoot) {
+      $Toolkit = Find-MdocLocalToolkit $originalPackageRoot $bootstrap
+    }
+    if ($Toolkit) { Write-Host "Using local mdoc Toolchain bundle: $Toolkit" }
+  }
   $parent = Split-Path -Parent $Destination
   New-Item -ItemType Directory -Path $parent -Force | Out-Null
   $staging = $Destination + '.installing'

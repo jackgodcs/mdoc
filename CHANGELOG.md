@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.5 - 2026-08-28
+
+- Allowed installers to automatically verify and use a manually downloaded Toolchain ZIP placed beside the installer, avoiding network download on unreliable machines.
+
 ## 1.3.4 - 2026-08-28
 
 - Retried interrupted toolchain downloads, discarded partial files, and used Windows curl as a verified fallback when Invoke-WebRequest cannot complete the download.

@@ -16,7 +16,7 @@ class ReleaseBuildTests(unittest.TestCase):
     def test_release_build_is_deterministic_and_manifest_matches(self):
         command = [sys.executable, str(ROOT / "scripts" / "build_release.py")]
         subprocess.run(command, check=True, capture_output=True, text=True)
-        asset = ROOT / "dist" / "mdoc-1.3.4-windows-x64.zip"
+        asset = ROOT / "dist" / "mdoc-1.3.5-windows-x64.zip"
         first = hashlib.sha256(asset.read_bytes()).hexdigest()
         subprocess.run(command, check=True, capture_output=True, text=True)
         second = hashlib.sha256(asset.read_bytes()).hexdigest()
@@ -40,6 +40,10 @@ class ReleaseBuildTests(unittest.TestCase):
         self.assertTrue(installer_script.startswith(b"\xef\xbb\xbf"))
         self.assertTrue(runtime_repair_script.startswith(b"\xef\xbb\xbf"))
         self.assertIn(b"chcp 65001 > nul", installer_launcher)
+        self.assertIn(b"mdoc-toolchain.zip", installer_launcher)
+        self.assertIn(b"enter local ZIP path", installer_launcher)
+        self.assertIn(b"install-mdoc.cmd -Toolkit", installer_launcher)
+        self.assertIn(b"You can install without network access", installer_launcher)
         self.assertIn(b'"path": "\\u5b89\\u88c5 mdoc.cmd"', manifest_bytes)
         self.assertEqual("2026.08.1", manifest["runtime_contract"]["toolchain_version"])
         self.assertEqual(">=3.12.0,<3.13.0", manifest["runtime_contract"]["python"])
@@ -48,7 +52,7 @@ class ReleaseBuildTests(unittest.TestCase):
     def test_windows_powershell_installer_validates_chinese_manifest_filename(self):
         command = [sys.executable, str(ROOT / "scripts" / "build_release.py")]
         subprocess.run(command, check=True, capture_output=True, text=True)
-        asset = ROOT / "dist" / "mdoc-1.3.4-windows-x64.zip"
+        asset = ROOT / "dist" / "mdoc-1.3.5-windows-x64.zip"
         powershell = os.environ.get("WINDIR", r"C:\Windows")
         powershell = str(Path(powershell) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe")
         self.assertTrue(Path(powershell).is_file())
@@ -91,6 +95,54 @@ class ReleaseBuildTests(unittest.TestCase):
             ], capture_output=True, text=True, encoding="utf-8", errors="replace")
             self.assertEqual(0, result.returncode, result.stdout + result.stderr)
             self.assertTrue((installation / "SKILL.md").is_file())
+
+    @unittest.skipUnless(sys.platform == "win32", "Windows PowerShell local toolkit discovery test")
+    def test_windows_powershell_installer_uses_local_toolkit_beside_package(self):
+        command = [sys.executable, str(ROOT / "scripts" / "build_release.py")]
+        subprocess.run(command, check=True, capture_output=True, text=True)
+        asset = ROOT / "dist" / "mdoc-1.3.5-windows-x64.zip"
+        powershell = Path(os.environ.get("WINDIR", r"C:\Windows")) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+        self.assertTrue(powershell.is_file())
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            package_root = root / "package"
+            runtime_root = root / "runtime"
+            installation = root / "installation"
+            with zipfile.ZipFile(asset) as package:
+                package.extractall(package_root)
+                manifest = json.loads(package.read("PACKAGE-MANIFEST.json"))
+                requirements_hash = hashlib.sha256(package.read("runtime/requirements-v1.json")).hexdigest()
+            (package_root / "mdoc-toolchain.zip").write_bytes(b"offline-toolchain")
+            state = runtime_root / "state" / "installed-runtime.json"
+            state.parent.mkdir(parents=True)
+            state.write_text(json.dumps({
+                "toolchain_version": manifest["runtime_contract"]["toolchain_version"],
+                "python_contract": manifest["runtime_contract"]["python"],
+                "profile": manifest["runtime_contract"]["profile"],
+                "requirements_sha256": requirements_hash,
+                "capability_probe": "ready",
+                "python_source": "system-or-user",
+            }), encoding="utf-8")
+            result = subprocess.run([
+                str(powershell),
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(package_root / "install-mdoc.ps1"),
+                "-Profile",
+                "Offline",
+                "-SkipRuntimeRepair",
+                "-Python",
+                sys.executable,
+                "-Destination",
+                str(installation),
+                "-RuntimeRoot",
+                str(runtime_root),
+            ], capture_output=True, text=True, encoding="utf-8", errors="replace")
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            self.assertIn("Using local mdoc Toolchain bundle:", result.stdout)
 
     @unittest.skipUnless(sys.platform == "win32", "Windows PowerShell runtime probe test")
     def test_windows_powershell_runtime_probe_skips_failed_python_candidate(self):

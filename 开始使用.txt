@@ -1,9 +1,10 @@
-mdoc 1.3.4 Windows 安装包
+mdoc 1.3.5 Windows 安装包
 
 1. 双击“安装 mdoc.cmd”。
 2. 默认选择“完整安装”，可准备核心、PDF Check 和截图助手环境。
 3. 任何联网下载都会先显示来源、版本、许可证、大小和安装位置，并请求确认。
 4. 安装后在新终端运行：mdoc doctor
+5. 网络不稳定时，手动下载 mdoc Toolchain 2026.08.1，保留原文件名或改名为 mdoc-toolchain.zip，并放在本文件同级目录；安装器会自动校验并使用本地文件，不联网下载。
 
 项目主页：https://github.com/jackgodcs/mdoc
-运行环境目录：https://github.com/jackgodcs/mdoc-toolchain
+Toolchain 下载：https://github.com/jackgodcs/mdoc-toolchain/releases/download/v2026.08.1/mdoc-toolchain-2026.08.1-windows-x64.zip
