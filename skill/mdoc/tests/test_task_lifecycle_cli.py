@@ -142,7 +142,10 @@ class TaskLifecycleCliTests(unittest.TestCase):
         self.define_simple_task("contributor-launcher")
         result = cli("task", "create-contributor-launcher", "--workspace", str(self.workspace), "--task", "contributor-launcher", "--output", "Open-Task.cmd", "--json")
         launcher = self.workspace / "Open-Task.cmd"
-        self.assertEqual(str(launcher), result["path"])
+        # Windows may serialize the same temporary directory with an 8.3
+        # short path (for example RUNNER~1) in the subprocess result.
+        self.assertEqual(launcher.resolve(), Path(result["path"]).resolve())
+        self.assertTrue(launcher.samefile(Path(result["path"])))
         launcher_text = launcher.read_text(encoding="ascii")
         self.assertIn('set "MDOC_CMD=%LOCALAPPDATA%\\mdoc\\bin\\mdoc.cmd"', launcher_text)
         self.assertIn('call "%MDOC_CMD%" task contribute --workspace "%~dp0" --task "contributor-launcher"', launcher_text)
