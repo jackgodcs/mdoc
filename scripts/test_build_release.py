@@ -13,7 +13,7 @@ class ReleaseBuildTests(unittest.TestCase):
     def test_release_build_is_deterministic_and_manifest_matches(self):
         command = [sys.executable, str(ROOT / "scripts" / "build_release.py")]
         subprocess.run(command, check=True, capture_output=True, text=True)
-        asset = ROOT / "dist" / "mdoc-1.3.0-windows-x64.zip"
+        asset = ROOT / "dist" / "mdoc-1.3.1-windows-x64.zip"
         first = hashlib.sha256(asset.read_bytes()).hexdigest()
         subprocess.run(command, check=True, capture_output=True, text=True)
         second = hashlib.sha256(asset.read_bytes()).hexdigest()
@@ -23,6 +23,9 @@ class ReleaseBuildTests(unittest.TestCase):
         with zipfile.ZipFile(asset) as package:
             names = set(package.namelist())
             manifest = json.loads(package.read("PACKAGE-MANIFEST.json"))
+            installer_script = package.read("install-mdoc.ps1")
+            runtime_repair_script = package.read("repair-mdoc-runtime.ps1")
+            installer_launcher = package.read("\u5b89\u88c5 mdoc.cmd")
         self.assertIn("安装 mdoc.cmd", names)
         self.assertIn("install-mdoc.ps1", names)
         self.assertIn("repair-mdoc-runtime.ps1", names)
@@ -31,6 +34,9 @@ class ReleaseBuildTests(unittest.TestCase):
         self.assertIn("runtime-bootstrap/mdoc_install_transaction.py", names)
         self.assertNotIn("skill/mdoc/tests/test_public_contract.py", names)
         self.assertFalse(any("__pycache__" in name or name.endswith(".pyc") for name in names))
+        self.assertTrue(installer_script.startswith(b"\xef\xbb\xbf"))
+        self.assertTrue(runtime_repair_script.startswith(b"\xef\xbb\xbf"))
+        self.assertIn(b"chcp 65001 > nul", installer_launcher)
         self.assertEqual("2026.08.1", manifest["runtime_contract"]["toolchain_version"])
         self.assertEqual(">=3.12.0,<3.13.0", manifest["runtime_contract"]["python"])
 

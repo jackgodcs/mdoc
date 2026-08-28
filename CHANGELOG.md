@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.1 - 2026-08-28
+
+- Fixed Windows PowerShell installer parsing and installer-console encoding on systems using the default Windows PowerShell 5.1 host.
+
 ## 1.3.0 - 2026-08-26
 
 - Completed the schema_version 1 refactor, including strict workspace and task definition lifecycles, frozen manifests, controlled authoring staging, screenshot acceptance, and transactional publishing.

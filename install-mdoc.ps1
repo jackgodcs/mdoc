@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
   [ValidateSet('Full', 'Core', 'Existing', 'Offline')] [string]$Profile = 'Full',
   [string]$Python,

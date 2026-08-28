@@ -1,11 +1,12 @@
 @echo off
 setlocal
+chcp 65001 > nul
 title mdoc installation
-echo mdoc 安装程序将校验当前 ZIP 内的固定文件并安装到当前用户目录。
-echo 它不会修改永久 PowerShell 执行策略，也不会绕过企业安全策略。
+echo The mdoc installer will verify the fixed files in this package and install them for the current user.
+echo It does not change the permanent PowerShell execution policy or bypass enterprise security policy.
 echo.
 set NETWORK_ARG=
-choice /C YN /N /M "是否允许安装器联网下载并校验约 50 MB 的 mdoc Toolchain？[Y/N] "
+choice /C YN /N /M "Allow the installer to download and verify about 50 MB of mdoc Toolchain? [Y/N] "
 if errorlevel 2 goto offline
 set NETWORK_ARG=-AllowNetworkDownload
 :offline
@@ -13,6 +14,6 @@ echo.
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0install-mdoc.ps1" %NETWORK_ARG%
 set EXIT_CODE=%ERRORLEVEL%
 echo.
-if not "%EXIT_CODE%"=="0" echo 安装未完成，退出代码：%EXIT_CODE%
+if not "%EXIT_CODE%"=="0" echo Installation did not complete. Exit code: %EXIT_CODE%
 pause
 exit /b %EXIT_CODE%
