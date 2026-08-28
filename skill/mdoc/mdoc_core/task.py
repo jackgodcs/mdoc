@@ -38,7 +38,6 @@ def launch_screenshot_assistant(task, *, contributor: bool = False) -> None:
         command.append("--contributor")
     subprocess.Popen(
         command,
-        cwd=task.workspace.repository,
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
 
@@ -64,13 +63,26 @@ def create_contributor_launcher(task, output: str | None = None) -> dict:
     content = (
         "@echo off\r\n"
         "setlocal\r\n"
-        "set \"MDOC_CMD=%LOCALAPPDATA%\\mdoc\\bin\\mdoc.cmd\"\r\n"
-        "if exist \"%MDOC_CMD%\" (\r\n"
-        f"  call \"%MDOC_CMD%\" task contribute --workspace \"%~dp0\" --task \"{task.task_id}\"\r\n"
-        ") else (\r\n"
-        f"  call mdoc task contribute --workspace \"%~dp0\" --task \"{task.task_id}\"\r\n"
+        "pushd \"%~dp0\" >nul 2>&1\r\n"
+        "if errorlevel 1 (\r\n"
+        "  echo Unable to access the shared mdoc workspace.\r\n"
+        "  pause\r\n"
+        "  exit /b 2\r\n"
         ")\r\n"
-        "if errorlevel 1 pause\r\n"
+        "set \"MDOC_WORKSPACE=%~dp0\"\r\n"
+        "set \"MDOC_PYTHON=%LOCALAPPDATA%\\mdoc\\runtime\\Scripts\\python.exe\"\r\n"
+        "set \"MDOC_ASSISTANT=%USERPROFILE%\\.codex\\skills\\mdoc\\scripts\\screenshot_assistant.py\"\r\n"
+        "if exist \"%MDOC_PYTHON%\" if exist \"%MDOC_ASSISTANT%\" (\r\n"
+        f"  \"%MDOC_PYTHON%\" -B \"%MDOC_ASSISTANT%\" --workspace \"%MDOC_WORKSPACE%\" --task \"{task.task_id}\" --contributor\r\n"
+        ") else (\r\n"
+        "  echo mdoc screenshot assistant is not installed for this user.\r\n"
+        "  echo Install mdoc, then open this launcher again.\r\n"
+        "  cmd /c exit 2\r\n"
+        ")\r\n"
+        "set \"EXIT_CODE=%ERRORLEVEL%\"\r\n"
+        "popd\r\n"
+        "if not \"%EXIT_CODE%\"==\"0\" pause\r\n"
+        "exit /b %EXIT_CODE%\r\n"
     )
     temporary = target.with_name(f".{target.name}.tmp")
     try:

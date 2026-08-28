@@ -54,6 +54,8 @@ mdoc task create-contributor-launcher --workspace <manual-repository-root> --tas
 
 The generated `.cmd` file uses its own location to find the shared workspace and opens contributor mode. Contributor mode can edit declared captures, set screenshot item statuses, and submit a capture manifest:
 
+For a Windows UNC share, use the generated launcher instead of starting an mdoc `.cmd` from the UNC working directory. The launcher temporarily maps the share for the command shell and passes the original shared path explicitly. If running the command manually, pass the complete UNC path, for example `\\server\share\manual`.
+
 ```powershell
 mdoc task contribute --workspace <manual-repository-root> --task <task-id>
 mdoc task screenshots submit --workspace <manual-repository-root> --task <task-id>

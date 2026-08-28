@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.6 - 2026-08-28
+
+- Made contributor screenshot launchers work from Windows UNC shares and prevented the assistant subprocess from using a UNC current directory.
+
 ## 1.3.5 - 2026-08-28
 
 - Allowed installers to automatically verify and use a manually downloaded Toolchain ZIP placed beside the installer, avoiding network download on unreliable machines.
