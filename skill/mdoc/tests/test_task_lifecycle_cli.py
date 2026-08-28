@@ -94,6 +94,38 @@ class TaskLifecycleCliTests(unittest.TestCase):
         self.assertEqual("waiting_for_screenshot_acceptance", state["status"])
         self.assertEqual("stale", state["screenshot_acceptance"]["status"])
 
+    def test_contributor_submission_does_not_accept_or_publish_screenshots(self) -> None:
+        directory = self.define_simple_task("contributor")
+        draft_path = directory / "task-draft.yaml"
+        draft = YAML(typ="safe").load(draft_path.read_text(encoding="utf-8"))
+        draft["scope"]["assets"]["create"] = [{"locale": "zh", "path": "images/window.png", "evidence": []}]
+        draft["screenshots"] = [{"id": "WINDOW", "filename": "window.png", "locales": ["zh"], "required": True, "destinations": {"zh": "images/window.png"}}]
+        write_yaml(draft_path, draft)
+        cli("task", "define", "--workspace", str(self.workspace), "--task", "contributor", "--json")
+        cli("task", "confirm-definition", "--workspace", str(self.workspace), "--task", "contributor", "--no-gui", "--json")
+
+        capture = directory / "captures" / "zh" / "window.png"
+        capture.parent.mkdir(parents=True)
+        Image.new("RGB", (12, 8), "green").save(capture)
+        submitted = cli("task", "screenshots", "submit", "--workspace", str(self.workspace), "--task", "contributor", "--no-gui", "--json")
+        self.assertEqual("submitted", submitted["screenshot_submission"]["status"])
+        self.assertIsNone(submitted["screenshot_acceptance"])
+        self.assertFalse((directory / "staging" / "zh" / "images" / "window.png").exists())
+        self.assertFalse((self.locale / "images" / "window.png").exists())
+
+        state = cli("task", "screenshots", "set-status", "--workspace", str(self.workspace), "--task", "contributor", "--item", "WINDOW:zh", "--status", "needs_retake", "--contributor", "--no-gui", "--json")
+        self.assertEqual("waiting_for_screenshots", state["status"])
+        self.assertEqual("stale", state["screenshot_submission"]["status"])
+
+    def test_contributor_launcher_stays_inside_the_workspace_root(self) -> None:
+        self.define_simple_task("contributor-launcher")
+        result = cli("task", "create-contributor-launcher", "--workspace", str(self.workspace), "--task", "contributor-launcher", "--output", "Open-Task.cmd", "--json")
+        launcher = self.workspace / "Open-Task.cmd"
+        self.assertEqual(str(launcher), result["path"])
+        self.assertIn('mdoc task contribute --workspace "%~dp0" --task "contributor-launcher"', launcher.read_text(encoding="ascii"))
+        error = cli("task", "create-contributor-launcher", "--workspace", str(self.workspace), "--task", "contributor-launcher", "--output", "nested\\Open-Task.cmd", "--json", expected=2)
+        self.assertEqual("MDOC-CONTRIBUTOR-LAUNCHER-INVALID", error["error"]["code"])
+
     def test_copy_from_locale_is_cli_owned_and_byte_identical(self) -> None:
         en = self.workspace / "Guide" / "en"
         (en / "Main").mkdir(parents=True)

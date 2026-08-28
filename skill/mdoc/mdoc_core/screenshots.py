@@ -102,6 +102,9 @@ def synchronize(task, state: dict) -> dict:
     acceptance = state.get("screenshot_acceptance")
     if acceptance and acceptance.get("manifest_digest") != digest:
         acceptance["status"] = "stale"
+    submission = state.get("screenshot_submission")
+    if submission and submission.get("manifest_digest") != digest:
+        submission["status"] = "stale"
     return {"digest": digest, "items": current}
 
 
@@ -113,6 +116,8 @@ def set_status(task, state: dict, key: str, status: str) -> None:
         raise MdocError("MDOC-SCREENSHOT-NOT-DECLARED", f"Screenshot is not declared: {key}")
     state["screenshots"][key]["status"] = status
     state["screenshot_acceptance"] = None
+    if state.get("screenshot_submission"):
+        state["screenshot_submission"]["status"] = "stale"
 
 
 def readiness(task, state: dict) -> tuple[bool, dict]:
@@ -146,4 +151,12 @@ def accept(task, state: dict) -> dict:
         temporary.replace(target)
     manifest = synchronize(task, state)
     state["screenshot_acceptance"] = {"status": "accepted", "manifest_digest": manifest["digest"], "at": int(time.time())}
+    return manifest
+
+
+def submit(task, state: dict) -> dict:
+    ready, manifest = readiness(task, state)
+    if not ready:
+        raise MdocError("MDOC-SCREENSHOTS-INCOMPLETE", "Required screenshots are not complete.", {"items": manifest["blockers"]})
+    state["screenshot_submission"] = {"status": "submitted", "manifest_digest": manifest["digest"], "at": int(time.time())}
     return manifest

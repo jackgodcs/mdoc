@@ -38,6 +38,8 @@ HUMAN_STATUS = {
     "task_draft_created": "任务草稿已创建。",
     "waiting_for_definition_confirmation": "任务定义已生成，等待确认。",
     "waiting_for_authoring": "等待在受控 staging 中完成编写。",
+    "contributor_assistant_opened": "协作者截图助手已打开。",
+    "contributor_launcher_created": "协作者截图启动器已生成。",
 }
 
 
@@ -100,13 +102,14 @@ def parser():
     task = sub.add_parser("task"); ts = task.add_subparsers(dest="task_action", required=True)
     create = ts.add_parser("create"); create.add_argument("--workspace", type=Path, required=True); create.add_argument("--task", required=True); create.add_argument("--book", required=True); create.add_argument("--intent", choices=("create_module", "add_feature", "update_content", "add_locale"), required=True)
     define = ts.add_parser("define"); define.add_argument("--workspace", type=Path, required=True); define.add_argument("--task", required=True)
-    for name in ("status", "continue", "confirm-definition", "submit-authoring", "confirm-final", "revise", "revise-output"):
+    for name in ("status", "continue", "contribute", "confirm-definition", "submit-authoring", "confirm-final", "revise", "revise-output"):
         item = ts.add_parser(name); item.add_argument("--task", required=True); item.add_argument("--workspace", type=Path); item.add_argument("--no-gui", action="store_true")
+    launcher = ts.add_parser("create-contributor-launcher"); launcher.add_argument("--task", required=True); launcher.add_argument("--workspace", type=Path); launcher.add_argument("--output")
     cancel = ts.add_parser("cancel"); cancel.add_argument("--task", required=True); cancel.add_argument("--workspace", type=Path); cancel.add_argument("--confirm", action="store_true"); cancel.add_argument("--no-gui", action="store_true")
     screenshot_group = ts.add_parser("screenshots"); screenshot_actions = screenshot_group.add_subparsers(dest="screenshot_action", required=True)
-    for name in ("open", "accept"):
+    for name in ("open", "accept", "submit"):
         item = screenshot_actions.add_parser(name); item.add_argument("--task", required=True); item.add_argument("--workspace", type=Path); item.add_argument("--no-gui", action="store_true")
-    status = screenshot_actions.add_parser("set-status"); status.add_argument("--task", required=True); status.add_argument("--workspace", type=Path); status.add_argument("--item", required=True); status.add_argument("--status", choices=sorted(screenshots.USER_SETTABLE), required=True); status.add_argument("--no-gui", action="store_true")
+    status = screenshot_actions.add_parser("set-status"); status.add_argument("--task", required=True); status.add_argument("--workspace", type=Path); status.add_argument("--item", required=True); status.add_argument("--status", choices=sorted(screenshots.USER_SETTABLE), required=True); status.add_argument("--contributor", action="store_true"); status.add_argument("--no-gui", action="store_true")
     review = ts.add_parser("review"); review.add_argument("--task", required=True); review.add_argument("--workspace", type=Path); review.add_argument("--review", choices=("factual_accuracy", "language_quality", "visual_accuracy", "pdf_visual_quality"), required=True); review.add_argument("--status", choices=("human_accepted", "failed"), required=True); review.add_argument("--no-gui", action="store_true")
     deletion = ts.add_parser("approve-deletion"); deletion.add_argument("--task", required=True); deletion.add_argument("--workspace", type=Path); deletion.add_argument("--target", required=True); deletion.add_argument("--no-gui", action="store_true")
     quality = sub.add_parser("quality"); qs = quality.add_subparsers(dest="quality_action", required=True); check = qs.add_parser("check"); check.add_argument("--workspace", type=Path); targets = check.add_mutually_exclusive_group(required=True); targets.add_argument("--book"); targets.add_argument("--task"); check.add_argument("--profile", choices=("standard", "full", "release")); check.add_argument("--locale"); check.add_argument("--path"); check.add_argument("--changed", action="store_true"); check.add_argument("--published", action="store_true"); check.add_argument("--enforce", action="store_true")
@@ -135,12 +138,12 @@ def main():
             else:
                 action = args.task_action
                 if action == "screenshots":
-                    action = {"open": "screenshots-open", "accept": "accept-screenshots", "set-status": "screenshot-status"}[args.screenshot_action]
+                    action = {"open": "screenshots-open", "accept": "accept-screenshots", "submit": "submit-screenshots", "set-status": "screenshot-status"}[args.screenshot_action]
                 result = task_action(
                     args.workspace or Path.cwd(), args.task, action,
                     no_gui=getattr(args, "no_gui", False), item=getattr(args, "item", None),
-                    screenshot_status=getattr(args, "status", None), review=getattr(args, "review", None),
-                    review_status=getattr(args, "status", None), target=getattr(args, "target", None),
+                    screenshot_status=getattr(args, "status", None), contributor=getattr(args, "contributor", False), review=getattr(args, "review", None),
+                    review_status=getattr(args, "status", None), target=getattr(args, "target", None) or getattr(args, "output", None),
                     confirmed=getattr(args, "confirm", False),
                 )
         else:

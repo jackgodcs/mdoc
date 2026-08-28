@@ -35,6 +35,10 @@ There are three ordinary confirmation gates:
 
 Deletion approvals, target conflicts, baseline drift, evidence uncertainty, review findings, and failed builds are exception pauses, not additional normal gates.
 
+## Shared Screenshot Tasks
+
+When a coordinator shares one manual workspace with multiple contributors, split declared screenshot targets into non-overlapping tasks. Contributors use `mdoc task contribute` or a coordinator-generated task launcher to edit captures and submit the capture manifest. They do not accept screenshots, continue tasks, publish, or finally accept tasks; those actions remain with the coordinator.
+
 ## Routing
 
 - For workspace and task commands, read `references/workflow.md`.

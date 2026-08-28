@@ -12,6 +12,7 @@
     "definition_snapshot": {"type": ["object", "null"]},
     "screenshots": {"type": "object"},
     "screenshot_acceptance": {"type": ["object", "null"]},
+    "screenshot_submission": {"type": ["object", "null"]},
     "authoring_submission": {"type": ["object", "null"]},
     "quality_gate": {"type": ["object", "null"]},
     "baselines": {"type": "object"},

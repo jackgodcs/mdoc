@@ -161,6 +161,15 @@ def _blocking(findings: list[dict]) -> list[dict]:
     return [item for item in findings if item["severity"] == "error" and item.get("required", True)]
 
 
+def _task_blocking(findings: list[dict]) -> list[dict]:
+    """Keep baseline findings visible without making unrelated tasks fail."""
+    return [
+        item
+        for item in _blocking(findings)
+        if not (item.get("classification") == "pre_existing" and item.get("suppression") == "active")
+    ]
+
+
 def _build_blocking_count(build: dict) -> int:
     if build["status"] in {"not_requested", "passed"}:
         return 0
@@ -215,7 +224,7 @@ def _build(workspace, view: VirtualBook, profile: str, adapter_name: str | None,
 def _classify(findings: list[dict], changed: set[str]) -> list[dict]:
     for item in findings:
         item["classification"] = "introduced" if item["path"] in changed else "pre_existing"
-        item["suppression"] = "active"
+        item["suppression"] = "inactive" if item["classification"] == "introduced" else "active"
     return findings
 
 
@@ -230,10 +239,11 @@ def task_check(task, state: dict, *, published: bool = False) -> dict:
         task.workspace, view, profile, task.definition["quality_gate"].get("build_adapter"),
         execute=profile == "release" or published, record_root=task.directory / "builds",
     )
-    blocking_count = len(_blocking(findings)) + _build_blocking_count(build)
-    status = "passed" if blocking_count == 0 and not pending else "blocked"
     changed = {f"{item['locale']}/{item['path']}" for item in task.definition["manifest"]}
-    report = {"schema_version": 1, "context": "published-task" if published else "task", "task_id": task.task_id, "book": task.definition["task"]["book"], "profile": profile, "status": status, "input_digest": input_digest, "candidate_digest": view.digest(), "files_scanned": scanned, "findings": _classify(findings, changed), "blocking_count": blocking_count, "fixes": fixes, "reviews": reviews, "pending_reviews": pending, "build": build, "created_at": int(time.time())}
+    findings = _classify(findings, changed)
+    blocking_count = len(_task_blocking(findings)) + _build_blocking_count(build)
+    status = "passed" if blocking_count == 0 and not pending else "blocked"
+    report = {"schema_version": 1, "context": "published-task" if published else "task", "task_id": task.task_id, "book": task.definition["task"]["book"], "profile": profile, "status": status, "input_digest": input_digest, "candidate_digest": view.digest(), "files_scanned": scanned, "findings": findings, "blocking_count": blocking_count, "fixes": fixes, "reviews": reviews, "pending_reviews": pending, "build": build, "created_at": int(time.time())}
     return _store(task.workspace, report, "tasks", task.task_id)
 
 

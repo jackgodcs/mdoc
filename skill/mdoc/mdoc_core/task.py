@@ -4,6 +4,7 @@ import subprocess
 import sys
 import time
 import copy
+import os
 from pathlib import Path
 
 from . import claims, screenshots
@@ -11,7 +12,7 @@ from .adapters import import_generator_outputs
 from .authoring import prepare as prepare_authoring, submit as submit_authoring
 from .config import load_task, load_workspace
 from .errors import MdocError
-from .io import canonical_digest, file_digest, write_json_atomic, write_yaml_atomic
+from .io import canonical_digest, file_digest, relative_path, write_json_atomic, write_yaml_atomic
 from .locking import book_publish_lock, task_lock
 from .models import thaw
 from .paths import changes
@@ -31,9 +32,12 @@ def load(workspace_path: Path, task_id: str):
     return task, state_path, load_state(state_path, task_id)
 
 
-def launch_screenshot_assistant(task) -> None:
+def launch_screenshot_assistant(task, *, contributor: bool = False) -> None:
+    command = [sys.executable, str(SCRIPT_DIR / "screenshot_assistant.py"), "--workspace", str(task.workspace.repository), "--task", task.task_id]
+    if contributor:
+        command.append("--contributor")
     subprocess.Popen(
-        [sys.executable, str(SCRIPT_DIR / "screenshot_assistant.py"), "--workspace", str(task.workspace.repository), "--task", task.task_id],
+        command,
         cwd=task.workspace.repository,
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
@@ -45,6 +49,32 @@ def _current_files(task) -> dict:
         for item, _formal, staged in changes(task)
         if item["action"] != "delete" and staged.is_file()
     }
+
+
+def _quality_check_needed(previous: dict, gate_input: str) -> bool:
+    return previous.get("status") != "passed" or previous.get("input_digest") != gate_input
+
+
+def create_contributor_launcher(task, output: str | None = None) -> dict:
+    name = output or f"Open-Screenshot-Task-{task.task_id}.cmd"
+    relative = relative_path(name, "contributor launcher output")
+    if len(relative.parts) != 1 or relative.suffix.lower() != ".cmd":
+        raise MdocError("MDOC-CONTRIBUTOR-LAUNCHER-INVALID", "协作者启动器必须是工作区根目录下的 .cmd 文件。")
+    target = task.workspace.repository / relative
+    content = (
+        "@echo off\r\n"
+        "setlocal\r\n"
+        f"mdoc task contribute --workspace \"%~dp0\" --task \"{task.task_id}\"\r\n"
+        "if errorlevel 1 pause\r\n"
+    )
+    temporary = target.with_name(f".{target.name}.tmp")
+    try:
+        temporary.write_text(content, encoding="ascii", newline="")
+        os.replace(temporary, target)
+    except OSError as exc:
+        temporary.unlink(missing_ok=True)
+        raise MdocError("MDOC-CONTRIBUTOR-LAUNCHER-WRITE-FAILED", "无法写入协作者截图启动器。", {"path": str(target), "cause": str(exc)}) from exc
+    return {"status": "contributor_launcher_created", "task_id": task.task_id, "path": str(target)}
 
 
 def continue_task(task, state: dict, *, no_gui: bool = False, quality_check=task_check) -> dict:
@@ -96,9 +126,7 @@ def continue_task(task, state: dict, *, no_gui: bool = False, quality_check=task
         submit_authoring(task, state)
     gate_input = canonical_digest({"files": current_files, "reviews": state.get("reviews", {}), "profile": task.definition["quality_gate"]})
     previous = state.get("quality_gate") or {}
-    if state["status"] == "waiting_for_resolution" and (state.get("waiting_on") or {}).get("kind") == "quality_gate_findings" and previous.get("input_digest") == gate_input:
-        return state
-    if previous.get("status") != "passed" or previous.get("input_digest") != gate_input:
+    if _quality_check_needed(previous, gate_input):
         transition(state, "verifying", "quality_gate_started")
         report = quality_check(task, state)
         state["quality_gate"] = {
@@ -124,7 +152,7 @@ def continue_task(task, state: dict, *, no_gui: bool = False, quality_check=task
     return transition(state, "ready_for_review", "published_and_verified", {"kind": "final_acceptance", "revision": state["revision"]})
 
 
-def act(workspace_path: Path, task_id: str, action: str, *, no_gui: bool = False, item: str | None = None, screenshot_status: str | None = None, review: str | None = None, review_status: str | None = None, target: str | None = None, confirmed: bool = False) -> dict:
+def act(workspace_path: Path, task_id: str, action: str, *, no_gui: bool = False, item: str | None = None, screenshot_status: str | None = None, contributor: bool = False, review: str | None = None, review_status: str | None = None, target: str | None = None, confirmed: bool = False) -> dict:
     task, state_path, state = load(workspace_path, task_id)
     if action == "status":
         screenshots.synchronize(task, state)
@@ -132,6 +160,11 @@ def act(workspace_path: Path, task_id: str, action: str, *, no_gui: bool = False
     with task_lock(task):
         if state["status"] in TERMINAL and action != "continue":
             raise MdocError("MDOC-TASK-TERMINAL", "终态任务不能再次修改。")
+        if action == "contribute":
+            launch_screenshot_assistant(task, contributor=True)
+            return {"status": "contributor_assistant_opened", "task_id": task.task_id}
+        if action == "create-contributor-launcher":
+            return create_contributor_launcher(task, target)
         if action == "continue":
             continue_task(task, state, no_gui=no_gui)
         elif action == "confirm-definition":
@@ -150,9 +183,12 @@ def act(workspace_path: Path, task_id: str, action: str, *, no_gui: bool = False
                 raise MdocError("MDOC-SCREENSHOT-ACCEPTANCE-NOT-READY", "任务尚未进入截图验收。")
             screenshots.accept(task, state)
             continue_task(task, state, no_gui=no_gui)
+        elif action == "submit-screenshots":
+            screenshots.submit(task, state)
         elif action == "screenshot-status":
             screenshots.set_status(task, state, item or "", screenshot_status or "")
-            continue_task(task, state, no_gui=no_gui)
+            if not contributor:
+                continue_task(task, state, no_gui=no_gui)
         elif action == "screenshots-open":
             launch_screenshot_assistant(task)
             return {"status": "screenshot_assistant_opened", "task_id": task.task_id}
@@ -209,6 +245,7 @@ def act(workspace_path: Path, task_id: str, action: str, *, no_gui: bool = False
             state["definition_confirmation"] = None
             state["definition_snapshot"] = None
             state["screenshot_acceptance"] = None
+            state["screenshot_submission"] = None
             state["authoring_submission"] = None
             state["quality_gate"] = None
             state["reviews"] = {}

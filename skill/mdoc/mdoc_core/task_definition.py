@@ -180,6 +180,7 @@ def define(workspace_path: Path, task_id: str) -> dict:
     state["definition_snapshot"] = None
     state["screenshots"] = {}
     state["screenshot_acceptance"] = None
+    state["screenshot_submission"] = None
     state["authoring_submission"] = None
     state["quality_gate"] = None
     state["baselines"] = {}

@@ -18,6 +18,17 @@ Copyright 2026 cshuan. Licensed under Apache-2.0. 该许可证只覆盖 mdoc 源
 
 基础运行需要 CPython 3.12、`ruamel.yaml` 和 `jsonschema`。PDF 检查还需要 `pdfplumber`、`pypdf`、`pypdfium2` 和 Pillow；截图助手需要 Pillow、Tk/Tcl。
 
+## 从 Git 获取最新版
+
+协作者可从 Git 服务拉取本仓库的最新 `main`，在仓库根目录运行以下命令构建 Windows 安装包：
+
+```powershell
+python scripts/release_check.py
+python scripts/build_release.py
+```
+
+构建结果位于 `dist/mdoc-<version>-windows-x64.zip`。解压后双击“安装 mdoc.cmd”即可为当前 Windows 用户安装独立的 mdoc、Python 运行时和截图助手依赖。每台协作者电脑只需安装一次；实际手册工作区、任务、截图与项目模板仍应保留在共享手册目录中，不应提交到本仓库。
+
 ## 核心流程
 
 mdoc 直接绑定正式手册仓库根目录，并在其中使用 `.mdoc/` 控制目录。没有全局活动书册；每个任务必须显式声明一个书册。

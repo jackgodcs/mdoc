@@ -28,6 +28,7 @@ def initial_state(task_id: str) -> dict:
         "definition_snapshot": None,
         "screenshots": {},
         "screenshot_acceptance": None,
+        "screenshot_submission": None,
         "authoring_submission": None,
         "quality_gate": None,
         "baselines": {},
