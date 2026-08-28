@@ -1283,6 +1283,10 @@ class ImageTextEditor(tk.Toplevel):
             state = load_state(state_path, self.task.task_id)
             had_acceptance = bool(state.get("screenshot_acceptance"))
             synchronize(self.task, state)
+            key = self.entry.get("key") or f"{self.entry['item']['id']}:{self.entry['item']['locale']}"
+            state["screenshots"][key]["status"] = "pending"
+            state["screenshots"][key].pop("reason", None)
+            synchronize(self.task, state)
             if had_acceptance and not self.contributor:
                 accept_screenshots(self.task, state)
             save_state(state_path, state)

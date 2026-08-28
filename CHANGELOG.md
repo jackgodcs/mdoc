@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.9 - 2026-08-28
+
+- Restored the full generic screenshot workflow: frozen-screen capture, editable selection handles, magnifier, window selection, monitor scope, global shortcut, automatic next-item selection, original/new comparison divider, exception reasons, and task-local duplicate-assistant protection.
+- Kept the OCR replacement workflow additive: original-image copy, external image import, text editing, JPEG support, controlled capture paths, and contributor submission remain available.
+- Kept assistant display preferences local to each user so shared-workspace contributors do not overwrite one another's capture settings.
+
 ## 1.3.8 - 2026-08-28
 
 - Added **原图作为新截图** for confirmed OCR false positives. It creates a validated, byte-identical capture from the original reference image and clears stale text-editor layers for that item.

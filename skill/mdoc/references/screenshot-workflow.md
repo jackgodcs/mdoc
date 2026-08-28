@@ -14,9 +14,9 @@ A user may place a valid PNG or JPEG at the declared path in any session. `mdoc 
 
 ## Item Status
 
-The stable item states are `pending`, `captured`, `needs_retake`, `waived`, `not_applicable`, and `accepted`.
+The stable item states are `pending`, `captured`, `blocked`, `needs_retake`, `waived`, `not_applicable`, and `accepted`.
 
-`needs_retake`, `waived`, and `not_applicable` are explicit human states and override file existence. `accepted` is reserved for explicit per-image review. Normal aggregate screenshot acceptance does not mark every item accepted.
+`blocked`, `needs_retake`, `waived`, and `not_applicable` are explicit human states and override file existence. Use a concise reason for an exception status. A later successful capture, imported image, original-image copy, or text-editor save restores the item to `captured` and clears the exception reason. `accepted` is reserved for explicit per-image review. Normal aggregate screenshot acceptance does not mark every item accepted.
 
 ## Aggregate Acceptance
 
@@ -40,7 +40,9 @@ Use:
 mdoc task screenshots open --workspace <manual-repository-root> --task <task-id>
 ```
 
-The assistant previews declared captures, captures a screen region, and calls CLI-equivalent actions for status changes and aggregate acceptance. It must not write formal manual files directly.
+The assistant previews declared captures, captures a screen region, and calls CLI-equivalent actions for status changes and aggregate acceptance. It must not write formal manual files directly. Its generic capture workflow is available to every mdoc task: frozen-screen selection, editable corner and edge handles, drag-to-move, precision magnifier, window hover selection, current-monitor or all-monitor scope, `Ctrl+Shift+Z`, automatic selection of the next item after saving, and a draggable original/new-image comparison divider. The display settings are local to each user and do not change the shared workspace.
+
+After aggregate screenshot acceptance, a coordinator may still open the image text editor and save a correction. mdoc refreshes the controlled capture and staging copy while preserving the aggregate screenshot acceptance; the user remains responsible for the visual correctness of that correction. Contributor edits never accept screenshots and instead make their submission stale until they submit again.
 
 When OCR candidates include a false positive and the contributor confirms that the original image needs no replacement, use **原图作为新截图** for the selected item. It copies the original reference image byte-for-byte into that item's controlled capture path, validates the image, and clears prior text-editor layers for that item. The item is then shown as captured and can be submitted normally; the formal manual image remains untouched until coordinator acceptance and publishing.
 

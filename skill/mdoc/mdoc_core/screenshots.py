@@ -11,9 +11,9 @@ from .errors import MdocError
 from .io import canonical_digest, file_digest
 from .paths import staged_target
 
-EXPLICIT = {"needs_retake", "waived", "not_applicable"}
-VALID = {"pending", "captured", "needs_retake", "waived", "not_applicable", "accepted"}
-USER_SETTABLE = {"pending", "needs_retake", "waived", "not_applicable"}
+EXPLICIT = {"blocked", "needs_retake", "waived", "not_applicable"}
+VALID = {"pending", "captured", "blocked", "needs_retake", "waived", "not_applicable", "accepted"}
+USER_SETTABLE = {"pending", "blocked", "needs_retake", "waived", "not_applicable"}
 
 
 def png_info(path: Path) -> dict | None:
@@ -134,8 +134,17 @@ def synchronize(task, state: dict) -> dict:
             "id": requirement["id"], "locale": locale, "filename": requirement["filename"],
             "required": requirement["required"], "status": status, "file": info,
         }
+        if explicit and old.get("reason"):
+            current[key]["reason"] = str(old["reason"])
     state["screenshots"] = current
-    fingerprint = {key: {"id": item["id"], "locale": item["locale"], "filename": item["filename"], "required": item["required"], "status": item["status"] if item["status"] in EXPLICIT else ("present" if item["file"] else "missing"), "file": item["file"]} for key, item in current.items()}
+    fingerprint = {
+        key: {
+            "id": item["id"], "locale": item["locale"], "filename": item["filename"], "required": item["required"],
+            "status": item["status"] if item["status"] in EXPLICIT else ("present" if item["file"] else "missing"),
+            "reason": item.get("reason", ""), "file": item["file"],
+        }
+        for key, item in current.items()
+    }
     digest = canonical_digest(fingerprint)
     acceptance = state.get("screenshot_acceptance")
     if acceptance and acceptance.get("manifest_digest") != digest:
@@ -146,13 +155,17 @@ def synchronize(task, state: dict) -> dict:
     return {"digest": digest, "items": current}
 
 
-def set_status(task, state: dict, key: str, status: str) -> None:
+def set_status(task, state: dict, key: str, status: str, reason: str = "") -> None:
     if status not in USER_SETTABLE:
         raise MdocError("MDOC-SCREENSHOT-STATUS-INVALID", f"Screenshot status cannot be set manually: {status}")
     synchronize(task, state)
     if key not in state["screenshots"]:
         raise MdocError("MDOC-SCREENSHOT-NOT-DECLARED", f"Screenshot is not declared: {key}")
     state["screenshots"][key]["status"] = status
+    if status in EXPLICIT and reason.strip():
+        state["screenshots"][key]["reason"] = reason.strip()
+    else:
+        state["screenshots"][key].pop("reason", None)
     state["screenshot_acceptance"] = None
     if state.get("screenshot_submission"):
         state["screenshot_submission"]["status"] = "stale"

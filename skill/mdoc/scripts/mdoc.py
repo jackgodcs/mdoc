@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""mdoc 1.3.8 command line entry point."""
+"""mdoc 1.3.9 command line entry point."""
 from __future__ import annotations
 
 import argparse
@@ -109,7 +109,7 @@ def parser():
     screenshot_group = ts.add_parser("screenshots"); screenshot_actions = screenshot_group.add_subparsers(dest="screenshot_action", required=True)
     for name in ("open", "accept", "submit"):
         item = screenshot_actions.add_parser(name); item.add_argument("--task", required=True); item.add_argument("--workspace", type=Path); item.add_argument("--no-gui", action="store_true")
-    status = screenshot_actions.add_parser("set-status"); status.add_argument("--task", required=True); status.add_argument("--workspace", type=Path); status.add_argument("--item", required=True); status.add_argument("--status", choices=sorted(screenshots.USER_SETTABLE), required=True); status.add_argument("--contributor", action="store_true"); status.add_argument("--no-gui", action="store_true")
+    status = screenshot_actions.add_parser("set-status"); status.add_argument("--task", required=True); status.add_argument("--workspace", type=Path); status.add_argument("--item", required=True); status.add_argument("--status", choices=sorted(screenshots.USER_SETTABLE), required=True); status.add_argument("--reason", default=""); status.add_argument("--contributor", action="store_true"); status.add_argument("--no-gui", action="store_true")
     review = ts.add_parser("review"); review.add_argument("--task", required=True); review.add_argument("--workspace", type=Path); review.add_argument("--review", choices=("factual_accuracy", "language_quality", "visual_accuracy", "pdf_visual_quality"), required=True); review.add_argument("--status", choices=("human_accepted", "failed"), required=True); review.add_argument("--no-gui", action="store_true")
     deletion = ts.add_parser("approve-deletion"); deletion.add_argument("--task", required=True); deletion.add_argument("--workspace", type=Path); deletion.add_argument("--target", required=True); deletion.add_argument("--no-gui", action="store_true")
     quality = sub.add_parser("quality"); qs = quality.add_subparsers(dest="quality_action", required=True); check = qs.add_parser("check"); check.add_argument("--workspace", type=Path); targets = check.add_mutually_exclusive_group(required=True); targets.add_argument("--book"); targets.add_argument("--task"); check.add_argument("--profile", choices=("standard", "full", "release")); check.add_argument("--locale"); check.add_argument("--path"); check.add_argument("--changed", action="store_true"); check.add_argument("--published", action="store_true"); check.add_argument("--enforce", action="store_true")
@@ -142,7 +142,7 @@ def main():
                 result = task_action(
                     args.workspace or Path.cwd(), args.task, action,
                     no_gui=getattr(args, "no_gui", False), item=getattr(args, "item", None),
-                    screenshot_status=getattr(args, "status", None), contributor=getattr(args, "contributor", False), review=getattr(args, "review", None),
+                    screenshot_status=getattr(args, "status", None), screenshot_reason=getattr(args, "reason", None), contributor=getattr(args, "contributor", False), review=getattr(args, "review", None),
                     review_status=getattr(args, "status", None), target=getattr(args, "target", None) or getattr(args, "output", None),
                     confirmed=getattr(args, "confirm", False),
                 )

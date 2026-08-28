@@ -138,6 +138,33 @@ class TaskLifecycleCliTests(unittest.TestCase):
         self.assertEqual("waiting_for_screenshots", state["status"])
         self.assertEqual("stale", state["screenshot_submission"]["status"])
 
+    def test_blocked_screenshot_reason_survives_sync_and_clears_when_restored(self) -> None:
+        directory = self.define_simple_task("blocked-screenshot")
+        draft_path = directory / "task-draft.yaml"
+        draft = YAML(typ="safe").load(draft_path.read_text(encoding="utf-8"))
+        draft["scope"]["assets"]["create"] = [{"locale": "zh", "path": "images/window.png", "evidence": []}]
+        draft["screenshots"] = [{"id": "WINDOW", "filename": "window.png", "locales": ["zh"], "required": True, "destinations": {"zh": "images/window.png"}}]
+        write_yaml(draft_path, draft)
+        cli("task", "define", "--workspace", str(self.workspace), "--task", "blocked-screenshot", "--json")
+        cli("task", "confirm-definition", "--workspace", str(self.workspace), "--task", "blocked-screenshot", "--no-gui", "--json")
+
+        state = cli(
+            "task", "screenshots", "set-status", "--workspace", str(self.workspace), "--task", "blocked-screenshot",
+            "--item", "WINDOW:zh", "--status", "blocked", "--reason", "Target application is unavailable.", "--no-gui", "--json",
+        )
+        self.assertEqual("blocked", state["screenshots"]["WINDOW:zh"]["status"])
+        self.assertEqual("Target application is unavailable.", state["screenshots"]["WINDOW:zh"]["reason"])
+        state = cli("task", "continue", "--workspace", str(self.workspace), "--task", "blocked-screenshot", "--no-gui", "--json")
+        self.assertEqual("blocked", state["screenshots"]["WINDOW:zh"]["status"])
+        self.assertEqual("Target application is unavailable.", state["screenshots"]["WINDOW:zh"]["reason"])
+
+        state = cli(
+            "task", "screenshots", "set-status", "--workspace", str(self.workspace), "--task", "blocked-screenshot",
+            "--item", "WINDOW:zh", "--status", "pending", "--no-gui", "--json",
+        )
+        self.assertEqual("pending", state["screenshots"]["WINDOW:zh"]["status"])
+        self.assertNotIn("reason", state["screenshots"]["WINDOW:zh"])
+
     def test_contributor_launcher_stays_inside_the_workspace_root(self) -> None:
         self.define_simple_task("contributor-launcher")
         result = cli("task", "create-contributor-launcher", "--workspace", str(self.workspace), "--task", "contributor-launcher", "--output", "Open-Task.cmd", "--json")

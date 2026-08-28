@@ -169,7 +169,7 @@ def continue_task(task, state: dict, *, no_gui: bool = False, quality_check=task
     return transition(state, "ready_for_review", "published_and_verified", {"kind": "final_acceptance", "revision": state["revision"]})
 
 
-def act(workspace_path: Path, task_id: str, action: str, *, no_gui: bool = False, item: str | None = None, screenshot_status: str | None = None, contributor: bool = False, review: str | None = None, review_status: str | None = None, target: str | None = None, confirmed: bool = False) -> dict:
+def act(workspace_path: Path, task_id: str, action: str, *, no_gui: bool = False, item: str | None = None, screenshot_status: str | None = None, screenshot_reason: str | None = None, contributor: bool = False, review: str | None = None, review_status: str | None = None, target: str | None = None, confirmed: bool = False) -> dict:
     task, state_path, state = load(workspace_path, task_id)
     if action == "status":
         screenshots.synchronize(task, state)
@@ -203,7 +203,7 @@ def act(workspace_path: Path, task_id: str, action: str, *, no_gui: bool = False
         elif action == "submit-screenshots":
             screenshots.submit(task, state)
         elif action == "screenshot-status":
-            screenshots.set_status(task, state, item or "", screenshot_status or "")
+            screenshots.set_status(task, state, item or "", screenshot_status or "", screenshot_reason or "")
             if not contributor:
                 continue_task(task, state, no_gui=no_gui)
         elif action == "screenshots-open":
