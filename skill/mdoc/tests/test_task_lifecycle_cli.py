@@ -148,7 +148,7 @@ class TaskLifecycleCliTests(unittest.TestCase):
         self.assertTrue(launcher.samefile(Path(result["path"])))
         launcher_text = launcher.read_text(encoding="ascii")
         self.assertIn('pushd "%~dp0" >nul 2>&1', launcher_text)
-        self.assertIn('set "MDOC_WORKSPACE=%~dp0"', launcher_text)
+        self.assertIn("set \"MDOC_WORKSPACE=%CD%\\.\"", launcher_text)
         self.assertIn('set "MDOC_PYTHON=%LOCALAPPDATA%\\mdoc\\runtime\\Scripts\\python.exe"', launcher_text)
         self.assertIn('set "MDOC_ASSISTANT=%USERPROFILE%\\.codex\\skills\\mdoc\\scripts\\screenshot_assistant.py"', launcher_text)
         self.assertIn('"%MDOC_PYTHON%" -B "%MDOC_ASSISTANT%" --workspace "%MDOC_WORKSPACE%" --task "contributor-launcher" --contributor', launcher_text)

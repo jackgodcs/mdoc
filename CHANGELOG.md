@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.7 - 2026-08-28
+
+- Fixed contributor screenshot launchers so a Windows UNC share is mapped before its workspace path is passed to the assistant; this prevents a trailing UNC separator from consuming the task argument.
+
 ## 1.3.6 - 2026-08-28
 
 - Made contributor screenshot launchers work from Windows UNC shares and prevented the assistant subprocess from using a UNC current directory.

@@ -69,7 +69,7 @@ def create_contributor_launcher(task, output: str | None = None) -> dict:
         "  pause\r\n"
         "  exit /b 2\r\n"
         ")\r\n"
-        "set \"MDOC_WORKSPACE=%~dp0\"\r\n"
+        "set \"MDOC_WORKSPACE=%CD%\\.\"\r\n"
         "set \"MDOC_PYTHON=%LOCALAPPDATA%\\mdoc\\runtime\\Scripts\\python.exe\"\r\n"
         "set \"MDOC_ASSISTANT=%USERPROFILE%\\.codex\\skills\\mdoc\\scripts\\screenshot_assistant.py\"\r\n"
         "if exist \"%MDOC_PYTHON%\" if exist \"%MDOC_ASSISTANT%\" (\r\n"
