@@ -26,6 +26,17 @@ ALLOW_ABSOLUTE_IN = {ROOT / "README.md"}
 SCANNER = Path(__file__).resolve()
 
 
+def configure_utf8_console(streams=None) -> None:
+    """Keep release diagnostics readable on Windows hosts using legacy code pages."""
+    for stream in streams if streams is not None else (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure:
+            try:
+                reconfigure(encoding="utf-8", errors="backslashreplace")
+            except (OSError, ValueError):
+                pass
+
+
 def skip_path(path: Path) -> bool:
     relative = path.relative_to(ROOT)
     if any(part in SKIP_DIRS for part in relative.parts):
@@ -38,6 +49,7 @@ def skip_path(path: Path) -> bool:
 
 
 def main() -> int:
+    configure_utf8_console()
     problems = []
     for path in sorted(ROOT.rglob("*")):
         if not path.is_file() or skip_path(path):
@@ -58,7 +70,7 @@ def main() -> int:
             if pattern.search(source):
                 problems.append(f"{label}: {path.relative_to(ROOT)}")
     version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
-    if version != "1.3.9":
+    if version != "1.3.10":
         problems.append(f"unexpected VERSION: {version}")
     expected_version_sources = {
         ROOT / "skill" / "mdoc" / "mdoc_core" / "__init__.py": f'VERSION = "{version}"',

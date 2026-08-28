@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.10 - 2026-08-28
+
+- Fixed the GitHub Actions Windows release check so diagnostics containing Chinese file names are emitted as UTF-8 instead of failing under the legacy `cp1252` console encoding.
+- Reissued the 1.3.9 release metadata under 1.3.10 after the original tag omitted the matching version marker in the Windows installation guide.
+
 ## 1.3.9 - 2026-08-28
 
 - Restored the full generic screenshot workflow: frozen-screen capture, editable selection handles, magnifier, window selection, monitor scope, global shortcut, automatic next-item selection, original/new comparison divider, exception reasons, and task-local duplicate-assistant protection.
