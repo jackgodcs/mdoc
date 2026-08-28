@@ -85,7 +85,7 @@ def main() -> int:
     with zipfile.ZipFile(STAGED_ASSET, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for path, name in collected:
             archive.writestr(zip_info(name, path.suffix in {".py", ".cmd", ".ps1"}), path.read_bytes())
-        archive.writestr(zip_info("PACKAGE-MANIFEST.json"), (json.dumps(package_manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
+        archive.writestr(zip_info("PACKAGE-MANIFEST.json"), (json.dumps(package_manifest, ensure_ascii=True, indent=2) + "\n").encode("ascii"))
         archive.writestr(zip_info("metadata/mdoc-sbom.cdx.json"), (json.dumps(sbom, indent=2) + "\n").encode("utf-8"))
     digest = sha256(STAGED_ASSET)
     if ASSET.is_file() and sha256(ASSET) == digest:

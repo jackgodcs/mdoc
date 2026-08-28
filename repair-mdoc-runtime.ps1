@@ -16,7 +16,16 @@ $bootstrapPath = Join-Path $packageRoot 'bootstrap\toolchain-bootstrap.json'
 if (-not (Test-Path -LiteralPath $bootstrapPath -PathType Leaf)) { throw 'MDOC-RUNTIME-BOOTSTRAP-MISSING: Toolchain Bootstrap is missing.' }
 $bootstrap = Get-Content -LiteralPath $bootstrapPath -Raw | ConvertFrom-Json
 
-function Get-Sha256([string]$Path) { return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant() }
+function Get-Sha256([string]$Path) {
+  $algorithm = [Security.Cryptography.SHA256]::Create()
+  $stream = [IO.File]::OpenRead($Path)
+  try {
+    return ([BitConverter]::ToString($algorithm.ComputeHash($stream))).Replace('-', '').ToLowerInvariant()
+  } finally {
+    $stream.Dispose()
+    $algorithm.Dispose()
+  }
+}
 function Assert-Sha256([string]$Path, [string]$Expected, [string]$Code) {
   if ((Get-Sha256 $Path) -ne $Expected.ToLowerInvariant()) { throw "$Code`: $Path" }
 }
