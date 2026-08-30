@@ -36,6 +36,10 @@ HANDLE_RADIUS = 5
 MIN_FONT_SIZE = 1.0
 MIN_BOX_SIZE = 2.0
 SNAP_SCREEN_DISTANCE = 4.0
+SYSTEM_BLANK_COVER_ID = "system:blank-cover"
+SYSTEM_BLANK_COVER_KIND = "blank-cover"
+SYSTEM_BLANK_COVER_LABEL = "空白遮盖"
+BLANK_COVER_INITIAL_SIZE = 24.0
 
 
 def image_format(path: Path) -> str:
@@ -111,6 +115,23 @@ def default_font(fonts: dict[str, Path]) -> str:
     return next(iter(fonts))
 
 
+def system_blank_cover_template(style: dict) -> dict:
+    """Create the fixed no-text template used to mask unwanted image content."""
+    return {
+        "id": SYSTEM_BLANK_COVER_ID,
+        "kind": "system",
+        "system_type": SYSTEM_BLANK_COVER_KIND,
+        "label": SYSTEM_BLANK_COVER_LABEL,
+        "text": "",
+        "sources": [],
+        "style": copy.deepcopy(style),
+    }
+
+
+def template_label(template: dict) -> str:
+    return str(template.get("label", template.get("text", "")))
+
+
 class TemplateStore:
     def __init__(self, fonts: dict[str, Path], workspace_control: Path):
         self.fonts = fonts
@@ -148,6 +169,13 @@ class TemplateStore:
             style["padding"] = 0.0
             template.setdefault("kind", "manual")
             template.setdefault("sources", [])
+        system_styles = self.value.setdefault("system_styles", {})
+        blank_cover_style = system_styles.setdefault(SYSTEM_BLANK_COVER_KIND, {})
+        for key, value in DEFAULT_STYLE.items():
+            blank_cover_style.setdefault(key, fallback if key == "font" else value)
+        if blank_cover_style.get("font") not in self.fonts:
+            blank_cover_style["font"] = fallback
+        blank_cover_style["padding"] = 0.0
         self.save()
 
     def save(self) -> None:
@@ -156,7 +184,17 @@ class TemplateStore:
     def all(self) -> list[dict]:
         return [copy.deepcopy(item) for item in self.value["templates"]]
 
+    def system_items(self) -> list[dict]:
+        style = self.value["system_styles"][SYSTEM_BLANK_COVER_KIND]
+        return [system_blank_cover_template(style)]
+
     def update_style(self, template: dict, style: dict) -> None:
+        if template.get("kind") == "system":
+            system_type = template.get("system_type")
+            if system_type == SYSTEM_BLANK_COVER_KIND:
+                self.value["system_styles"][system_type] = copy.deepcopy(style)
+                self.save()
+            return
         for item in self.value["templates"]:
             if item["id"] == template["id"]:
                 item["style"] = copy.deepcopy(style)
@@ -394,18 +432,18 @@ class ImageTextEditor(tk.Toplevel):
         query = self.search_var.get().strip().lower() if hasattr(self, "search_var") else ""
         selected = self.selected_template_id
         self.template_tree.delete(*self.template_tree.get_children())
-        self.templates = {item["id"]: item for item in self.store.all()}
-        groups = (("default-group", "共享模板", "default"), ("manual-group", "我的模板", "manual"))
+        self.templates = {item["id"]: item for item in [*self.store.system_items(), *self.store.all()]}
+        groups = (("system-group", "系统项", "system"), ("default-group", "共享模板", "default"), ("manual-group", "我的模板", "manual"))
         for group_id, label, kind in groups:
             group = self.template_tree.insert("", "end", iid=group_id, text=label, open=True)
-            for item in sorted((item for item in self.templates.values() if item["kind"] == kind and query in item["text"].lower()), key=lambda value: value["text"].lower()):
+            for item in sorted((item for item in self.templates.values() if item["kind"] == kind and query in template_label(item).lower()), key=lambda value: template_label(value).lower()):
                 tag = f"font:{item['id']}"
                 face = item["style"].get("font", default_font(self.fonts))
                 try:
                     self.template_tree.tag_configure(tag, font=(face, max(7, round(float(item["style"].get("font_size", 9))))))
                 except tk.TclError:
                     self.template_tree.tag_configure(tag, font=(default_font(self.fonts), max(7, round(float(item["style"].get("font_size", 9))))))
-                self.template_tree.insert(group, "end", iid=item["id"], text=item["text"], tags=(tag,))
+                self.template_tree.insert(group, "end", iid=item["id"], text=template_label(item), tags=(tag,))
         if selected in self.templates:
             self.template_tree.selection_set(selected)
         elif self.templates:
@@ -421,7 +459,8 @@ class ImageTextEditor(tk.Toplevel):
         self.selected_template_id = selected[0]
         self.selected_layer_id = None
         self.selected_part = "group"
-        self._sync_style_controls(self.templates[selected[0]]["style"], f"模板：{self.templates[selected[0]]['text']}")
+        template = self.templates[selected[0]]
+        self._sync_style_controls(template["style"], f"模板：{template_label(template)}")
         self.redraw()
 
     def template_press(self, event) -> None:
@@ -434,7 +473,7 @@ class ImageTextEditor(tk.Toplevel):
         x = self.winfo_pointerx() - self.canvas.winfo_rootx()
         y = self.winfo_pointery() - self.canvas.winfo_rooty()
         if 0 <= x <= self.canvas.winfo_width() and 0 <= y <= self.canvas.winfo_height():
-            self._draw_ghost(x, y, self.drag_template["text"])
+            self._draw_ghost(x, y, self.drag_template)
 
     def template_release(self, _event) -> None:
         if not self.drag_template:
@@ -448,9 +487,13 @@ class ImageTextEditor(tk.Toplevel):
             ix, iy = self.screen_to_image(x, y)
             self.add_layer(template, ix, iy)
 
-    def _draw_ghost(self, x: float, y: float, text: str) -> None:
+    def _draw_ghost(self, x: float, y: float, template: dict) -> None:
         self._clear_ghost()
-        self.drag_ghost = self.canvas.create_text(x, y, text=text, fill="#59BFFF", anchor="nw", stipple="gray50", tags="ghost")
+        if template.get("system_type") == SYSTEM_BLANK_COVER_KIND:
+            size = max(12.0, BLANK_COVER_INITIAL_SIZE * self.scale)
+            self.drag_ghost = self.canvas.create_rectangle(x, y, x + size, y + size, fill="#59BFFF", outline="#FFFFFF", stipple="gray50", tags="ghost")
+        else:
+            self.drag_ghost = self.canvas.create_text(x, y, text=template.get("text", ""), fill="#59BFFF", anchor="nw", stipple="gray50", tags="ghost")
 
     def _clear_ghost(self) -> None:
         self.canvas.delete("ghost")
@@ -611,6 +654,8 @@ class ImageTextEditor(tk.Toplevel):
             "source_x": x, "source_y": y,
             "source_candidates": list(template.get("sources", [])),
         }
+        if template.get("system_type") == SYSTEM_BLANK_COVER_KIND:
+            layer["system_type"] = SYSTEM_BLANK_COVER_KIND
         geometry = self.layer_geometry(layer)
         padding = float(layer["padding"])
         source_text, source_w, source_h = self.source_coverage(layer)
@@ -619,8 +664,8 @@ class ImageTextEditor(tk.Toplevel):
         layer.update({
             "bg_x": x - padding - gutter,
             "bg_y": y - padding - gutter,
-            "bg_w": max(geometry["text_w"], source_w) + (padding + gutter) * 2,
-            "bg_h": max(geometry["text_h"], source_h) + (padding + gutter) * 2,
+            "bg_w": max(geometry["text_w"], source_w, BLANK_COVER_INITIAL_SIZE if layer.get("system_type") == SYSTEM_BLANK_COVER_KIND else 0.0) + (padding + gutter) * 2,
+            "bg_h": max(geometry["text_h"], source_h, BLANK_COVER_INITIAL_SIZE if layer.get("system_type") == SYSTEM_BLANK_COVER_KIND else 0.0) + (padding + gutter) * 2,
         })
         # The template remains white by default. On an actual UI image its initial
         # mask is matched to the surrounding pixels unless the user chose a color.

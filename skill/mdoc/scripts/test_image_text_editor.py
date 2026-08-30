@@ -123,6 +123,27 @@ def test_new_default_layer_has_zero_text_to_background_gap(module):
     assert geometry["bg_y"] == geometry["text_y"]
 
 
+def test_system_blank_cover_masks_with_a_resizable_no_text_layer(module):
+    base = Image.new("RGBA", (120, 80), "#2C5372")
+    harness = EditorHarness(module, base)
+    bind(module, harness)
+    template = module.system_blank_cover_template(dict(module.DEFAULT_STYLE))
+
+    assert template["kind"] == "system"
+    assert template["text"] == ""
+    assert template["label"] == "空白遮盖"
+
+    harness.add_layer(template, 20, 18)
+    layer = harness.layers[0]
+    geometry = harness.layer_geometry(layer)
+    result = harness.composite()
+
+    assert layer["system_type"] == module.SYSTEM_BLANK_COVER_KIND
+    assert geometry["bg_w"] == module.BLANK_COVER_INITIAL_SIZE
+    assert geometry["bg_h"] == module.BLANK_COVER_INITIAL_SIZE
+    assert result.getpixel((24, 22))[:3] == (255, 255, 255)
+
+
 def test_text_and_background_share_the_same_bbox_coordinates(module):
     base = Image.new("RGBA", (180, 60), "#F5F5F5")
     harness = EditorHarness(module, base)
@@ -243,6 +264,7 @@ if __name__ == "__main__":
     editor = load_editor_module()
     test_known_replacement_masks_longer_source(editor)
     test_new_default_layer_has_zero_text_to_background_gap(editor)
+    test_system_blank_cover_masks_with_a_resizable_no_text_layer(editor)
     test_text_and_background_share_the_same_bbox_coordinates(editor)
     test_group_drag_translates_text_background_and_source_anchor(editor)
     test_continuous_group_drag_does_not_accumulate_total_mouse_distance(editor)
