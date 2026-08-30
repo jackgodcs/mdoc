@@ -8,6 +8,7 @@ import os
 import shutil
 import sys
 import uuid
+from functools import lru_cache
 from pathlib import Path
 import tkinter as tk
 import tkinter.font as tkfont
@@ -40,6 +41,11 @@ SYSTEM_BLANK_COVER_ID = "system:blank-cover"
 SYSTEM_BLANK_COVER_KIND = "blank-cover"
 SYSTEM_BLANK_COVER_LABEL = "空白遮盖"
 BLANK_COVER_INITIAL_SIZE = 24.0
+SYSTEM_POINT_CLOUD_ICON_ID = "system:topcon-point-cloud-icon"
+SYSTEM_POINT_CLOUD_ICON_KIND = "topcon-point-cloud-icon"
+SYSTEM_POINT_CLOUD_ICON_LABEL = "Topcon Point Cloud 图标"
+POINT_CLOUD_ICON_INITIAL_SIZE = 32.0
+POINT_CLOUD_ICON_PATH = SKILL_DIR / "assets" / "system" / "topcon-point-cloud-icon.png"
 
 
 def image_format(path: Path) -> str:
@@ -128,6 +134,25 @@ def system_blank_cover_template(style: dict) -> dict:
     }
 
 
+def system_point_cloud_icon_template() -> dict:
+    """Create the fixed image template used for a Topcon point-cloud icon."""
+    return {
+        "id": SYSTEM_POINT_CLOUD_ICON_ID,
+        "kind": "system",
+        "system_type": SYSTEM_POINT_CLOUD_ICON_KIND,
+        "label": SYSTEM_POINT_CLOUD_ICON_LABEL,
+        "text": "",
+        "sources": [],
+        "style": {**DEFAULT_STYLE, "bg_color": None},
+    }
+
+
+@lru_cache(maxsize=1)
+def system_point_cloud_icon() -> Image.Image:
+    with Image.open(POINT_CLOUD_ICON_PATH) as source:
+        return source.convert("RGBA")
+
+
 def template_label(template: dict) -> str:
     return str(template.get("label", template.get("text", "")))
 
@@ -186,7 +211,7 @@ class TemplateStore:
 
     def system_items(self) -> list[dict]:
         style = self.value["system_styles"][SYSTEM_BLANK_COVER_KIND]
-        return [system_blank_cover_template(style)]
+        return [system_blank_cover_template(style), system_point_cloud_icon_template()]
 
     def update_style(self, template: dict, style: dict) -> None:
         if template.get("kind") == "system":
@@ -492,6 +517,9 @@ class ImageTextEditor(tk.Toplevel):
         if template.get("system_type") == SYSTEM_BLANK_COVER_KIND:
             size = max(12.0, BLANK_COVER_INITIAL_SIZE * self.scale)
             self.drag_ghost = self.canvas.create_rectangle(x, y, x + size, y + size, fill="#59BFFF", outline="#FFFFFF", stipple="gray50", tags="ghost")
+        elif template.get("system_type") == SYSTEM_POINT_CLOUD_ICON_KIND:
+            size = max(12.0, POINT_CLOUD_ICON_INITIAL_SIZE * self.scale)
+            self.drag_ghost = self.canvas.create_rectangle(x, y, x + size, y + size, fill="#59BFFF", outline="#FFFFFF", stipple="gray50", tags="ghost")
         else:
             self.drag_ghost = self.canvas.create_text(x, y, text=template.get("text", ""), fill="#59BFFF", anchor="nw", stipple="gray50", tags="ghost")
 
@@ -507,6 +535,9 @@ class ImageTextEditor(tk.Toplevel):
         self.template_selected()
         template = self.templates[item]
         state = "normal" if template["kind"] == "manual" else "disabled"
+        style_state = "disabled" if template.get("system_type") == SYSTEM_POINT_CLOUD_ICON_KIND else "normal"
+        for label in ("设置文字颜色", "选择背景色", "背景透明", "从底图吸取背景色"):
+            self.template_menu_widget.entryconfigure(label, state=style_state)
         self.template_menu_widget.entryconfigure("重命名", state=state)
         self.template_menu_widget.entryconfigure("删除", state=state)
         self.template_menu_widget.tk_popup(event.x_root, event.y_root)
@@ -656,6 +687,13 @@ class ImageTextEditor(tk.Toplevel):
         }
         if template.get("system_type") == SYSTEM_BLANK_COVER_KIND:
             layer["system_type"] = SYSTEM_BLANK_COVER_KIND
+        elif template.get("system_type") == SYSTEM_POINT_CLOUD_ICON_KIND:
+            layer.update({
+                "system_type": SYSTEM_POINT_CLOUD_ICON_KIND,
+                "image_x": x, "image_y": y,
+                "image_w": POINT_CLOUD_ICON_INITIAL_SIZE, "image_h": POINT_CLOUD_ICON_INITIAL_SIZE,
+                "bg_color": None,
+            })
         geometry = self.layer_geometry(layer)
         padding = float(layer["padding"])
         source_text, source_w, source_h = self.source_coverage(layer)
@@ -664,8 +702,8 @@ class ImageTextEditor(tk.Toplevel):
         layer.update({
             "bg_x": x - padding - gutter,
             "bg_y": y - padding - gutter,
-            "bg_w": max(geometry["text_w"], source_w, BLANK_COVER_INITIAL_SIZE if layer.get("system_type") == SYSTEM_BLANK_COVER_KIND else 0.0) + (padding + gutter) * 2,
-            "bg_h": max(geometry["text_h"], source_h, BLANK_COVER_INITIAL_SIZE if layer.get("system_type") == SYSTEM_BLANK_COVER_KIND else 0.0) + (padding + gutter) * 2,
+            "bg_w": max(geometry["text_w"], source_w, BLANK_COVER_INITIAL_SIZE if layer.get("system_type") == SYSTEM_BLANK_COVER_KIND else 0.0, POINT_CLOUD_ICON_INITIAL_SIZE if layer.get("system_type") == SYSTEM_POINT_CLOUD_ICON_KIND else 0.0) + (padding + gutter) * 2,
+            "bg_h": max(geometry["text_h"], source_h, BLANK_COVER_INITIAL_SIZE if layer.get("system_type") == SYSTEM_BLANK_COVER_KIND else 0.0, POINT_CLOUD_ICON_INITIAL_SIZE if layer.get("system_type") == SYSTEM_POINT_CLOUD_ICON_KIND else 0.0) + (padding + gutter) * 2,
         })
         # The template remains white by default. On an actual UI image its initial
         # mask is matched to the surrounding pixels unless the user chose a color.
@@ -772,6 +810,17 @@ class ImageTextEditor(tk.Toplevel):
             return ImageFont.truetype(self.fonts[default_font(self.fonts)], max(1, round(float(layer.get("font_size", 9)))))
 
     def layer_geometry(self, layer: dict) -> dict:
+        if layer.get("system_type") == SYSTEM_POINT_CLOUD_ICON_KIND:
+            x = float(layer.get("image_x", layer.get("bg_x", 0)))
+            y = float(layer.get("image_y", layer.get("bg_y", 0)))
+            width = max(MIN_BOX_SIZE, float(layer.get("image_w", layer.get("bg_w", POINT_CLOUD_ICON_INITIAL_SIZE))))
+            height = max(MIN_BOX_SIZE, float(layer.get("image_h", layer.get("bg_h", POINT_CLOUD_ICON_INITIAL_SIZE))))
+            return {
+                "text_x": x, "text_y": y, "text_w": 0.0, "text_h": 0.0,
+                "bbox": (0, 0, 0, 0), "spacing": 0,
+                "bg_x": x, "bg_y": y, "bg_w": width, "bg_h": height,
+                "image_x": x, "image_y": y, "image_w": width, "image_h": height,
+            }
         metrics = self.text_metrics(layer, str(layer.get("text", "")))
         tx, ty = float(layer.get("text_x", 0)), float(layer.get("text_y", 0))
         return {"text_x": tx, "text_y": ty, **metrics,
@@ -793,6 +842,10 @@ class ImageTextEditor(tk.Toplevel):
         draw = ImageDraw.Draw(overlay)
         for layer in self.layers:
             geometry = self.layer_geometry(layer)
+            if layer.get("system_type") == SYSTEM_POINT_CLOUD_ICON_KIND:
+                icon = system_point_cloud_icon().resize((round(geometry["image_w"]), round(geometry["image_h"])), Image.Resampling.LANCZOS)
+                overlay.paste(icon, (round(geometry["image_x"]), round(geometry["image_y"])), icon)
+                continue
             bg = layer.get("bg_color")
             if bg:
                 color = ImageColor.getrgb(bg) + (255,)
@@ -1041,6 +1094,14 @@ class ImageTextEditor(tk.Toplevel):
 
     def move_layer_by(self, layer: dict, part: str, dx: float, dy: float) -> None:
         """Translate an entire editable layer, or one deliberate sub-part."""
+        if layer.get("system_type") == SYSTEM_POINT_CLOUD_ICON_KIND:
+            layer["image_x"] = float(layer.get("image_x", layer.get("bg_x", 0))) + dx
+            layer["image_y"] = float(layer.get("image_y", layer.get("bg_y", 0))) + dy
+            layer["bg_x"] = layer["image_x"]
+            layer["bg_y"] = layer["image_y"]
+            layer["text_x"] = layer["image_x"]
+            layer["text_y"] = layer["image_y"]
+            return
         if part == "group":
             for x_key, y_key in (("text_x", "text_y"), ("bg_x", "bg_y"), ("source_x", "source_y")):
                 fallback_x = float(layer.get("text_x", 0)) if x_key == "source_x" else 0.0
@@ -1065,6 +1126,20 @@ class ImageTextEditor(tk.Toplevel):
         self.redraw()
 
     def resize_layer(self, layer: dict, before: dict, part: str, handle: str, dx: float, dy: float) -> None:
+        if layer.get("system_type") == SYSTEM_POINT_CLOUD_ICON_KIND:
+            geo = self.layer_geometry(before)
+            x0, y0 = geo["image_x"], geo["image_y"]
+            x1, y1 = x0 + geo["image_w"], y0 + geo["image_h"]
+            if "w" in handle: x0 = min(x1 - MIN_BOX_SIZE, x0 + dx)
+            if "e" in handle: x1 = max(x0 + MIN_BOX_SIZE, x1 + dx)
+            if "n" in handle: y0 = min(y1 - MIN_BOX_SIZE, y0 + dy)
+            if "s" in handle: y1 = max(y0 + MIN_BOX_SIZE, y1 + dy)
+            layer.update({
+                "image_x": x0, "image_y": y0, "image_w": x1 - x0, "image_h": y1 - y0,
+                "bg_x": x0, "bg_y": y0, "bg_w": x1 - x0, "bg_h": y1 - y0,
+                "text_x": x0, "text_y": y0,
+            })
+            return
         geo = self.layer_geometry(before)
         if part == "text":
             ratios = []
@@ -1168,6 +1243,18 @@ class ImageTextEditor(tk.Toplevel):
         self.selected_layer_id, self.selected_part = layer["id"], part
         self._sync_style_controls(layer, "图层样式")
         menu = tk.Menu(self, tearoff=False)
+        if layer.get("system_type") == SYSTEM_POINT_CLOUD_ICON_KIND:
+            menu.add_command(label="整体移动（图标）", command=lambda: self.set_selected_part("group"))
+            menu.add_separator()
+            menu.add_command(label="复制图层", command=self.copy_layer)
+            menu.add_command(label="删除图层", command=self.delete_layer)
+            menu.add_separator()
+            menu.add_command(label="置于顶层", command=self.bring_front)
+            menu.add_command(label="置于底层", command=self.send_back)
+            menu.tk_popup(event.x_root, event.y_root)
+            menu.grab_release()
+            self.redraw()
+            return
         menu.add_command(label="整体移动（文字与背景）", command=lambda: self.set_selected_part("group"))
         menu.add_command(label="仅移动文字", command=lambda: self.set_selected_part("text"))
         menu.add_command(label="仅移动背景遮罩", command=lambda: self.set_selected_part("bg"))
@@ -1208,7 +1295,10 @@ class ImageTextEditor(tk.Toplevel):
         self.push_undo()
         duplicate = copy.deepcopy(layer)
         duplicate["id"] = uuid.uuid4().hex
-        for key in ("text_x", "text_y", "bg_x", "bg_y"):
+        keys = ("text_x", "text_y", "bg_x", "bg_y")
+        if duplicate.get("system_type") == SYSTEM_POINT_CLOUD_ICON_KIND:
+            keys += ("image_x", "image_y")
+        for key in keys:
             duplicate[key] = float(duplicate.get(key, 0)) + 12
         self.layers.append(duplicate)
         self.selected_layer_id = duplicate["id"]

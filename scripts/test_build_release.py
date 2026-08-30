@@ -35,6 +35,7 @@ class ReleaseBuildTests(unittest.TestCase):
         self.assertIn("bootstrap/toolchain-bootstrap.json", names)
         self.assertIn("runtime/requirements-v1.json", names)
         self.assertIn("runtime-bootstrap/mdoc_install_transaction.py", names)
+        self.assertIn("skill/mdoc/assets/system/topcon-point-cloud-icon.png", names)
         self.assertNotIn("skill/mdoc/tests/test_public_contract.py", names)
         self.assertFalse(any("__pycache__" in name or name.endswith(".pyc") for name in names))
         self.assertTrue(installer_script.startswith(b"\xef\xbb\xbf"))

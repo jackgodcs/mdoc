@@ -74,7 +74,7 @@ def bind(module, harness):
         "font_for", "text_metrics", "layer_geometry", "uses_default_background",
         "source_coverage", "source_rect", "sample_background_color", "composite",
         "add_layer", "group_rect", "snap", "move_layer_by", "canvas_motion",
-        "expand_background_to_source",
+        "expand_background_to_source", "resize_layer",
     )
     for name in names:
         setattr(harness, name, getattr(module.ImageTextEditor, name).__get__(harness, EditorHarness))
@@ -142,6 +142,30 @@ def test_system_blank_cover_masks_with_a_resizable_no_text_layer(module):
     assert geometry["bg_w"] == module.BLANK_COVER_INITIAL_SIZE
     assert geometry["bg_h"] == module.BLANK_COVER_INITIAL_SIZE
     assert result.getpixel((24, 22))[:3] == (255, 255, 255)
+
+
+def test_system_point_cloud_icon_is_a_movable_and_resizable_32_pixel_layer(module):
+    base = Image.new("RGBA", (120, 80), "#F5F5F5")
+    harness = EditorHarness(module, base)
+    bind(module, harness)
+    template = module.system_point_cloud_icon_template()
+
+    assert template["kind"] == "system"
+    assert template["label"] == "Topcon Point Cloud 图标"
+    harness.add_layer(template, 20, 18)
+    layer = harness.layers[0]
+    geometry = harness.layer_geometry(layer)
+
+    assert layer["system_type"] == module.SYSTEM_POINT_CLOUD_ICON_KIND
+    assert (geometry["image_w"], geometry["image_h"]) == (32.0, 32.0)
+    assert harness.composite().getpixel((36, 34))[:3] != (245, 245, 245)
+
+    harness.move_layer_by(layer, "group", 5, -3)
+    assert (layer["image_x"], layer["image_y"]) == (25, 15)
+
+    before = copy.deepcopy(layer)
+    harness.resize_layer(layer, before, "group", "se", 8, 4)
+    assert (layer["image_w"], layer["image_h"]) == (40, 36)
 
 
 def test_text_and_background_share_the_same_bbox_coordinates(module):
@@ -265,6 +289,7 @@ if __name__ == "__main__":
     test_known_replacement_masks_longer_source(editor)
     test_new_default_layer_has_zero_text_to_background_gap(editor)
     test_system_blank_cover_masks_with_a_resizable_no_text_layer(editor)
+    test_system_point_cloud_icon_is_a_movable_and_resizable_32_pixel_layer(editor)
     test_text_and_background_share_the_same_bbox_coordinates(editor)
     test_group_drag_translates_text_background_and_source_anchor(editor)
     test_continuous_group_drag_does_not_accumulate_total_mouse_distance(editor)
