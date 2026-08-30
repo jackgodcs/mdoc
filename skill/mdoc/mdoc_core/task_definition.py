@@ -185,6 +185,7 @@ def define(workspace_path: Path, task_id: str) -> dict:
     state["quality_gate"] = None
     state["baselines"] = {}
     state["exception_approvals"] = {}
+    state["publish_conflict_approvals"] = []
     state["reviews"] = {}
     transition(state, "waiting_for_definition_confirmation", "task_defined", {"kind": "definition_confirmation", "digest": normalized["definition_digest"]})
     save_state(state_path, state)

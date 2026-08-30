@@ -33,6 +33,7 @@ def initial_state(task_id: str) -> dict:
         "quality_gate": None,
         "baselines": {},
         "exception_approvals": {},
+        "publish_conflict_approvals": [],
         "scope_claimed": False,
         "publish": {"transactions": []},
         "waiting_on": None,

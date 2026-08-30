@@ -21,6 +21,8 @@ Machine-local values use the matching `workspace local init/apply/confirm/revise
 5. `mdoc task continue` stops at screenshots, authoring, findings, publishing exceptions, or final review.
 6. `mdoc task confirm-final` moves a reviewed task to `accepted` and releases its scope claim.
 
+For a paused publish caused only by changed `update` targets, a coordinator can use `mdoc task approve-publish-conflict --confirm` to record an explicit baseline recheck before normal transaction publishing resumes.
+
 For shared-workspace screenshot tasks, `mdoc task contribute` opens the task's contributor screenshot assistant without advancing publication. The coordinator generates a task-specific launcher with `mdoc task create-contributor-launcher` and later uses normal screenshot acceptance and `task continue` to publish.
 
 The terminal states are `accepted` and `cancelled`. They cannot be reopened; use a new task for later work.

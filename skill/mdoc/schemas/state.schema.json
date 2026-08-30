@@ -17,6 +17,7 @@
     "quality_gate": {"type": ["object", "null"]},
     "baselines": {"type": "object"},
     "exception_approvals": {"type": "object"},
+    "publish_conflict_approvals": {"type": "array"},
     "scope_claimed": {"type": "boolean"},
     "publish": {"type": "object", "additionalProperties": false, "required": ["transactions"], "properties": {"transactions": {"type": "array"}}},
     "waiting_on": {"type": ["object", "null"]},

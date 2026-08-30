@@ -67,6 +67,45 @@ class TaskLifecycleCliTests(unittest.TestCase):
         self.assertEqual("accepted", accepted["status"])
         self.assertEqual("accepted", cli("task", "continue", "--workspace", str(self.workspace), "--task", "simple", "--no-gui", "--json")["status"])
 
+    def test_explicit_publish_conflict_approval_rebases_changed_update_and_publishes(self) -> None:
+        directory = self.define_simple_task("changed-update")
+        cli("task", "confirm-definition", "--workspace", str(self.workspace), "--task", "changed-update", "--no-gui", "--json")
+        staging = directory / "staging" / "zh"
+        (staging / "Main").mkdir(parents=True, exist_ok=True)
+        (staging / "Main" / "Simple.md").write_text("# Simple\n\nComplete content.\n", encoding="utf-8")
+        (staging / "Summary.md").write_text("# Guide\n\n- [Simple](Main/Simple.md)\n", encoding="utf-8")
+        (self.locale / "Summary.md").write_text("# Guide\n\nExternal change.\n", encoding="utf-8")
+        paused = cli("task", "submit-authoring", "--workspace", str(self.workspace), "--task", "changed-update", "--no-gui", "--json")
+        self.assertEqual("waiting_for_resolution", paused["status"])
+        self.assertEqual("MDOC-PUBLISH-CONFLICT", paused["waiting_on"]["error"]["code"])
+        self.assertEqual("target_changed", paused["waiting_on"]["error"]["details"]["conflicts"][0]["reason"])
+
+        error = cli("task", "approve-publish-conflict", "--workspace", str(self.workspace), "--task", "changed-update", "--no-gui", "--json", expected=2)
+        self.assertEqual("MDOC-PUBLISH-CONFLICT-CONFIRMATION-REQUIRED", error["error"]["code"])
+
+        published = cli("task", "approve-publish-conflict", "--workspace", str(self.workspace), "--task", "changed-update", "--confirm", "--no-gui", "--json")
+        self.assertEqual("ready_for_review", published["status"])
+        self.assertEqual(1, len(published["publish_conflict_approvals"]))
+        self.assertEqual(["zh/Summary.md"], published["publish_conflict_approvals"][0]["targets"])
+        self.assertEqual((staging / "Summary.md").read_text(encoding="utf-8"), (self.locale / "Summary.md").read_text(encoding="utf-8"))
+
+    def test_publish_conflict_approval_rejects_create_target_exists(self) -> None:
+        directory = self.define_simple_task("existing-create")
+        cli("task", "confirm-definition", "--workspace", str(self.workspace), "--task", "existing-create", "--no-gui", "--json")
+        staging = directory / "staging" / "zh"
+        (staging / "Main").mkdir(parents=True, exist_ok=True)
+        (staging / "Main" / "Simple.md").write_text("# Simple\n\nStaged content.\n", encoding="utf-8")
+        (staging / "Summary.md").write_text("# Guide\n\n- [Simple](Main/Simple.md)\n", encoding="utf-8")
+        external = self.locale / "Main" / "Simple.md"
+        external.write_text("# Existing\n\nExternal content.\n", encoding="utf-8")
+        paused = cli("task", "submit-authoring", "--workspace", str(self.workspace), "--task", "existing-create", "--no-gui", "--json")
+        self.assertEqual("waiting_for_resolution", paused["status"])
+        self.assertEqual("create_target_exists", paused["waiting_on"]["error"]["details"]["conflicts"][0]["reason"])
+
+        error = cli("task", "approve-publish-conflict", "--workspace", str(self.workspace), "--task", "existing-create", "--confirm", "--no-gui", "--json", expected=2)
+        self.assertEqual("MDOC-PUBLISH-CONFLICT-NOT-APPROVABLE", error["error"]["code"])
+        self.assertEqual("# Existing\n\nExternal content.\n", external.read_text(encoding="utf-8"))
+
     def test_manual_png_capture_and_aggregate_acceptance_survive_sessions(self) -> None:
         directory = self.define_simple_task("screenshots")
         draft_path = directory / "task-draft.yaml"

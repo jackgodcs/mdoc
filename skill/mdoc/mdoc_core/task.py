@@ -223,6 +223,27 @@ def act(workspace_path: Path, task_id: str, action: str, *, no_gui: bool = False
                 raise MdocError("MDOC-DELETION-TARGET-INVALID", "删除确认必须精确指向 manifest 中的 delete 对象。", {"target": target})
             state["exception_approvals"][f"delete:{target}"] = True
             continue_task(task, state, no_gui=no_gui)
+        elif action == "approve-publish-conflict":
+            if not confirmed:
+                raise MdocError("MDOC-PUBLISH-CONFLICT-CONFIRMATION-REQUIRED", "必须使用 --confirm 明确批准以当前正式目标为新基线，再发布已确认的 staging 输出。")
+            waiting = state.get("waiting_on") or {}
+            error = waiting.get("error") or {}
+            if state["status"] != "waiting_for_resolution" or waiting.get("kind") != "publishing" or error.get("code") != "MDOC-PUBLISH-CONFLICT":
+                raise MdocError("MDOC-PUBLISH-CONFLICT-NOT-READY", "当前任务没有可批准的发布目标冲突。")
+            conflicts = error.get("details", {}).get("conflicts", [])
+            actions = {f"{entry['locale']}/{entry['path']}": entry["action"] for entry in task.definition["manifest"]}
+            if not conflicts or any(conflict.get("reason") != "target_changed" or actions.get(conflict.get("target")) != "update" for conflict in conflicts):
+                raise MdocError("MDOC-PUBLISH-CONFLICT-NOT-APPROVABLE", "只能批准 update 目标的 target_changed 发布冲突；新建、删除或其他冲突必须单独处理。", {"conflicts": conflicts})
+            state.setdefault("publish_conflict_approvals", []).append({
+                "at": int(time.time()),
+                "reason": "target_changed",
+                "targets": [conflict["target"] for conflict in conflicts],
+                "previous_baselines": {conflict["target"]: state["baselines"].get(conflict["target"]) for conflict in conflicts},
+            })
+            state["baselines"] = baselines(task)
+            state["quality_gate"] = None
+            transition(state, "waiting_for_authoring", "publish_conflict_baseline_approved")
+            continue_task(task, state, no_gui=no_gui)
         elif action == "confirm-final":
             if state["status"] != "ready_for_review":
                 raise MdocError("MDOC-FINAL-ACCEPTANCE-NOT-READY", "任务尚未准备好最终验收。")

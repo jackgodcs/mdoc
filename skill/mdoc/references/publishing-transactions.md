@@ -12,6 +12,14 @@ Deletion requires an exact target approval:
 mdoc task approve-deletion --workspace <manual-repository-root> --task <task-id> --target <locale/path>
 ```
 
+When a declared `update` target changed after the task baseline was recorded, publishing pauses. If the staged output has already been manually verified as the intended final output, a coordinator may explicitly rebase only those `target_changed` conflicts and continue the ordinary transaction:
+
+```powershell
+mdoc task approve-publish-conflict --workspace <manual-repository-root> --task <task-id> --confirm
+```
+
+The approval records the affected targets and previous baselines, clears the derived Quality Gate result, and reruns normal verification and publishing. It cannot approve create-target, deletion, or other conflict kinds.
+
 ## Transaction Steps
 
 1. Recheck the frozen manifest and baseline hashes under the book publish lock.
