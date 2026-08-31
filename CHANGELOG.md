@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.11 - 2026-08-31
+
+- Added the publish-conflict approval state field to the released task-state schema and runtime, so contributor installations recognize tasks created with the current shared-workspace workflow.
+- Added the coordinator command `mdoc task approve-publish-conflict --confirm` for changed `update` targets after an already reviewed staging result encounters a publishing conflict.
+
 ## 1.3.10 - 2026-08-28
 
 - Fixed the GitHub Actions Windows release check so diagnostics containing Chinese file names are emitted as UTF-8 instead of failing under the legacy `cp1252` console encoding.
