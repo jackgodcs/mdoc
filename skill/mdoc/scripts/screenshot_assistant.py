@@ -691,9 +691,26 @@ class Assistant:
         if not key:
             messagebox.showwarning("mdoc", "请先选择一项截图任务。")
             return
-        editor = ImageTextEditor(self.root, self.task, self.items[key], on_saved=self.refresh, contributor=self.contributor)
-        editor.transient(self.root)
-        editor.grab_set()
+        self.modal_count += 1
+        released = False
+
+        def release_modal(event=None):
+            nonlocal released
+            if event is not None and event.widget is not editor:
+                return
+            if released:
+                return
+            released = True
+            self.modal_count = max(0, self.modal_count - 1)
+
+        try:
+            editor = ImageTextEditor(self.root, self.task, self.items[key], on_saved=self.refresh, contributor=self.contributor)
+            editor.transient(self.root)
+            editor.grab_set()
+            editor.bind("<Destroy>", release_modal, add="+")
+        except Exception:
+            release_modal()
+            raise
 
     def request_capture(self, source, payload=None):
         if not self.ensure_editable():

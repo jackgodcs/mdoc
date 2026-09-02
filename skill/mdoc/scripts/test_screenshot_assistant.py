@@ -61,6 +61,45 @@ class ScreenshotAssistantTests(unittest.TestCase):
         self.assertFalse(allowed({"status": "accepted"}))
         self.assertFalse(allowed({"status": "cancelled"}))
 
+    def test_modal_editor_blocks_capture_before_the_assistant_is_hidden(self) -> None:
+        assistant = object.__new__(self.assistant.Assistant)
+        assistant.modal_count = 1
+        assistant.capture_in_progress = False
+        assistant.last_capture_request = 0.0
+        assistant.ensure_editable = lambda: True
+        assistant.root = SimpleNamespace(withdraw=lambda: self.fail("modal capture hid the assistant"))
+
+        self.assistant.Assistant.request_capture(assistant, "global", {"cursor": (1, 1)})
+
+        self.assertFalse(assistant.capture_in_progress)
+        self.assertEqual(0.0, assistant.last_capture_request)
+
+    def test_editor_modal_count_is_released_only_when_the_editor_is_destroyed(self) -> None:
+        assistant = object.__new__(self.assistant.Assistant)
+        assistant.modal_count = 0
+        assistant.root = object()
+        assistant.task = object()
+        assistant.items = {"INPUT:zh": {"item": object()}}
+        assistant.selected = lambda: "INPUT:zh"
+        assistant.refresh = lambda: None
+        assistant.contributor = False
+        editor = SimpleNamespace()
+        editor.transient = lambda root: None
+        editor.grab_set = lambda: None
+        editor.bind = lambda event, callback, add=None: setattr(editor, "destroy_callback", callback)
+        original_editor = self.assistant.ImageTextEditor
+        self.assistant.ImageTextEditor = lambda *args, **kwargs: editor
+        try:
+            self.assistant.Assistant.edit_current(assistant)
+        finally:
+            self.assistant.ImageTextEditor = original_editor
+
+        self.assertEqual(1, assistant.modal_count)
+        editor.destroy_callback(SimpleNamespace(widget=object()))
+        self.assertEqual(1, assistant.modal_count)
+        editor.destroy_callback(SimpleNamespace(widget=editor))
+        self.assertEqual(0, assistant.modal_count)
+
     def test_screenshot_list_is_filtered_by_the_selected_locale(self) -> None:
         manifest_items = {
             "INPUT:zh": {"locale": "zh", "required": True},
