@@ -57,6 +57,17 @@ def screenshot_changes_allowed(state: dict) -> bool:
     """Allow post-acceptance corrections, but preserve final task boundaries."""
     return state.get("status") not in SCREENSHOT_EDIT_BLOCKED_TASK_STATUSES
 
+
+def screenshot_locales(items: dict) -> list[str]:
+    """Return declared screenshot locales in their manifest order."""
+    return list(dict.fromkeys(item.get("locale", "") for item in items.values() if item.get("locale")))
+
+
+def items_for_locale(items: dict, locale: str) -> dict:
+    """Keep the screenshot manifest order while showing one locale at a time."""
+    return {key: item for key, item in items.items() if item.get("locale") == locale}
+
+
 def copy_reference_to_capture(source: Path, target: Path) -> dict:
     """Copy a valid original image byte-for-byte into a declared capture slot."""
     source_info = png_info(source)
@@ -195,6 +206,7 @@ class Assistant:
             ratio = 0.42
         self.scope_var = tk.StringVar(value=preferences.get("capture_scope", "current_monitor"))
         self.auto_var = tk.BooleanVar(value=preferences.get("auto_advance", True))
+        self.locale_var = tk.StringVar(value=preferences.get("selected_locale", ""))
         self.preview_split_ratio = max(0.2, min(0.8, ratio))
 
     def save_local(self):
@@ -203,6 +215,7 @@ class Assistant:
             "preferences": {
                 "capture_scope": self.scope_var.get(),
                 "auto_advance": bool(self.auto_var.get()),
+                "selected_locale": self.locale_var.get(),
                 "preview_split_ratio": self.preview_split_ratio,
             },
         }
@@ -233,8 +246,14 @@ class Assistant:
         right = ttk.Panedwindow(body, orient="vertical")
         body.add(left, weight=2)
         body.add(right, weight=6)
-        self.tree = ttk.Treeview(left, columns=("locale", "status", "target"), show="headings")
-        for key, text, width in (("locale", "语言", 70), ("status", "状态", 90), ("target", "原图位置", 360)):
+        locale_bar = ttk.Frame(left)
+        locale_bar.pack(fill="x", pady=(0, 6))
+        ttk.Label(locale_bar, text="语言：").pack(side="left")
+        self.locale_selector = ttk.Combobox(locale_bar, textvariable=self.locale_var, state="readonly", width=10)
+        self.locale_selector.pack(side="left", fill="x", expand=True)
+        self.locale_selector.bind("<<ComboboxSelected>>", self.change_locale)
+        self.tree = ttk.Treeview(left, columns=("status", "target"), show="headings")
+        for key, text, width in (("status", "状态", 90), ("target", "原图位置", 430)):
             self.tree.heading(key, text=text)
             self.tree.column(key, width=width, stretch=key == "target")
         self.tree.pack(fill="both", expand=True)
@@ -302,10 +321,19 @@ class Assistant:
     def refresh(self):
         state = load_state(self.task.directory / "task-state.json", self.task_id)
         manifest = synchronize(self.task, state)
+        manifest_items = manifest["items"]
+        locales = screenshot_locales(manifest_items)
+        selected_locale = self.locale_var.get()
+        if selected_locale not in locales:
+            selected_locale = locales[0] if locales else ""
+            self.locale_var.set(selected_locale)
+        self.locale_selector.configure(values=locales)
+        visible_items = items_for_locale(manifest_items, selected_locale)
         selected = self.tree.selection()
         selected_key = selected[0] if selected else None
         self.tree.delete(*self.tree.get_children())
         self.items = {}
+        self.manifest_items = manifest_items
         paths = {}
         for requirement, key, locale, capture in declared(self.task):
             destination = requirement["destinations"][locale]
@@ -317,7 +345,7 @@ class Assistant:
             except ValueError:
                 raise RuntimeError(f"截图目标超出语言目录：{destination}")
             paths[key] = (requirement, capture, original, destination)
-        for key, item in manifest["items"].items():
+        for key, item in visible_items.items():
             requirement, capture, original, destination = paths[key]
             self.items[key] = {
                 "key": key,
@@ -327,7 +355,7 @@ class Assistant:
                 "original": original,
                 "destination": destination,
             }
-            self.tree.insert("", "end", iid=key, values=(item["locale"], LABELS.get(item["status"], item["status"]), destination))
+            self.tree.insert("", "end", iid=key, values=(LABELS.get(item["status"], item["status"]), destination))
         if selected_key in self.items:
             self.tree.selection_set(selected_key)
         elif self.items:
@@ -335,6 +363,10 @@ class Assistant:
             self.tree.selection_set(first)
         self.preview()
         self.update_status()
+
+    def change_locale(self, _event=None):
+        self.save_local()
+        self.refresh()
 
     def selected(self):
         values = self.tree.selection()
@@ -466,12 +498,15 @@ class Assistant:
     def update_status(self):
         if not hasattr(self, "status"):
             return
+        completed_statuses = {"captured", "accepted", "waived", "not_applicable"}
         required = [entry["item"] for entry in self.items.values() if entry["item"]["required"]]
-        complete = sum(item["status"] in {"captured", "accepted", "waived", "not_applicable"} for item in required)
+        complete = sum(item["status"] in completed_statuses for item in required)
+        all_required = [item for item in getattr(self, "manifest_items", {}).values() if item["required"]]
+        all_complete = sum(item["status"] in completed_statuses for item in all_required)
         state = load_state(self.task.directory / "task-state.json", self.task_id)
         acceptance = (state.get("screenshot_acceptance") or {}).get("status", "未验收")
         scope = "全部屏幕" if self.scope_var.get() == "all_monitors" else "当前屏幕"
-        self.status.configure(text=f"必需截图 {complete}/{len(required)}；总体验收：{acceptance}；截图范围：{scope}；{self.hotkey_text}")
+        self.status.configure(text=f"{self.locale_var.get()}：必需截图 {complete}/{len(required)}；全部：{all_complete}/{len(all_required)}；总体验收：{acceptance}；截图范围：{scope}；{self.hotkey_text}")
 
     def poll_events(self):
         try:

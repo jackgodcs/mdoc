@@ -61,6 +61,22 @@ class ScreenshotAssistantTests(unittest.TestCase):
         self.assertFalse(allowed({"status": "accepted"}))
         self.assertFalse(allowed({"status": "cancelled"}))
 
+    def test_screenshot_list_is_filtered_by_the_selected_locale(self) -> None:
+        manifest_items = {
+            "INPUT:zh": {"locale": "zh", "required": True},
+            "INPUT:en": {"locale": "en", "required": True},
+            "LOG:zh": {"locale": "zh", "required": True},
+            "INPUT:ja": {"locale": "ja", "required": True},
+        }
+
+        self.assertEqual(["zh", "en", "ja"], self.assistant.screenshot_locales(manifest_items))
+        self.assertEqual(
+            ["INPUT:zh", "LOG:zh"],
+            list(self.assistant.items_for_locale(manifest_items, "zh")),
+        )
+        self.assertEqual(["INPUT:en"], list(self.assistant.items_for_locale(manifest_items, "en")))
+        self.assertEqual(["INPUT:ja"], list(self.assistant.items_for_locale(manifest_items, "ja")))
+
     def test_reference_copy_is_byte_exact_and_validated(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -9,6 +9,8 @@ from pathlib import Path
 
 from ruamel.yaml import YAML
 
+from skill.mdoc.mdoc_core.errors import MdocError
+from skill.mdoc.mdoc_core.io import relative_path
 from skill.mdoc.tests.support import write_yaml
 
 
@@ -151,6 +153,25 @@ class WorkspaceCliTests(unittest.TestCase):
             YAML_WRITER.dump({"schema_version": 1, "books": {}}, stream)
         error = self.run_cli("workspace", "local", "apply", "--workspace", str(self.repository), "--json", expected=2)
         self.assertEqual("MDOC-CONFIG-SCHEMA-INVALID", json.loads(error.stdout)["error"]["code"])
+
+    def test_workspace_book_may_use_the_workspace_as_its_root(self) -> None:
+        for locale in ("zh", "en"):
+            root = self.repository / locale
+            (root / "Main").mkdir(parents=True)
+            (root / "images").mkdir()
+            (root / "Summary.md").write_text("# Guide\n", encoding="utf-8")
+
+        self.run_cli("workspace", "init", "--workspace", str(self.repository), "--json")
+        workspace = valid_workspace()
+        workspace["books"]["guide"]["root"] = "."
+        self.write_draft(workspace)
+        applied = self.run_cli("workspace", "apply", "--workspace", str(self.repository), "--json")
+
+        self.assertEqual("waiting_for_workspace_confirmation", json.loads(applied.stdout)["status"])
+        self.assertEqual(Path("."), relative_path(".", "books.guide.root"))
+        for unsafe in ("", "../escape", "C:/manual"):
+            with self.assertRaises(MdocError):
+                relative_path(unsafe, "books.guide.root")
 
     def test_workspace_revise_rejects_removing_references_used_by_unfinished_tasks(self) -> None:
         self.run_cli("workspace", "init", "--workspace", str(self.repository), "--json")

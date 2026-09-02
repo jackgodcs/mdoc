@@ -104,9 +104,15 @@ def file_digest(path: Path) -> str:
 
 def relative_path(raw: str, label: str) -> Path:
     normalized = raw.replace("\\", "/")
-    path = Path(*[part for part in normalized.split("/") if part not in {"", "."}])
-    if Path(raw).is_absolute() or raw.startswith(("/", "\\")) or (len(raw) >= 2 and raw[1] == ":") or any(part == ".." for part in path.parts):
+    raw_parts = normalized.split("/")
+    if Path(raw).is_absolute() or raw.startswith(("/", "\\")) or (len(raw) >= 2 and raw[1] == ":") or any(part == ".." for part in raw_parts):
         raise MdocError("MDOC-PATH-UNSAFE", f"{label} must be a repository-relative path: {raw}")
+    # A book may deliberately use the workspace directory itself as its root.
+    # Preserve that explicit relative form instead of normalizing it to an
+    # empty path; absolute and parent-directory paths remain rejected above.
+    if normalized and all(part in {"", "."} for part in raw_parts):
+        return Path(".")
+    path = Path(*[part for part in raw_parts if part not in {"", "."}])
     if not path.parts:
         raise MdocError("MDOC-PATH-UNSAFE", f"{label} must not be empty: {raw}")
     return path
@@ -119,4 +125,3 @@ def inside(root: Path, relative: Path) -> Path:
     except ValueError as exc:
         raise MdocError("MDOC-PATH-UNSAFE", f"Path escapes its allowed root: {relative}") from exc
     return target
-
