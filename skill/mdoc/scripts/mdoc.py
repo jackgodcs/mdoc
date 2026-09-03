@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""mdoc 1.3.11 command line entry point."""
+"""mdoc 1.3.12 command line entry point."""
 from __future__ import annotations
 
 import argparse

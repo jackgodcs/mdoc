@@ -54,12 +54,12 @@ def _quality_check_needed(previous: dict, gate_input: str) -> bool:
     return previous.get("status") != "passed" or previous.get("input_digest") != gate_input
 
 
-def create_contributor_launcher(task, output: str | None = None) -> dict:
-    name = output or f"Open-Screenshot-Task-{task.task_id}.cmd"
-    relative = relative_path(name, "contributor launcher output")
+def _create_screenshot_launcher(task, name: str, *, contributor: bool) -> Path:
+    relative = relative_path(name, "screenshot launcher output")
     if len(relative.parts) != 1 or relative.suffix.lower() != ".cmd":
-        raise MdocError("MDOC-CONTRIBUTOR-LAUNCHER-INVALID", "协作者启动器必须是工作区根目录下的 .cmd 文件。")
+        raise MdocError("MDOC-SCREENSHOT-LAUNCHER-INVALID", "截图启动器必须是工作区根目录下的 .cmd 文件。")
     target = task.workspace.repository / relative
+    contributor_argument = " --contributor" if contributor else ""
     content = (
         "@echo off\r\n"
         "setlocal\r\n"
@@ -73,7 +73,7 @@ def create_contributor_launcher(task, output: str | None = None) -> dict:
         "set \"MDOC_PYTHON=%LOCALAPPDATA%\\mdoc\\runtime\\Scripts\\python.exe\"\r\n"
         "set \"MDOC_ASSISTANT=%USERPROFILE%\\.codex\\skills\\mdoc\\scripts\\screenshot_assistant.py\"\r\n"
         "if exist \"%MDOC_PYTHON%\" if exist \"%MDOC_ASSISTANT%\" (\r\n"
-        f"  \"%MDOC_PYTHON%\" -B \"%MDOC_ASSISTANT%\" --workspace \"%MDOC_WORKSPACE%\" --task \"{task.task_id}\" --contributor\r\n"
+        f"  \"%MDOC_PYTHON%\" -B \"%MDOC_ASSISTANT%\" --workspace \"%MDOC_WORKSPACE%\" --task \"{task.task_id}\"{contributor_argument}\r\n"
         ") else (\r\n"
         "  echo mdoc screenshot assistant is not installed for this user.\r\n"
         "  echo Install mdoc, then open this launcher again.\r\n"
@@ -84,18 +84,40 @@ def create_contributor_launcher(task, output: str | None = None) -> dict:
         "if not \"%EXIT_CODE%\"==\"0\" pause\r\n"
         "exit /b %EXIT_CODE%\r\n"
     )
+    encoded = content.encode("ascii")
+    if target.is_file() and target.read_bytes() == encoded:
+        return target
     temporary = target.with_name(f".{target.name}.tmp")
     try:
-        temporary.write_text(content, encoding="ascii", newline="")
+        temporary.write_bytes(encoded)
         os.replace(temporary, target)
     except OSError as exc:
         temporary.unlink(missing_ok=True)
-        raise MdocError("MDOC-CONTRIBUTOR-LAUNCHER-WRITE-FAILED", "无法写入协作者截图启动器。", {"path": str(target), "cause": str(exc)}) from exc
+        raise MdocError("MDOC-SCREENSHOT-LAUNCHER-WRITE-FAILED", "无法写入截图启动器。", {"path": str(target), "cause": str(exc)}) from exc
+    return target
+
+
+def create_screenshot_launcher(task) -> dict:
+    target = _create_screenshot_launcher(task, f"Open-Screenshot-Assistant-{task.task_id}.cmd", contributor=False)
+    return {"status": "screenshot_launcher_created", "task_id": task.task_id, "path": str(target)}
+
+
+def create_contributor_launcher(task, output: str | None = None) -> dict:
+    try:
+        target = _create_screenshot_launcher(task, output or f"Open-Screenshot-Task-{task.task_id}.cmd", contributor=True)
+    except MdocError as exc:
+        if exc.code == "MDOC-SCREENSHOT-LAUNCHER-INVALID":
+            raise MdocError("MDOC-CONTRIBUTOR-LAUNCHER-INVALID", "协作者启动器必须是工作区根目录下的 .cmd 文件。") from exc
+        if exc.code == "MDOC-SCREENSHOT-LAUNCHER-WRITE-FAILED":
+            raise MdocError("MDOC-CONTRIBUTOR-LAUNCHER-WRITE-FAILED", "无法写入协作者截图启动器。", exc.details) from exc
+        raise
     return {"status": "contributor_launcher_created", "task_id": task.task_id, "path": str(target)}
 
 
 def continue_task(task, state: dict, *, no_gui: bool = False, quality_check=task_check) -> dict:
     recover_transactions(task, state)
+    if task.definition["screenshots"] and state.get("definition_confirmation"):
+        create_screenshot_launcher(task)
     if state["status"] in TERMINAL or state["status"] == "ready_for_review":
         return state
     confirmation = state.get("definition_confirmation")

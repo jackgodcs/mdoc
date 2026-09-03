@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.12 - 2026-09-03
+
+- Automatically create or refresh a task-specific one-click screenshot assistant launcher when a confirmed task declares screenshots, including already completed tasks continued after upgrading.
+- Improved screenshot reference handling for new multilingual manual content and retained the generic capture workflow alongside image editing.
+- Added reusable image layers, external clipboard image import, and reference-image copying to the screenshot editor workflow.
+
 ## 1.3.11 - 2026-08-31
 
 - Added the publish-conflict approval state field to the released task-state schema and runtime, so contributor installations recognize tasks created with the current shared-workspace workflow.

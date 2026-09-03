@@ -16,7 +16,7 @@ class ReleaseBuildTests(unittest.TestCase):
     def test_release_build_is_deterministic_and_manifest_matches(self):
         command = [sys.executable, str(ROOT / "scripts" / "build_release.py")]
         subprocess.run(command, check=True, capture_output=True, text=True)
-        asset = ROOT / "dist" / "mdoc-1.3.11-windows-x64.zip"
+        asset = ROOT / "dist" / "mdoc-1.3.12-windows-x64.zip"
         first = hashlib.sha256(asset.read_bytes()).hexdigest()
         subprocess.run(command, check=True, capture_output=True, text=True)
         second = hashlib.sha256(asset.read_bytes()).hexdigest()
@@ -53,7 +53,7 @@ class ReleaseBuildTests(unittest.TestCase):
     def test_windows_powershell_installer_validates_chinese_manifest_filename(self):
         command = [sys.executable, str(ROOT / "scripts" / "build_release.py")]
         subprocess.run(command, check=True, capture_output=True, text=True)
-        asset = ROOT / "dist" / "mdoc-1.3.11-windows-x64.zip"
+        asset = ROOT / "dist" / "mdoc-1.3.12-windows-x64.zip"
         powershell = os.environ.get("WINDIR", r"C:\Windows")
         powershell = str(Path(powershell) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe")
         self.assertTrue(Path(powershell).is_file())
@@ -101,7 +101,7 @@ class ReleaseBuildTests(unittest.TestCase):
     def test_windows_powershell_installer_uses_local_toolkit_beside_package(self):
         command = [sys.executable, str(ROOT / "scripts" / "build_release.py")]
         subprocess.run(command, check=True, capture_output=True, text=True)
-        asset = ROOT / "dist" / "mdoc-1.3.11-windows-x64.zip"
+        asset = ROOT / "dist" / "mdoc-1.3.12-windows-x64.zip"
         powershell = Path(os.environ.get("WINDIR", r"C:\Windows")) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
         self.assertTrue(powershell.is_file())
 

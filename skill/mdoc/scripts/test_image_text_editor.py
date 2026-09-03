@@ -326,6 +326,33 @@ def test_middle_button_release_ends_background_pan_before_layer_drag(module):
     assert harness.pan_state is None
 
 
+def test_switching_base_with_no_layers_does_not_prompt(module):
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        reference = root / "reference.png"
+        capture = root / "capture.png"
+        Image.new("RGB", (40, 30), "white").save(reference)
+        Image.new("RGB", (40, 30), "black").save(capture)
+        harness = types.SimpleNamespace(
+            entry={"reference": reference, "capture": capture, "reference_label": "zh 参考图片", "capture_label": "en 新截图"},
+            base_var=types.SimpleNamespace(get=lambda: "en 新截图"),
+            base_source="original", snapshot_path=root / "missing.base.png", base_path=reference, layers=[], selected_layer_id=None,
+            _refresh_base_choice=lambda: None, push_undo=lambda: None, _load_image=lambda path: setattr(harness, "base_path", path),
+            mark_dirty=lambda: None, fit=lambda: None,
+        )
+        original_prompt = module.messagebox.askyesnocancel
+        original_png_info = module.png_info
+        module.png_info = lambda path: {"width": 40, "height": 30} if Path(path).is_file() else None
+        module.messagebox.askyesnocancel = lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("empty editor prompted to preserve layers"))
+        try:
+            module.ImageTextEditor._switch_base(harness)
+        finally:
+            module.messagebox.askyesnocancel = original_prompt
+            module.png_info = original_png_info
+
+        assert harness.base_source == "capture"
+
+
 def test_snap_threshold_is_stable_in_screen_pixels(module):
     base = Image.new("RGBA", (500, 200), "#F5F5F5")
     harness = EditorHarness(module, base)
@@ -355,5 +382,6 @@ if __name__ == "__main__":
     test_continuous_group_drag_does_not_accumulate_total_mouse_distance(editor)
     test_high_zoom_drag_follows_screen_distance_without_snap_drift(editor)
     test_middle_button_release_ends_background_pan_before_layer_drag(editor)
+    test_switching_base_with_no_layers_does_not_prompt(editor)
     test_snap_threshold_is_stable_in_screen_pixels(editor)
     print("image_text_editor regression checks passed")

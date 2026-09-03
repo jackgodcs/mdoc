@@ -12,6 +12,7 @@ import subprocess
 import sys
 import time
 import tkinter as tk
+from collections.abc import Mapping
 from ctypes import wintypes
 from io import BytesIO
 from pathlib import Path
@@ -68,13 +69,29 @@ def items_for_locale(items: dict, locale: str) -> dict:
     return {key: item for key, item in items.items() if item.get("locale") == locale}
 
 
+def screenshot_action(definition: dict, locale: str, destination: str) -> str:
+    """Return the declared action for one screenshot destination."""
+    match = next((item for item in definition["manifest"] if item["kind"] == "asset" and item["locale"] == locale and item["path"] == destination), None)
+    return match["action"] if match else "update"
+
+
+def screenshot_reference_locale(definition: dict, locale: str) -> str:
+    """Resolve the reference locale for a newly created screenshot."""
+    strategy = definition["locale_plan"]["targets"].get(locale, {}).get("screenshots")
+    if isinstance(strategy, Mapping) and strategy.get("copy_from"):
+        return strategy["copy_from"]
+    return locale if locale == "zh" else "zh"
+
+
 def copy_reference_to_capture(source: Path, target: Path) -> dict:
-    """Copy a valid original image byte-for-byte into a declared capture slot."""
+    """Copy a valid reference image byte-for-byte into a declared capture slot."""
     source_info = png_info(source)
     if source_info is None:
-        raise OSError("原手册图片不是有效的 PNG 或 JPEG 文件。")
+        raise OSError("参考图片不是有效的 PNG 或 JPEG 文件。")
     if source_info["format"] != image_format(target):
-        raise OSError("原手册图片格式与当前截图目标格式不一致，不能原样复制。")
+        raise OSError("参考图片格式与当前截图目标格式不一致，不能原样复制。")
+    if source.resolve() == target.resolve():
+        return source_info
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = target.with_name(f".{target.name}.tmp")
     try:
@@ -87,7 +104,7 @@ def copy_reference_to_capture(source: Path, target: Path) -> dict:
             or target_info["height"] != source_info["height"]
             or target_info["sha256"] != source_info["sha256"]
         ):
-            raise OSError("原图复制后的校验结果不一致。")
+            raise OSError("参考图复制后的校验结果不一致。")
         temporary.replace(target)
     except Exception:
         temporary.unlink(missing_ok=True)
@@ -181,8 +198,8 @@ class Assistant:
             self.root.destroy()
             raise RuntimeError("此任务的截图助手已经在运行。")
         self.original_menu = tk.Menu(self.root, tearoff=False)
-        self.original_menu.add_command(label="复制原图到剪贴板", command=self.copy_original)
-        self.original_menu.add_command(label="用默认程序打开原图", command=lambda: self.open_image("original"))
+        self.original_menu.add_command(label="复制参考图到剪贴板", command=self.copy_original)
+        self.original_menu.add_command(label="用默认程序打开参考图", command=lambda: self.open_image("reference"))
         self.root.protocol("WM_DELETE_WINDOW", self.close)
         try:
             self.build()
@@ -231,9 +248,7 @@ class Assistant:
         ttk.Button(toolbar, text="编辑当前项", command=self.edit_current).pack(side="left", padx=(6, 0))
         ttk.Button(toolbar, text="截取区域", command=lambda: self.request_capture("local")).pack(side="left", padx=6)
         ttk.Button(toolbar, text="导入已编辑图片", command=self.import_image).pack(side="left")
-        ttk.Button(toolbar, text="原图作为新截图", command=self.use_original_as_capture).pack(side="left", padx=(6, 0))
-        ttk.Button(toolbar, text="打开原图", command=lambda: self.open_image("original")).pack(side="left", padx=6)
-        ttk.Button(toolbar, text="打开新截图", command=lambda: self.open_image("capture")).pack(side="left")
+        ttk.Button(toolbar, text="复制参考图为新截图", command=self.use_original_as_capture).pack(side="left", padx=(6, 0))
         ttk.Button(toolbar, text="打开截图目录", command=self.open_folder).pack(side="left", padx=6)
         if self.contributor:
             ttk.Button(toolbar, text="提交截图成果", command=self.submit).pack(side="right")
@@ -262,7 +277,7 @@ class Assistant:
         self.tree.bind("<F5>", lambda _event: self.refresh())
 
         requirement_frame = ttk.Labelframe(right, text="截图要求", padding=8)
-        comparison = ttk.Labelframe(right, text="原图 / 新截图对照", padding=8)
+        comparison = ttk.Labelframe(right, text="参考图 / 新截图对照", padding=8)
         right.add(requirement_frame, weight=1)
         right.add(comparison, weight=4)
         self.detail = tk.Text(requirement_frame, height=8, wrap="word", state="disabled", font=("Microsoft YaHei UI", 10))
@@ -283,7 +298,7 @@ class Assistant:
         self.preview_divider = tk.Canvas(self.preview_area, width=10, highlightthickness=0, bd=0, cursor="sb_h_double_arrow", background="#f0f0f0")
         self.preview_divider_line = self.preview_divider.create_rectangle(4, 0, 6, 1, fill="#c8c8c8", outline="")
         self.preview_divider_dots = [self.preview_divider.create_oval(3, 0, 7, 4, fill="#8a8a8a", outline="") for _ in range(3)]
-        self.reference_title = ttk.Label(self.preview_reference_frame, text="原手册图片（只读对照）")
+        self.reference_title = ttk.Label(self.preview_reference_frame, text="参考手册图片（只读对照）")
         self.reference_title.pack(anchor="w")
         self.capture_title = ttk.Label(self.preview_current_frame, text="新截图（受控收集区）")
         self.capture_title.pack(anchor="w")
@@ -293,6 +308,8 @@ class Assistant:
         self.preview_reference_frame.bind("<Button-3>", self.show_original_menu)
         self.capture_label = ttk.Label(self.preview_current_frame, text="尚无新截图", anchor="center")
         self.capture_label.pack(fill="both", expand=True, pady=(4, 0))
+        ttk.Button(self.preview_reference_frame, text="打开图片", command=lambda: self.open_image("reference")).pack(pady=(4, 0))
+        ttk.Button(self.preview_current_frame, text="打开图片", command=lambda: self.open_image("capture")).pack(pady=(4, 0))
         self.preview_area.bind("<Configure>", self.preview_resized)
         self.preview_divider.bind("<Enter>", lambda _event: self.paint_preview_divider("drag" if self.preview_dragging else "hover"))
         self.preview_divider.bind("<Leave>", lambda _event: self.paint_preview_divider("drag" if self.preview_dragging else "normal"))
@@ -335,24 +352,35 @@ class Assistant:
         self.items = {}
         self.manifest_items = manifest_items
         paths = {}
+        captures = {(locale, requirement["id"]): capture for requirement, _key, locale, capture in declared(self.task)}
         for requirement, key, locale, capture in declared(self.task):
             destination = requirement["destinations"][locale]
             book = self.workspace.config["books"][self.task.definition["task"]["book"]]
             locale_root = self.repository / book["root"] / book["locales"][locale]["root"]
-            original = (locale_root / destination).resolve()
+            action = screenshot_action(self.task.definition, locale, destination)
+            reference_locale = screenshot_reference_locale(self.task.definition, locale) if action == "create" else locale
+            if action == "create" and (reference_locale, requirement["id"]) not in captures:
+                reference_locale = locale
+            reference = captures[(reference_locale, requirement["id"])] if action == "create" else (locale_root / destination).resolve()
             try:
-                original.relative_to(locale_root.resolve())
+                if action != "create":
+                    reference.relative_to(locale_root.resolve())
             except ValueError:
                 raise RuntimeError(f"截图目标超出语言目录：{destination}")
-            paths[key] = (requirement, capture, original, destination)
+            reference_label = f"{reference_locale} 参考图片" if action == "create" else "参考手册图片"
+            paths[key] = (requirement, capture, reference, reference_label, destination, action)
         for key, item in visible_items.items():
-            requirement, capture, original, destination = paths[key]
+            requirement, capture, reference, reference_label, destination, action = paths[key]
             self.items[key] = {
                 "key": key,
                 "item": item,
                 "requirement": requirement,
                 "capture": capture,
-                "original": original,
+                "original": reference,
+                "reference": reference,
+                "reference_label": reference_label,
+                "capture_label": f"{item['locale']} 新截图",
+                "action": action,
                 "destination": destination,
             }
             self.tree.insert("", "end", iid=key, values=(LABELS.get(item["status"], item["status"]), destination))
@@ -383,10 +411,10 @@ class Assistant:
         item = entry["item"]
         requirement = entry["requirement"]
         capture = entry["capture"]
-        original = entry["original"]
+        reference = entry["reference"]
         lines = [
             f"{key}  |  状态：{LABELS.get(item['status'], item['status'])}",
-            f"原图：{original}",
+            f"参考图：{reference}",
             f"新截图保存位置：{capture}",
             f"正式手册位置：{entry['destination']}",
         ]
@@ -404,9 +432,9 @@ class Assistant:
         self.detail.delete("1.0", "end")
         self.detail.insert("1.0", "\n".join(lines))
         self.detail.configure(state="disabled")
-        self.reference_title.configure(text=f"原手册图片（只读对照） · {original.name}")
-        self.capture_title.configure(text=f"新截图（受控收集区） · {LABELS.get(item['status'], item['status'])}")
-        self.show_image(self.original_label, original, "original_preview_image", "原手册图片无法预览")
+        self.reference_title.configure(text=f"{entry['reference_label']}（只读对照） · {reference.name}")
+        self.capture_title.configure(text=f"{entry['capture_label']}（受控收集区） · {LABELS.get(item['status'], item['status'])}")
+        self.show_image(self.original_label, reference, "original_preview_image", "参考图片尚不存在")
         self.show_image(self.capture_label, capture, "capture_preview_image", "尚无新截图")
 
     def show_image(self, label, path: Path, attribute: str, empty_text: str, fast: bool = False):
@@ -533,9 +561,9 @@ class Assistant:
             messagebox.showwarning("mdoc", "请先选择一项截图任务。")
             return
         entry = self.items[key]
-        path = entry["original"] if kind == "original" else entry["capture"]
+        path = entry["reference"] if kind == "reference" else entry["capture"]
         if not path.is_file():
-            label = "原手册图片" if kind == "original" else "新截图"
+            label = entry["reference_label"] if kind == "reference" else entry["capture_label"]
             messagebox.showwarning("mdoc", f"{label}不存在：\n{path}")
             return
         try:
@@ -552,16 +580,16 @@ class Assistant:
         if not key:
             messagebox.showwarning("mdoc", "请先选择一项截图任务。")
             return
-        source = self.items[key]["original"]
+        source = self.items[key]["reference"]
         if not source.is_file():
-            messagebox.showwarning("mdoc", f"原手册图片不存在：\n{source}")
+            messagebox.showwarning("mdoc", f"参考图片不存在：\n{source}")
             return
         try:
             copy_image_to_clipboard(source)
         except OSError as exc:
-            messagebox.showerror("mdoc", f"无法复制原图到剪贴板：\n{exc}")
+            messagebox.showerror("mdoc", f"无法复制参考图到剪贴板：\n{exc}")
             return
-        self.show_status_message("原图已复制到剪贴板，可在图片编辑软件中直接粘贴。")
+        self.show_status_message("参考图已复制到剪贴板，可在图片编辑软件中直接粘贴。")
 
     def show_status_message(self, text):
         self.status.configure(text=text)
@@ -626,21 +654,21 @@ class Assistant:
             messagebox.showwarning("mdoc", "请先选择一项截图任务。")
             return
         entry = self.items[key]
-        source = entry["original"]
+        source = entry["reference"]
         target = entry["capture"]
         if not source.is_file():
-            messagebox.showwarning("mdoc", f"原手册图片不存在：\n{source}")
+            messagebox.showwarning("mdoc", f"参考图片不存在：\n{source}")
             return
         if target.is_file() and not messagebox.askyesno(
             "替换当前截图",
-            "将用原手册图片原样替换当前新截图，并清除该项之前的文字编辑记录。\n\n是否继续？",
+            "将复制参考图为当前新截图，并清除该项之前的图片编辑记录。\n\n是否继续？",
             parent=self.root,
         ):
             return
         try:
             self.record_capture(key, source=source)
         except (OSError, RuntimeError) as exc:
-            messagebox.showerror("mdoc", f"无法将原图作为当前新截图：\n{exc}")
+            messagebox.showerror("mdoc", f"无法复制参考图为当前新截图：\n{exc}")
             return
         self.refresh()
         self.advance_after_completion(key)
@@ -664,16 +692,16 @@ class Assistant:
             messagebox.showerror("mdoc", "只能导入有效的 PNG 或 JPEG 图片。")
             return
         target = self.items[key]["capture"]
-        original = self.items[key]["original"]
+        original = self.items[key]["reference"]
         source_info = png_info(source)
-        original_info = png_info(original)
+        original_info = png_info(original) or png_info(target)
         if not original_info:
-            messagebox.showerror("mdoc", f"无法读取原图尺寸：\n{original}")
+            messagebox.showerror("mdoc", "参考图片和现有新截图都不存在，无法校验导入图片尺寸。")
             return
         if source_info["width"] != original_info["width"] or source_info["height"] != original_info["height"]:
             messagebox.showerror(
                 "mdoc",
-                f"导入图片尺寸必须与原图一致。\n原图：{original_info['width']} × {original_info['height']}\n"
+                f"导入图片尺寸必须与当前底图一致。\n底图：{original_info['width']} × {original_info['height']}\n"
                 f"导入图：{source_info['width']} × {source_info['height']}",
             )
             return
@@ -690,6 +718,10 @@ class Assistant:
         key = self.selected()
         if not key:
             messagebox.showwarning("mdoc", "请先选择一项截图任务。")
+            return
+        entry = self.items[key]
+        if not entry["reference"].is_file() and not entry["capture"].is_file():
+            messagebox.showwarning("mdoc", "参考图片和新截图都不存在，无法打开编辑窗口。", parent=self.root)
             return
         self.modal_count += 1
         released = False

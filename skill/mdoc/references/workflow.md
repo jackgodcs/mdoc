@@ -17,7 +17,7 @@ Machine-local values use the matching `workspace local init/apply/confirm/revise
 1. `mdoc task create` creates `.mdoc/tasks/<task-id>/task-draft.yaml` after validating task id, book id, and intent.
 2. Edit the task draft.
 3. `mdoc task define` validates the draft, freezes the expanded manifest, writes `task.yaml`, creates or resets `task-state.json`, and waits for definition confirmation.
-4. `mdoc task confirm-definition` claims the scope, records the workspace and definition digests, captures baselines, imports generator output, and continues.
+4. `mdoc task confirm-definition` claims the scope, records the workspace and definition digests, captures baselines, imports generator output, automatically creates a one-click screenshot launcher when screenshots are declared, and continues.
 5. `mdoc task continue` stops at screenshots, authoring, findings, publishing exceptions, or final review.
 6. `mdoc task confirm-final` moves a reviewed task to `accepted` and releases its scope claim.
 

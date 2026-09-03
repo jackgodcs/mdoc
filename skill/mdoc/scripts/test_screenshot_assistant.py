@@ -6,7 +6,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
+from types import MappingProxyType, SimpleNamespace
 
 from PIL import Image
 
@@ -79,7 +79,7 @@ class ScreenshotAssistantTests(unittest.TestCase):
         assistant.modal_count = 0
         assistant.root = object()
         assistant.task = object()
-        assistant.items = {"INPUT:zh": {"item": object()}}
+        assistant.items = {"INPUT:zh": {"item": object(), "reference": Path(__file__), "capture": Path(__file__)}}
         assistant.selected = lambda: "INPUT:zh"
         assistant.refresh = lambda: None
         assistant.contributor = False
@@ -100,6 +100,26 @@ class ScreenshotAssistantTests(unittest.TestCase):
         editor.destroy_callback(SimpleNamespace(widget=editor))
         self.assertEqual(0, assistant.modal_count)
 
+    def test_editor_does_not_open_when_reference_and_capture_are_missing(self) -> None:
+        assistant = object.__new__(self.assistant.Assistant)
+        assistant.modal_count = 0
+        assistant.root = object()
+        assistant.items = {"INPUT:en": {"reference": Path("missing-reference.png"), "capture": Path("missing-capture.png")}}
+        assistant.selected = lambda: "INPUT:en"
+        warnings = []
+        original_warning = self.assistant.messagebox.showwarning
+        original_editor = self.assistant.ImageTextEditor
+        self.assistant.messagebox.showwarning = lambda *args, **kwargs: warnings.append((args, kwargs))
+        self.assistant.ImageTextEditor = lambda *args, **kwargs: self.fail("editor opened without a base image")
+        try:
+            self.assistant.Assistant.edit_current(assistant)
+        finally:
+            self.assistant.messagebox.showwarning = original_warning
+            self.assistant.ImageTextEditor = original_editor
+
+        self.assertEqual(0, assistant.modal_count)
+        self.assertTrue(warnings)
+
     def test_screenshot_list_is_filtered_by_the_selected_locale(self) -> None:
         manifest_items = {
             "INPUT:zh": {"locale": "zh", "required": True},
@@ -115,6 +135,33 @@ class ScreenshotAssistantTests(unittest.TestCase):
         )
         self.assertEqual(["INPUT:en"], list(self.assistant.items_for_locale(manifest_items, "en")))
         self.assertEqual(["INPUT:ja"], list(self.assistant.items_for_locale(manifest_items, "ja")))
+
+    def test_new_screenshot_reference_locale_uses_copy_from_then_zh(self) -> None:
+        definition = {
+            "locale_plan": {
+                "targets": {
+                    "en": {"screenshots": "independent"},
+                    "ja": {"screenshots": {"copy_from": "en"}},
+                },
+            },
+        }
+
+        self.assertEqual("zh", self.assistant.screenshot_reference_locale(definition, "zh"))
+        self.assertEqual("zh", self.assistant.screenshot_reference_locale(definition, "en"))
+        self.assertEqual("en", self.assistant.screenshot_reference_locale(definition, "ja"))
+        definition["locale_plan"]["targets"]["ja"]["screenshots"] = MappingProxyType({"copy_from": "en"})
+        self.assertEqual("en", self.assistant.screenshot_reference_locale(definition, "ja"))
+
+    def test_screenshot_action_is_resolved_per_asset(self) -> None:
+        definition = {
+            "manifest": [
+                {"kind": "asset", "locale": "en", "path": "images/new.png", "action": "create"},
+                {"kind": "asset", "locale": "en", "path": "images/existing.png", "action": "update"},
+            ],
+        }
+
+        self.assertEqual("create", self.assistant.screenshot_action(definition, "en", "images/new.png"))
+        self.assertEqual("update", self.assistant.screenshot_action(definition, "en", "images/existing.png"))
 
     def test_reference_copy_is_byte_exact_and_validated(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -140,6 +187,17 @@ class ScreenshotAssistantTests(unittest.TestCase):
                 self.assistant.copy_reference_to_capture(source, target)
 
             self.assertFalse(target.exists())
+
+    def test_reference_copy_succeeds_when_source_and_target_are_the_same_file(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            image = Path(directory) / "same.png"
+            Image.new("RGB", (13, 7), "#2878B8").save(image, format="PNG")
+            before = image.read_bytes()
+
+            copied = self.assistant.copy_reference_to_capture(image, image)
+
+            self.assertEqual(before, image.read_bytes())
+            self.assertEqual((13, 7), (copied["width"], copied["height"]))
 
     def test_reference_copy_clears_existing_image_edit_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -36,6 +36,8 @@ There are three ordinary confirmation gates:
 
 Deletion approvals, target conflicts, baseline drift, evidence uncertainty, review findings, and failed builds are exception pauses, not additional normal gates.
 
+When a confirmed task declares screenshots, mdoc must create or refresh its task-specific one-click Windows screenshot launcher in the workspace root as soon as the task is ready for screenshot work. The launcher is part of task preparation and must not require a separate user command.
+
 ## Shared Screenshot Tasks
 
 When a coordinator shares one manual workspace with multiple contributors, split declared screenshot targets into non-overlapping tasks. Contributors use `mdoc task contribute` or a coordinator-generated task launcher to edit captures and submit the capture manifest. They do not accept screenshots, continue tasks, publish, or finally accept tasks; those actions remain with the coordinator.

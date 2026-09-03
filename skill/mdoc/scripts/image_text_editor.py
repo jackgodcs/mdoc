@@ -306,7 +306,7 @@ class ImageTextEditor(tk.Toplevel):
         self.pan_y = 20.0
         self.saved_view = None
         self.base_source = "original"
-        self.base_path = Path(entry["original"])
+        self.base_path = Path(entry["reference"])
         self.base_image = None
         self.base_has_alpha = False
         self.editable = True
@@ -339,15 +339,18 @@ class ImageTextEditor(tk.Toplevel):
             record = json.loads(self.record_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             pass
-        if record and record.get("schema_version") == 1 and self.snapshot_path.is_file():
-            self.base_source = record.get("base_source", "original")
+        recorded_source = record.get("base_source", "original") if record else "original"
+        recorded_path = Path(self.entry["capture"] if recorded_source == "capture" else self.entry["reference"])
+        if record and record.get("schema_version") == 1 and self.snapshot_path.is_file() and recorded_path.is_file():
+            self.base_source = recorded_source
             self._load_image(self.snapshot_path)
             self.layers = list(record.get("layers", []))
             self.saved_view = record.get("view")
             selected = record.get("selected_layer_id")
             self.selected_layer_id = selected if any(layer.get("id") == selected for layer in self.layers) else None
         else:
-            self._load_image(Path(self.entry["original"]))
+            self.base_source = "original" if Path(self.entry["reference"]).is_file() else "capture"
+            self._load_image(Path(self.entry["reference"] if self.base_source == "original" else self.entry["capture"]))
 
     def _build(self) -> None:
         top = ttk.Frame(self, padding=(8, 8, 8, 4))
@@ -477,11 +480,17 @@ class ImageTextEditor(tk.Toplevel):
         self.part_label.pack(anchor="w", pady=(4, 0))
 
     def _refresh_base_choice(self) -> None:
-        choices = ["原手册图片"]
+        choices = []
+        if Path(self.entry["reference"]).is_file():
+            choices.append(self.entry["reference_label"])
         if Path(self.entry["capture"]).is_file():
-            choices.append("新截图")
+            choices.append(self.entry["capture_label"])
         self.base_combo["values"] = choices
-        self.base_var.set("新截图" if self.base_source == "capture" and len(choices) > 1 else "原手册图片")
+        selected = self.entry["capture_label"] if self.base_source == "capture" else self.entry["reference_label"]
+        if selected not in choices and choices:
+            self.base_source = "original" if choices[0] == self.entry["reference_label"] else "capture"
+            selected = choices[0]
+        self.base_var.set(selected)
         if not self.editable:
             for child in self.winfo_children():
                 pass
@@ -710,24 +719,33 @@ class ImageTextEditor(tk.Toplevel):
             self.canvas.configure(cursor="tcross")
 
     def _switch_base(self, _event=None) -> None:
-        wanted = "capture" if self.base_var.get() == "新截图" else "original"
+        wanted = "capture" if self.base_var.get() == self.entry["capture_label"] else "original"
         if wanted == self.base_source and self.snapshot_path.is_file():
             return
-        path = Path(self.entry["capture"] if wanted == "capture" else self.entry["original"])
+        path = Path(self.entry["capture"] if wanted == "capture" else self.entry["reference"])
         if not path.is_file():
-            messagebox.showwarning("mdoc", "当前没有可用的新截图。", parent=self)
-            self.base_var.set("原手册图片")
+            messagebox.showwarning("mdoc", "当前选择的底图不存在。", parent=self)
+            self._refresh_base_choice()
             return
         info = png_info(path)
-        original = png_info(Path(self.entry["original"]))
-        if not info or not original or info["width"] != original["width"] or info["height"] != original["height"]:
-            messagebox.showerror("mdoc", "新截图尺寸必须与原手册图片一致，不能作为编辑底图。", parent=self)
-            self.base_var.set("新截图" if self.base_source == "capture" else "原手册图片")
+        current = png_info(self.base_path)
+        if not info or not current:
+            messagebox.showerror("mdoc", "无法读取底图尺寸。", parent=self)
+            self._refresh_base_choice()
             return
-        keep = messagebox.askyesnocancel("切换底图", "是否保留现有文字图层？\n“是”保留，“否”清空，“取消”不切换。", parent=self)
-        if keep is None:
-            self.base_var.set("新截图" if self.base_source == "capture" else "原手册图片")
-            return
+        same_size = info["width"] == current["width"] and info["height"] == current["height"]
+        if not self.layers:
+            keep = False
+        elif same_size:
+            keep = messagebox.askyesnocancel("切换底图", "是否保留现有编辑图层？\n“是”保留，“否”清空，“取消”不切换。", parent=self)
+            if keep is None:
+                self._refresh_base_choice()
+                return
+        else:
+            keep = False
+            if not messagebox.askyesno("切换底图", "两张底图尺寸不同，切换后必须清空现有编辑图层。\n\n是否继续？", parent=self):
+                self._refresh_base_choice()
+                return
         self.push_undo()
         self.base_source = wanted
         self._load_image(path)

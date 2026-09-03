@@ -116,6 +116,16 @@ class TaskLifecycleCliTests(unittest.TestCase):
         cli("task", "define", "--workspace", str(self.workspace), "--task", "screenshots", "--json")
         waiting = cli("task", "confirm-definition", "--workspace", str(self.workspace), "--task", "screenshots", "--no-gui", "--json")
         self.assertEqual("waiting_for_screenshots", waiting["status"])
+        launcher = self.workspace / "Open-Screenshot-Assistant-screenshots.cmd"
+        self.assertTrue(launcher.is_file())
+        launcher_text = launcher.read_text(encoding="ascii")
+        self.assertIn('pushd "%~dp0" >nul 2>&1', launcher_text)
+        self.assertIn('"%MDOC_PYTHON%" -B "%MDOC_ASSISTANT%" --workspace "%MDOC_WORKSPACE%" --task "screenshots"', launcher_text)
+        self.assertNotIn("--contributor", launcher_text)
+        launcher.write_text("旧启动脚本", encoding="utf-8")
+        cli("task", "continue", "--workspace", str(self.workspace), "--task", "screenshots", "--no-gui", "--json")
+        self.assertTrue(launcher.is_file())
+        self.assertEqual(launcher_text, launcher.read_text(encoding="ascii"))
 
         capture = directory / "captures" / "zh" / "window.png"
         capture.parent.mkdir(parents=True)
@@ -222,6 +232,12 @@ class TaskLifecycleCliTests(unittest.TestCase):
         self.assertIn('popd', launcher_text)
         error = cli("task", "create-contributor-launcher", "--workspace", str(self.workspace), "--task", "contributor-launcher", "--output", "nested\\Open-Task.cmd", "--json", expected=2)
         self.assertEqual("MDOC-CONTRIBUTOR-LAUNCHER-INVALID", error["error"]["code"])
+
+    def test_task_without_screenshots_does_not_create_screenshot_launcher(self) -> None:
+        self.define_simple_task("no-screenshots")
+        cli("task", "confirm-definition", "--workspace", str(self.workspace), "--task", "no-screenshots", "--no-gui", "--json")
+
+        self.assertFalse((self.workspace / "Open-Screenshot-Assistant-no-screenshots.cmd").exists())
 
     def test_copy_from_locale_is_cli_owned_and_byte_identical(self) -> None:
         en = self.workspace / "Guide" / "en"
