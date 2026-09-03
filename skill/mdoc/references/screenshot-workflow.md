@@ -44,6 +44,8 @@ The assistant previews declared captures, captures a screen region, and calls CL
 
 After aggregate screenshot acceptance, a coordinator may still open the image text editor and save a correction. mdoc refreshes the controlled capture and staging copy while preserving the aggregate screenshot acceptance; the user remains responsible for the visual correctness of that correction. Contributor edits never accept screenshots and instead make their submission stale until they submit again.
 
+Inside the image text editor, `Ctrl+V` imports a temporary image layer from the Windows clipboard at the current pointer position. The pasted image extends toward the pointer's lower right and is stored with that editing item when saved. It behaves like other image layers: it can be selected, moved, resized from any edge or corner, duplicated, reordered, undone, redone, saved, and restored in a later editing session. Reusable PNG images can be added from the context menu on the **My images** template group and then dragged into any editing item.
+
 When OCR candidates include a false positive and the contributor confirms that the original image needs no replacement, use **原图作为新截图** for the selected item. It copies the original reference image byte-for-byte into that item's controlled capture path, validates the image, and clears prior text-editor layers for that item. The item is then shown as captured and can be submitted normally; the formal manual image remains untouched until coordinator acceptance and publishing.
 
 ## Shared-Workspace Collaboration

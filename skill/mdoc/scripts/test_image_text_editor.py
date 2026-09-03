@@ -5,6 +5,7 @@ import importlib.util
 import sys
 import types
 import copy
+import tempfile
 from pathlib import Path
 
 from PIL import Image, ImageFont
@@ -52,6 +53,7 @@ class EditorHarness:
         self.selected_part = None
         self.undo_stack = []
         self.redraw_count = 0
+        self.asset_directory = Path(tempfile.mkdtemp())
 
     def push_undo(self):
         self.undo_stack.append([])
@@ -74,7 +76,7 @@ def bind(module, harness):
         "font_for", "text_metrics", "layer_geometry", "uses_default_background",
         "source_coverage", "source_rect", "sample_background_color", "composite",
         "add_layer", "group_rect", "snap", "move_layer_by", "canvas_motion",
-        "expand_background_to_source", "resize_layer",
+        "expand_background_to_source", "resize_layer", "pan_release", "add_image_layer",
     )
     for name in names:
         setattr(harness, name, getattr(module.ImageTextEditor, name).__get__(harness, EditorHarness))
@@ -166,6 +168,52 @@ def test_system_point_cloud_icon_is_a_movable_and_resizable_32_pixel_layer(modul
     before = copy.deepcopy(layer)
     harness.resize_layer(layer, before, "group", "se", 8, 4)
     assert (layer["image_w"], layer["image_h"]) == (40, 36)
+
+
+def test_pasted_image_is_persisted_as_a_movable_resizable_layer(module):
+    harness = EditorHarness(module, Image.new("RGBA", (120, 80), "#F5F5F5"))
+    bind(module, harness)
+    pasted = Image.new("RGBA", (18, 12), (220, 30, 40, 128))
+
+    harness.add_image_layer(pasted, 20, 18)
+    layer = harness.layers[0]
+    geometry = harness.layer_geometry(layer)
+
+    assert layer["system_type"] == module.PASTED_IMAGE_KIND
+    assert (geometry["image_x"], geometry["image_y"]) == (20, 18)
+    assert (geometry["image_w"], geometry["image_h"]) == (18, 12)
+    assert (harness.asset_directory / layer["image_asset"]).is_file()
+    assert harness.composite().getpixel((25, 22))[:3] != (245, 245, 245)
+
+    harness.move_layer_by(layer, "group", 5, -3)
+    assert (layer["image_x"], layer["image_y"]) == (25, 15)
+    before = copy.deepcopy(layer)
+    harness.resize_layer(layer, before, "group", "se", 8, 4)
+    assert (layer["image_w"], layer["image_h"]) == (26, 16)
+
+
+def test_user_image_template_copies_png_and_can_be_renamed_and_deleted(module):
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        source = root / "sample.png"
+        Image.new("RGBA", (14, 9), (10, 20, 30, 180)).save(source)
+        store = module.TemplateStore.__new__(module.TemplateStore)
+        store.fonts = {"Segoe UI": Path(r"C:\Windows\Fonts\segoeui.ttf")}
+        store.path = root / "image-text-editor.json"
+        store.asset_directory = root / "image-text-editor.assets"
+        store.value = {"schema_version": 1, "templates": []}
+
+        template = store.add_image(source, "Sample")
+        asset = store.image_path(template)
+
+        assert template["kind"] == module.IMAGE_TEMPLATE_KIND
+        assert asset.is_file()
+        assert Image.open(asset).size == (14, 9)
+        store.rename(template, "Renamed")
+        assert store.value["templates"][0]["label"] == "Renamed"
+        store.delete(template)
+        assert store.value["templates"] == []
+        assert not asset.exists()
 
 
 def test_text_and_background_share_the_same_bbox_coordinates(module):
@@ -268,6 +316,16 @@ def test_high_zoom_drag_follows_screen_distance_without_snap_drift(module):
         assert layer[key] == before[key], key
 
 
+def test_middle_button_release_ends_background_pan_before_layer_drag(module):
+    harness = EditorHarness(module, Image.new("RGBA", (120, 80), "#F5F5F5"))
+    bind(module, harness)
+    harness.pan_state = (25, 30, 10.0, 12.0)
+
+    harness.pan_release()
+
+    assert harness.pan_state is None
+
+
 def test_snap_threshold_is_stable_in_screen_pixels(module):
     base = Image.new("RGBA", (500, 200), "#F5F5F5")
     harness = EditorHarness(module, base)
@@ -290,9 +348,12 @@ if __name__ == "__main__":
     test_new_default_layer_has_zero_text_to_background_gap(editor)
     test_system_blank_cover_masks_with_a_resizable_no_text_layer(editor)
     test_system_point_cloud_icon_is_a_movable_and_resizable_32_pixel_layer(editor)
+    test_pasted_image_is_persisted_as_a_movable_resizable_layer(editor)
+    test_user_image_template_copies_png_and_can_be_renamed_and_deleted(editor)
     test_text_and_background_share_the_same_bbox_coordinates(editor)
     test_group_drag_translates_text_background_and_source_anchor(editor)
     test_continuous_group_drag_does_not_accumulate_total_mouse_distance(editor)
     test_high_zoom_drag_follows_screen_distance_without_snap_drift(editor)
+    test_middle_button_release_ends_background_pan_before_layer_drag(editor)
     test_snap_threshold_is_stable_in_screen_pixels(editor)
     print("image_text_editor regression checks passed")

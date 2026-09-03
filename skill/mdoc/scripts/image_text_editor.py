@@ -12,9 +12,9 @@ from functools import lru_cache
 from pathlib import Path
 import tkinter as tk
 import tkinter.font as tkfont
-from tkinter import colorchooser, messagebox, simpledialog, ttk
+from tkinter import colorchooser, filedialog, messagebox, simpledialog, ttk
 
-from PIL import Image, ImageColor, ImageDraw, ImageFont, ImageTk
+from PIL import Image, ImageColor, ImageDraw, ImageFont, ImageGrab, ImageTk
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 SKILL_DIR = SCRIPT_DIR.parent
@@ -46,6 +46,9 @@ SYSTEM_POINT_CLOUD_ICON_KIND = "topcon-point-cloud-icon"
 SYSTEM_POINT_CLOUD_ICON_LABEL = "Topcon Point Cloud 图标"
 POINT_CLOUD_ICON_INITIAL_SIZE = 32.0
 POINT_CLOUD_ICON_PATH = SKILL_DIR / "assets" / "system" / "topcon-point-cloud-icon.png"
+PASTED_IMAGE_KIND = "pasted-image"
+IMAGE_TEMPLATE_KIND = "image"
+IMAGE_LAYER_KINDS = {SYSTEM_POINT_CLOUD_ICON_KIND, PASTED_IMAGE_KIND}
 
 
 def image_format(path: Path) -> str:
@@ -64,10 +67,16 @@ def image_edit_artifact_paths(task, entry: dict) -> tuple[Path, Path]:
     return directory / f"{identifier}.json", directory / f"{identifier}.base.png"
 
 
+def image_edit_asset_directory(task, entry: dict) -> Path:
+    record, _snapshot = image_edit_artifact_paths(task, entry)
+    return record.with_suffix(".assets")
+
+
 def clear_image_edit_artifacts(task, entry: dict) -> None:
     """Discard stale editor layers when a capture is replaced outside the editor."""
     for path in image_edit_artifact_paths(task, entry):
         path.unlink(missing_ok=True)
+    shutil.rmtree(image_edit_asset_directory(task, entry), ignore_errors=True)
 
 
 def _atomic_json(path: Path, value: object) -> None:
@@ -163,6 +172,7 @@ class TemplateStore:
         self.shared_path = workspace_control / "image-text-editor.json"
         self.user_path = Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData" / "Local"))) / "mdoc" / "image-text-editor.json"
         self.path = self.shared_path if self.shared_path.is_file() else self.user_path
+        self.asset_directory = self.path.with_suffix(".assets")
         self.value = self._read()
         self._merge_defaults()
 
@@ -232,15 +242,35 @@ class TemplateStore:
         self.save()
         return copy.deepcopy(item)
 
+    def add_image(self, source: Path, label: str) -> dict:
+        self.asset_directory.mkdir(parents=True, exist_ok=True)
+        asset_name = f"template-{uuid.uuid4().hex}.png"
+        with Image.open(source) as image:
+            image.convert("RGBA").save(self.asset_directory / asset_name, format="PNG")
+        item = {
+            "id": f"image:{uuid.uuid4().hex}", "kind": IMAGE_TEMPLATE_KIND,
+            "system_type": PASTED_IMAGE_KIND, "label": label, "text": "",
+            "image_asset": asset_name, "sources": [],
+            "style": {**DEFAULT_STYLE, "font": default_font(self.fonts), "bg_color": None},
+        }
+        self.value["templates"].append(item)
+        self.save()
+        return copy.deepcopy(item)
+
+    def image_path(self, template: dict) -> Path:
+        return self.asset_directory / str(template.get("image_asset", ""))
+
     def rename(self, template: dict, text: str) -> None:
         for item in self.value["templates"]:
             if item["id"] == template["id"]:
-                item["text"] = text
+                item["label" if item.get("kind") == IMAGE_TEMPLATE_KIND else "text"] = text
                 self.save()
                 return
 
     def delete(self, template: dict) -> None:
         self.value["templates"] = [item for item in self.value["templates"] if item["id"] != template["id"]]
+        if template.get("kind") == IMAGE_TEMPLATE_KIND:
+            self.image_path(template).unlink(missing_ok=True)
         self.save()
 
 
@@ -281,6 +311,7 @@ class ImageTextEditor(tk.Toplevel):
         self.base_has_alpha = False
         self.editable = True
         self.record_path, self.snapshot_path = self._record_paths()
+        self.asset_directory = image_edit_asset_directory(task, entry)
         self.title(f"图片文字编辑器 — {entry['item']['id']}")
         self.geometry("1540x930")
         self.minsize(1180, 720)
@@ -355,6 +386,7 @@ class ImageTextEditor(tk.Toplevel):
         self.canvas.bind("<ButtonRelease-1>", self.canvas_release)
         self.canvas.bind("<ButtonPress-2>", self.pan_press)
         self.canvas.bind("<B2-Motion>", self.pan_motion)
+        self.canvas.bind("<ButtonRelease-2>", self.pan_release)
         self.canvas.bind("<MouseWheel>", self.wheel)
         self.canvas.bind("<Button-3>", self.layer_menu)
         self.canvas.bind("<Double-Button-1>", self.double_click)
@@ -365,6 +397,7 @@ class ImageTextEditor(tk.Toplevel):
         self.bind("<Escape>", lambda _event: self.escape())
         self.bind("<Control-z>", lambda _event: self.undo())
         self.bind("<Control-y>", lambda _event: self.redo())
+        self.bind("<Control-v>", self.paste_clipboard_image)
         self.bind("<Control-0>", lambda _event: self.fit())
         self.bind("<Control-1>", lambda _event: self.set_zoom(1.0))
         self.bind("<Tab>", lambda _event: self.toggle_preview())
@@ -458,7 +491,7 @@ class ImageTextEditor(tk.Toplevel):
         selected = self.selected_template_id
         self.template_tree.delete(*self.template_tree.get_children())
         self.templates = {item["id"]: item for item in [*self.store.system_items(), *self.store.all()]}
-        groups = (("system-group", "系统项", "system"), ("default-group", "共享模板", "default"), ("manual-group", "我的模板", "manual"))
+        groups = (("system-group", "系统项", "system"), ("default-group", "共享模板", "default"), ("manual-group", "我的字符串", "manual"), ("image-group", "我的贴图", IMAGE_TEMPLATE_KIND))
         for group_id, label, kind in groups:
             group = self.template_tree.insert("", "end", iid=group_id, text=label, open=True)
             for item in sorted((item for item in self.templates.values() if item["kind"] == kind and query in template_label(item).lower()), key=lambda value: template_label(value).lower()):
@@ -517,9 +550,17 @@ class ImageTextEditor(tk.Toplevel):
         if template.get("system_type") == SYSTEM_BLANK_COVER_KIND:
             size = max(12.0, BLANK_COVER_INITIAL_SIZE * self.scale)
             self.drag_ghost = self.canvas.create_rectangle(x, y, x + size, y + size, fill="#59BFFF", outline="#FFFFFF", stipple="gray50", tags="ghost")
-        elif template.get("system_type") == SYSTEM_POINT_CLOUD_ICON_KIND:
-            size = max(12.0, POINT_CLOUD_ICON_INITIAL_SIZE * self.scale)
-            self.drag_ghost = self.canvas.create_rectangle(x, y, x + size, y + size, fill="#59BFFF", outline="#FFFFFF", stipple="gray50", tags="ghost")
+        elif template.get("system_type") in IMAGE_LAYER_KINDS:
+            if template.get("kind") == IMAGE_TEMPLATE_KIND:
+                try:
+                    with Image.open(self.store.image_path(template)) as image:
+                        width, height = image.size
+                    width, height = max(12.0, width * self.scale), max(12.0, height * self.scale)
+                except OSError:
+                    width = height = max(12.0, POINT_CLOUD_ICON_INITIAL_SIZE * self.scale)
+            else:
+                width = height = max(12.0, POINT_CLOUD_ICON_INITIAL_SIZE * self.scale)
+            self.drag_ghost = self.canvas.create_rectangle(x, y, x + width, y + height, fill="#59BFFF", outline="#FFFFFF", stipple="gray50", tags="ghost")
         else:
             self.drag_ghost = self.canvas.create_text(x, y, text=template.get("text", ""), fill="#59BFFF", anchor="nw", stipple="gray50", tags="ghost")
 
@@ -529,13 +570,19 @@ class ImageTextEditor(tk.Toplevel):
 
     def template_menu(self, event) -> None:
         item = self.template_tree.identify_row(event.y)
+        if item == "image-group":
+            menu = tk.Menu(self, tearoff=False)
+            menu.add_command(label="新增贴图模板", command=self.add_image_template)
+            menu.tk_popup(event.x_root, event.y_root)
+            menu.grab_release()
+            return
         if item not in self.templates:
             return
         self.template_tree.selection_set(item)
         self.template_selected()
         template = self.templates[item]
-        state = "normal" if template["kind"] == "manual" else "disabled"
-        style_state = "disabled" if template.get("system_type") == SYSTEM_POINT_CLOUD_ICON_KIND else "normal"
+        state = "normal" if template["kind"] in {"manual", IMAGE_TEMPLATE_KIND} else "disabled"
+        style_state = "disabled" if template.get("system_type") in IMAGE_LAYER_KINDS else "normal"
         for label in ("设置文字颜色", "选择背景色", "背景透明", "从底图吸取背景色"):
             self.template_menu_widget.entryconfigure(label, state=style_state)
         self.template_menu_widget.entryconfigure("重命名", state=state)
@@ -550,20 +597,34 @@ class ImageTextEditor(tk.Toplevel):
             self.selected_template_id = item["id"]
             self._refresh_templates()
 
+    def add_image_template(self) -> None:
+        path = filedialog.askopenfilename(parent=self, title="选择 PNG 贴图", filetypes=(("PNG 图片", "*.png"),))
+        if not path:
+            return
+        label = simpledialog.askstring("新增贴图模板", "贴图名称：", initialvalue=Path(path).stem, parent=self)
+        if label and label.strip():
+            try:
+                item = self.store.add_image(Path(path), label.strip())
+            except OSError as exc:
+                messagebox.showerror("mdoc", f"无法读取 PNG 图片：{exc}", parent=self)
+                return
+            self.selected_template_id = item["id"]
+            self._refresh_templates()
+
     def rename_template(self) -> None:
         template = self.current_template()
-        if not template or template["kind"] != "manual":
+        if not template or template["kind"] not in {"manual", IMAGE_TEMPLATE_KIND}:
             return
-        text = simpledialog.askstring("重命名模板", "字符串内容：", initialvalue=template["text"], parent=self)
+        text = simpledialog.askstring("重命名模板", "模板名称：" if template["kind"] == IMAGE_TEMPLATE_KIND else "字符串内容：", initialvalue=template_label(template), parent=self)
         if text and text.strip():
             self.store.rename(template, text.strip())
             self._refresh_templates()
 
     def delete_template(self) -> None:
         template = self.current_template()
-        if not template or template["kind"] != "manual":
+        if not template or template["kind"] not in {"manual", IMAGE_TEMPLATE_KIND}:
             return
-        if messagebox.askyesno("删除模板", f"删除“{template['text']}”？", parent=self):
+        if messagebox.askyesno("删除模板", f"删除“{template_label(template)}”？", parent=self):
             self.store.delete(template)
             self.selected_template_id = None
             self._refresh_templates()
@@ -677,6 +738,13 @@ class ImageTextEditor(tk.Toplevel):
         self.fit()
 
     def add_layer(self, template: dict, x: float, y: float) -> None:
+        if template.get("kind") == IMAGE_TEMPLATE_KIND:
+            try:
+                with Image.open(self.store.image_path(template)) as source:
+                    self.add_image_layer(source.convert("RGBA"), x, y)
+            except OSError as exc:
+                messagebox.showerror("mdoc", f"贴图模板文件不可用：{exc}", parent=self)
+            return
         self.push_undo()
         style = copy.deepcopy(template["style"])
         layer = {
@@ -715,6 +783,50 @@ class ImageTextEditor(tk.Toplevel):
         self._sync_style_controls(layer, "图层样式")
         self.mark_dirty()
         self.redraw()
+
+    def add_image_layer(self, image: Image.Image, x: float, y: float) -> None:
+        self.push_undo()
+        self.asset_directory.mkdir(parents=True, exist_ok=True)
+        asset_name = f"paste-{uuid.uuid4().hex}.png"
+        image = image.convert("RGBA")
+        image.save(self.asset_directory / asset_name, format="PNG")
+        layer = {
+            "id": uuid.uuid4().hex, "system_type": PASTED_IMAGE_KIND,
+            "image_asset": asset_name, "image_x": x, "image_y": y,
+            "image_w": float(image.width), "image_h": float(image.height),
+            "text_x": x, "text_y": y, "bg_x": x, "bg_y": y,
+            "bg_w": float(image.width), "bg_h": float(image.height),
+        }
+        self.layers.append(layer)
+        self.selected_layer_id, self.selected_part = layer["id"], "group"
+        self._sync_style_controls(layer, "图片图层")
+        self.mark_dirty()
+        self.redraw()
+
+    def paste_clipboard_image(self, _event=None):
+        if not self.editable:
+            return "break"
+        try:
+            image = ImageGrab.grabclipboard()
+        except (OSError, RuntimeError) as exc:
+            messagebox.showerror("mdoc", f"无法读取剪贴板图片：{exc}", parent=self)
+            return "break"
+        if isinstance(image, list):
+            path = next((Path(item) for item in image if Path(item).suffix.casefold() in {".png", ".jpg", ".jpeg", ".bmp", ".gif", ".tif", ".tiff", ".webp"}), None)
+            try:
+                image = Image.open(path).convert("RGBA") if path else None
+            except OSError:
+                image = None
+        if not isinstance(image, Image.Image):
+            messagebox.showinfo("mdoc", "剪贴板中没有可粘贴的图片。", parent=self)
+            return "break"
+        x = self.winfo_pointerx() - self.canvas.winfo_rootx()
+        y = self.winfo_pointery() - self.canvas.winfo_rooty()
+        if not (0 <= x <= self.canvas.winfo_width() and 0 <= y <= self.canvas.winfo_height()):
+            x, y = self.canvas.winfo_width() / 2, self.canvas.winfo_height() / 2
+        ix, iy = self.screen_to_image(x, y)
+        self.add_image_layer(image, ix, iy)
+        return "break"
 
     def uses_default_background(self, style: dict) -> bool:
         return str(style.get("bg_color") or "").upper() == DEFAULT_STYLE["bg_color"]
@@ -810,11 +922,12 @@ class ImageTextEditor(tk.Toplevel):
             return ImageFont.truetype(self.fonts[default_font(self.fonts)], max(1, round(float(layer.get("font_size", 9)))))
 
     def layer_geometry(self, layer: dict) -> dict:
-        if layer.get("system_type") == SYSTEM_POINT_CLOUD_ICON_KIND:
+        if layer.get("system_type") in IMAGE_LAYER_KINDS:
             x = float(layer.get("image_x", layer.get("bg_x", 0)))
             y = float(layer.get("image_y", layer.get("bg_y", 0)))
-            width = max(MIN_BOX_SIZE, float(layer.get("image_w", layer.get("bg_w", POINT_CLOUD_ICON_INITIAL_SIZE))))
-            height = max(MIN_BOX_SIZE, float(layer.get("image_h", layer.get("bg_h", POINT_CLOUD_ICON_INITIAL_SIZE))))
+            fallback = POINT_CLOUD_ICON_INITIAL_SIZE if layer.get("system_type") == SYSTEM_POINT_CLOUD_ICON_KIND else MIN_BOX_SIZE
+            width = max(MIN_BOX_SIZE, float(layer.get("image_w", layer.get("bg_w", fallback))))
+            height = max(MIN_BOX_SIZE, float(layer.get("image_h", layer.get("bg_h", fallback))))
             return {
                 "text_x": x, "text_y": y, "text_w": 0.0, "text_h": 0.0,
                 "bbox": (0, 0, 0, 0), "spacing": 0,
@@ -842,8 +955,16 @@ class ImageTextEditor(tk.Toplevel):
         draw = ImageDraw.Draw(overlay)
         for layer in self.layers:
             geometry = self.layer_geometry(layer)
-            if layer.get("system_type") == SYSTEM_POINT_CLOUD_ICON_KIND:
-                icon = system_point_cloud_icon().resize((round(geometry["image_w"]), round(geometry["image_h"])), Image.Resampling.LANCZOS)
+            if layer.get("system_type") in IMAGE_LAYER_KINDS:
+                if layer.get("system_type") == SYSTEM_POINT_CLOUD_ICON_KIND:
+                    icon = system_point_cloud_icon()
+                else:
+                    path = self.asset_directory / str(layer.get("image_asset", ""))
+                    if not path.is_file():
+                        continue
+                    with Image.open(path) as source:
+                        icon = source.convert("RGBA")
+                icon = icon.resize((round(geometry["image_w"]), round(geometry["image_h"])), Image.Resampling.LANCZOS)
                 overlay.paste(icon, (round(geometry["image_x"]), round(geometry["image_y"])), icon)
                 continue
             bg = layer.get("bg_color")
@@ -971,6 +1092,9 @@ class ImageTextEditor(tk.Toplevel):
             self.pan_x, self.pan_y = px + event.x - sx, py + event.y - sy
             self.redraw()
 
+    def pan_release(self, _event=None) -> None:
+        self.pan_state = None
+
     def canvas_press(self, event) -> None:
         self.focus_set()
         if self.eyedrop_target:
@@ -1094,7 +1218,7 @@ class ImageTextEditor(tk.Toplevel):
 
     def move_layer_by(self, layer: dict, part: str, dx: float, dy: float) -> None:
         """Translate an entire editable layer, or one deliberate sub-part."""
-        if layer.get("system_type") == SYSTEM_POINT_CLOUD_ICON_KIND:
+        if layer.get("system_type") in IMAGE_LAYER_KINDS:
             layer["image_x"] = float(layer.get("image_x", layer.get("bg_x", 0))) + dx
             layer["image_y"] = float(layer.get("image_y", layer.get("bg_y", 0))) + dy
             layer["bg_x"] = layer["image_x"]
@@ -1126,7 +1250,7 @@ class ImageTextEditor(tk.Toplevel):
         self.redraw()
 
     def resize_layer(self, layer: dict, before: dict, part: str, handle: str, dx: float, dy: float) -> None:
-        if layer.get("system_type") == SYSTEM_POINT_CLOUD_ICON_KIND:
+        if layer.get("system_type") in IMAGE_LAYER_KINDS:
             geo = self.layer_geometry(before)
             x0, y0 = geo["image_x"], geo["image_y"]
             x1, y1 = x0 + geo["image_w"], y0 + geo["image_h"]
@@ -1243,8 +1367,8 @@ class ImageTextEditor(tk.Toplevel):
         self.selected_layer_id, self.selected_part = layer["id"], part
         self._sync_style_controls(layer, "图层样式")
         menu = tk.Menu(self, tearoff=False)
-        if layer.get("system_type") == SYSTEM_POINT_CLOUD_ICON_KIND:
-            menu.add_command(label="整体移动（图标）", command=lambda: self.set_selected_part("group"))
+        if layer.get("system_type") in IMAGE_LAYER_KINDS:
+            menu.add_command(label="整体移动（图片）", command=lambda: self.set_selected_part("group"))
             menu.add_separator()
             menu.add_command(label="复制图层", command=self.copy_layer)
             menu.add_command(label="删除图层", command=self.delete_layer)
@@ -1296,7 +1420,7 @@ class ImageTextEditor(tk.Toplevel):
         duplicate = copy.deepcopy(layer)
         duplicate["id"] = uuid.uuid4().hex
         keys = ("text_x", "text_y", "bg_x", "bg_y")
-        if duplicate.get("system_type") == SYSTEM_POINT_CLOUD_ICON_KIND:
+        if duplicate.get("system_type") in IMAGE_LAYER_KINDS:
             keys += ("image_x", "image_y")
         for key in keys:
             duplicate[key] = float(duplicate.get(key, 0)) + 12

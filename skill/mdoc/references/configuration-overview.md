@@ -2,6 +2,24 @@
 
 mdoc v1 uses one control directory under the manual repository root: `.mdoc/`.
 
+## Workspace Boundaries
+
+The mdoc workspace root is the logical root governed by one workspace, not necessarily the root of the surrounding Git or SVN checkout. A checkout may contain multiple sibling manual workspaces, each with its own `.mdoc/`, tasks, scope claims, Quality Gate policy, and publishing lifecycle.
+
+Use one workspace for books that share a product identity and governance. Use separate workspaces when manuals represent different products or require independent task, review, or publishing policies. Avoid parent and child workspaces whose configured books overlap; commands started below them resolve to the nearest ancestor containing `.mdoc/workspace.yaml`.
+
+For example:
+
+```text
+manuals-checkout/
+|-- product-a-manual/
+|   |-- .mdoc/
+|   `-- en/
+`-- product-b-manual/
+    |-- .mdoc/
+    `-- zh/
+```
+
 ## Portable Authority
 
 `.mdoc/workspace.yaml` is the only portable workspace configuration. It contains `schema_version: 1`, workspace identity, product identity, explicit books, locales, writing settings, screenshot settings, Quality Gate policy, publishing policy, generators, build adapters, and retention settings.

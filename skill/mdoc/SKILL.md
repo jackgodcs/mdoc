@@ -19,6 +19,7 @@ mdoc task continue --workspace <manual-repository-root> --task <task-id>
 
 ## Authority Boundaries
 
+- Treat each independently governed manual root as one workspace; sibling workspaces may share a higher-level VCS checkout.
 - `.mdoc/workspace.yaml` is the only portable workspace authority; `.mdoc/workspace.local.yaml` is machine-local and may contain only local resources, applications, and runtimes.
 - Task authority is `.mdoc/tasks/<task-id>/task.yaml` plus `.mdoc/tasks/<task-id>/task-state.json`; reports, manifests, build output, and publish plans are derived artifacts.
 - Agents may write only the controlled task `staging/` area and requested local reports. Formal manual files are changed only by mdoc publishing transactions.
