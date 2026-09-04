@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.0 - 2026-09-04
+
+- Added built-in PDF generation for individual pages, sections, locale books, and batch builds across book locales.
+- Added deterministic chapter numbering, clickable TOC links, rebuilt PDF bookmarks, and the production `chapter-number-links` mode.
+- Added generated-copy image optimization with a 20 KiB threshold, JPEG quality 70, and qpdf structural optimization and checks.
+- Unified runtime installation around Toolchain 2026.09.1 with Node.js 24.18.0, HonKit 6.2.2, Calibre Portable 9.14.0, and qpdf 12.4.1.
+- Kept PDF generation optional for normal manual authoring and publication workflows.
+
 ## 1.3.12 - 2026-09-03
 
 - Automatically create or refresh a task-specific one-click screenshot assistant launcher when a confirmed task declares screenshots, including already completed tasks continued after upgrading.

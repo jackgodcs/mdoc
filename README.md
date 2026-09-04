@@ -1,6 +1,6 @@
 # mdoc
 
-`mdoc` 是面向 Windows 10/11 x64 的多语言 Markdown 产品手册工作流工具。产品版本是 `1.3.12`；新版工作区和任务协议统一使用 `schema_version: 1`。
+`mdoc` 是面向 Windows 10/11 x64 的多语言 Markdown 产品手册工作流工具。产品版本是 `1.4.0`；新版工作区和任务协议统一使用 `schema_version: 1`。
 
 新版 mdoc 是一次干净重构：不识别、不迁移、不兼容旧工作区、旧配置、旧任务或旧状态文件。所有流程状态都由同一个 Python CLI 写入，正式手册内容只由发布事务修改；代理和人工编写只能先进入任务的受控 `staging/`。
 
@@ -8,7 +8,7 @@ Copyright 2026 cshuan. Licensed under Apache-2.0. 该许可证只覆盖 mdoc 源
 
 ## 安装
 
-从 GitHub Stable Release 下载 `mdoc-1.3.12-windows-x64.zip`，完整解压后双击“安装 mdoc.cmd”。安装器默认安装到当前用户的 Codex skills 目录，并为 mdoc 创建独立运行环境；它不会修改外部 Python 的全局包。
+从 GitHub Stable Release 下载 `mdoc-1.4.0-windows-x64.zip`，完整解压后双击“安装 mdoc.cmd”。安装器默认安装到当前用户的 Codex skills 目录，并为 mdoc 创建独立运行环境；它不会修改外部 Python 的全局包。
 
 网络不稳定或离线安装时，下载 [mdoc Toolchain 2026.09.1](https://github.com/jackgodcs/mdoc-toolchain/releases/download/v2026.09.1/mdoc-toolchain-2026.09.1-windows-x64.zip)，将其保留原文件名或重命名为 `mdoc-toolchain.zip`，并放在已解压的 mdoc 安装包根目录、与“安装 mdoc.cmd”同级。双击安装器后会自动使用本地 Toolchain，校验 SHA-256 后安装，不会再联网下载。
 
@@ -19,6 +19,8 @@ Copyright 2026 cshuan. Licensed under Apache-2.0. 该许可证只覆盖 mdoc 源
 - mdoc Toolchain：`https://github.com/jackgodcs/mdoc-toolchain/releases`
 
 Toolchain 采用单一全包，包含 CPython 3.12、Python 检查与截图依赖、Node.js 24.18.0、HonKit 6.2.2、Calibre Portable 9.14.0 和 qpdf 12.4.1。
+
+PDF 生成是独立能力，不是普通手册修改、发布或 Quality Gate 的默认必选项。安装完整 Toolchain 后可按需运行 `mdoc pdf init`、`mdoc pdf doctor`、`mdoc pdf build`、`mdoc pdf check` 和 `mdoc pdf clean`。
 
 ## 从 Git 获取最新版
 
