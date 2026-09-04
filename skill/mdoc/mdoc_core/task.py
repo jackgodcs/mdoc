@@ -9,7 +9,7 @@ from pathlib import Path
 
 from . import claims, screenshots
 from .adapters import import_generator_outputs
-from .authoring import prepare as prepare_authoring, submit as submit_authoring
+from .authoring import prepare as prepare_authoring, preserved_staging_files, submit as submit_authoring
 from .config import load_task, load_workspace
 from .errors import MdocError
 from .io import canonical_digest, file_digest, relative_path, write_json_atomic, write_yaml_atomic
@@ -116,6 +116,7 @@ def create_contributor_launcher(task, output: str | None = None) -> dict:
 
 def continue_task(task, state: dict, *, no_gui: bool = False, quality_check=task_check) -> dict:
     recover_transactions(task, state)
+    state["preserved_staging_files"] = preserved_staging_files(task)
     if task.definition["screenshots"] and state.get("definition_confirmation"):
         create_screenshot_launcher(task)
     if state["status"] in TERMINAL or state["status"] == "ready_for_review":
@@ -195,6 +196,7 @@ def act(workspace_path: Path, task_id: str, action: str, *, no_gui: bool = False
     task, state_path, state = load(workspace_path, task_id)
     if action == "status":
         screenshots.synchronize(task, state)
+        state["preserved_staging_files"] = preserved_staging_files(task)
         return state
     with task_lock(task):
         if state["status"] in TERMINAL and action != "continue":

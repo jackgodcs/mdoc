@@ -23,6 +23,7 @@ mdoc task continue --workspace <manual-repository-root> --task <task-id>
 - `.mdoc/workspace.yaml` is the only portable workspace authority; `.mdoc/workspace.local.yaml` is machine-local and may contain only local resources, applications, and runtimes.
 - Task authority is `.mdoc/tasks/<task-id>/task.yaml` plus `.mdoc/tasks/<task-id>/task-state.json`; reports, manifests, build output, and publish plans are derived artifacts.
 - Agents may write only the controlled task `staging/` area and requested local reports. Formal manual files are changed only by mdoc publishing transactions.
+- Preserve every existing file in task `staging/` that is outside the current frozen manifest. Report these potentially useful files to the user, exclude them from the current task's checks and publication, and never delete them automatically.
 - Do not migrate, repair, read as compatible, or recreate old mdoc protocol files. If a workspace is not schema_version 1, ask to create a fresh workspace.
 - mdoc is neutral about Git/SVN. Never commit, push, tag, switch branches, or roll back a formal manual repository unless the user separately asks.
 

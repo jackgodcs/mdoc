@@ -14,6 +14,7 @@
     "screenshot_acceptance": {"type": ["object", "null"]},
     "screenshot_submission": {"type": ["object", "null"]},
     "authoring_submission": {"type": ["object", "null"]},
+    "preserved_staging_files": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
     "quality_gate": {"type": ["object", "null"]},
     "baselines": {"type": "object"},
     "exception_approvals": {"type": "object"},

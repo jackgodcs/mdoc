@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -66,6 +68,42 @@ class TaskLifecycleCliTests(unittest.TestCase):
         accepted = cli("task", "confirm-final", "--workspace", str(self.workspace), "--task", "simple", "--json")
         self.assertEqual("accepted", accepted["status"])
         self.assertEqual("accepted", cli("task", "continue", "--workspace", str(self.workspace), "--task", "simple", "--no-gui", "--json")["status"])
+
+    def test_out_of_manifest_staging_files_are_preserved_reported_and_not_published(self) -> None:
+        directory = self.define_simple_task("preserve-staging")
+        cli("task", "confirm-definition", "--workspace", str(self.workspace), "--task", "preserve-staging", "--no-gui", "--json")
+        staging = directory / "staging" / "zh"
+        (staging / "Main").mkdir(parents=True, exist_ok=True)
+        (staging / "Main" / "Simple.md").write_text("# Simple\n\nComplete content.\n", encoding="utf-8")
+        (staging / "Summary.md").write_text("# Guide\n\n- [Simple](Main/Simple.md)\n", encoding="utf-8")
+        extra = staging / "notes" / "useful-draft.md"
+        extra.parent.mkdir(parents=True)
+        extra.write_text("Useful material that belongs to another task.\n", encoding="utf-8")
+
+        ready = cli("task", "submit-authoring", "--workspace", str(self.workspace), "--task", "preserve-staging", "--no-gui", "--json")
+
+        self.assertEqual("ready_for_review", ready["status"])
+        self.assertEqual(["zh/notes/useful-draft.md"], ready["preserved_staging_files"])
+        self.assertEqual(["zh/notes/useful-draft.md"], ready["authoring_submission"]["preserved_staging_files"])
+        self.assertEqual("Useful material that belongs to another task.\n", extra.read_text(encoding="utf-8"))
+        self.assertFalse((self.locale / "notes" / "useful-draft.md").exists())
+
+        status = cli("task", "status", "--workspace", str(self.workspace), "--task", "preserve-staging", "--json")
+        self.assertEqual(["zh/notes/useful-draft.md"], status["preserved_staging_files"])
+        result = subprocess.run(
+            [sys.executable, str(Path(__file__).parents[1] / "scripts" / "mdoc.py"), "task", "status", "--workspace", str(self.workspace), "--task", "preserve-staging"],
+            cwd=Path(__file__).parents[3], capture_output=True, text=True, encoding="utf-8", check=False,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("staging 中以下清单外文件已保留", result.stdout)
+        self.assertIn("- zh/notes/useful-draft.md", result.stdout)
+        extra.unlink()
+        result = subprocess.run(
+            [sys.executable, str(Path(__file__).parents[1] / "scripts" / "mdoc.py"), "task", "status", "--workspace", str(self.workspace), "--task", "preserve-staging"],
+            cwd=Path(__file__).parents[3], capture_output=True, text=True, encoding="utf-8", check=False,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertNotIn("staging 中以下清单外文件已保留", result.stdout)
 
     def test_explicit_publish_conflict_approval_rebases_changed_update_and_publishes(self) -> None:
         directory = self.define_simple_task("changed-update")

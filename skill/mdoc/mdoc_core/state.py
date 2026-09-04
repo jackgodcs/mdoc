@@ -30,6 +30,7 @@ def initial_state(task_id: str) -> dict:
         "screenshot_acceptance": None,
         "screenshot_submission": None,
         "authoring_submission": None,
+        "preserved_staging_files": [],
         "quality_gate": None,
         "baselines": {},
         "exception_approvals": {},

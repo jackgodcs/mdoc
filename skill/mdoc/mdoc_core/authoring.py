@@ -21,6 +21,14 @@ def _agent_owned(task, change: dict) -> bool:
     return _copy_source(task, change["locale"], change["kind"]) is None
 
 
+def preserved_staging_files(task) -> list[str]:
+    staging = task.directory / "staging"
+    if not staging.is_dir():
+        return []
+    allowed = {staged.resolve() for change, _formal, staged in changes(task) if change["action"] != "delete"}
+    return sorted(path.relative_to(staging).as_posix() for path in staging.rglob("*") if path.is_file() and path.resolve() not in allowed)
+
+
 def prepare(task) -> dict:
     files = []
     for change, formal, staged in changes(task):
@@ -85,11 +93,6 @@ def submit(task, state: dict) -> dict:
             expected[f"{change['locale']}/{change['path']}"] = file_digest(staged)
     if missing:
         raise MdocError("MDOC-AUTHORING-INCOMPLETE", "Declared staging files are missing.", {"files": missing})
-    staging = task.directory / "staging"
-    allowed = {str(staged.resolve()) for change, _formal, staged in changes(task) if change["action"] != "delete"}
-    extras = [str(path) for path in staging.rglob("*") if path.is_file() and str(path.resolve()) not in allowed]
-    if extras:
-        raise MdocError("MDOC-AUTHORING-OUT-OF-SCOPE", "Staging contains files outside the frozen manifest.", {"files": extras})
-    submission = {"at": int(time.time()), "files": expected, "digest": canonical_digest(expected)}
+    submission = {"at": int(time.time()), "files": expected, "digest": canonical_digest(expected), "preserved_staging_files": preserved_staging_files(task)}
     state["authoring_submission"] = submission
     return submission

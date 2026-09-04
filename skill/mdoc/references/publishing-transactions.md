@@ -4,7 +4,9 @@ Formal manuals are changed only by mdoc publishing transactions. Agents write ta
 
 ## Automatic Publishing
 
-After task Quality Gate passes, mdoc creates a derived publish operation report and executes ordinary create/update writes automatically. It pauses when it sees deletion, target conflict, baseline drift, out-of-scope staging, missing source files, or a failed post-publish check.
+After task Quality Gate passes, mdoc creates a derived publish operation report and executes ordinary create/update writes automatically. It pauses when it sees deletion, target conflict, baseline drift, missing source files, or a failed post-publish check.
+
+Files already present in task `staging/` but outside the frozen manifest are treated as potentially useful work owned by another task or future revision. mdoc preserves and reports their paths, excludes them from the current candidate book and publication, and never deletes them automatically.
 
 Deletion requires an exact target approval:
 

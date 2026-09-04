@@ -51,6 +51,11 @@ def emit(value, as_json=False):
             print(value["error"].get("message", "mdoc 命令执行失败。"))
         else:
             print(HUMAN_STATUS.get(value.get("status"), value.get("status", "完成。")))
+            preserved = value["preserved_staging_files"] if "preserved_staging_files" in value else (value.get("authoring_submission") or {}).get("preserved_staging_files") or []
+            if preserved:
+                print("staging 中以下清单外文件已保留，未参与当前任务发布：")
+                for path in preserved:
+                    print(f"- {path}")
 
 
 def context(args):
