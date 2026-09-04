@@ -15,6 +15,7 @@ from urllib.parse import unquote, urlsplit
 
 from .errors import MdocError
 from .io import read_yaml, write_yaml_atomic
+from .models import thaw
 
 try:
     from PIL import Image
@@ -80,7 +81,7 @@ def _deep_merge(base: dict, override: dict) -> dict:
 
 def effective_settings(config: dict, book: dict) -> dict:
     defaults = config.get("pdf", {}).get("defaults", DEFAULTS["defaults"])
-    return _deep_merge(defaults, book.get("pdf", {}))
+    return _deep_merge(thaw(defaults), thaw(book.get("pdf", {})))
 
 
 def normalized_target(target: str) -> tuple[str, str]:

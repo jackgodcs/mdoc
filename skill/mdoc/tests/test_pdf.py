@@ -8,6 +8,7 @@ from PIL import Image
 
 from skill.mdoc.mdoc_core import pdf
 from skill.mdoc.mdoc_core.errors import MdocError
+from skill.mdoc.mdoc_core.models import freeze
 
 
 class PdfTests(unittest.TestCase):
@@ -62,6 +63,13 @@ class PdfTests(unittest.TestCase):
         self.assertEqual(67, settings["margins_pt"]["left"])
         self.assertEqual(65, settings["image_optimization"]["jpeg_quality"])
         self.assertEqual(20480, settings["image_optimization"]["min_bytes"])
+
+    def test_effective_settings_accept_frozen_workspace_configuration(self) -> None:
+        config = freeze({"pdf": {"defaults": pdf.DEFAULTS["defaults"]}})
+        book = freeze({"pdf": {"margins_pt": {"top": 80}}})
+        settings = pdf.effective_settings(config, book)
+        self.assertEqual(80, settings["margins_pt"]["top"])
+        self.assertEqual(67, settings["margins_pt"]["left"])
 
     def test_output_names_are_stable_and_memory_guard_never_returns_zero(self) -> None:
         self.assertEqual("guide-en.pdf", pdf._output_name("guide", "en", "book", None))

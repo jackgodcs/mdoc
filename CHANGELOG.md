@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.1 - 2026-09-04
+
+- Fixed PDF builds failing with `cannot pickle 'mappingproxy' object` when merging the immutable workspace PDF defaults used by the real CLI.
+- Added regression coverage for frozen workspace and book-level PDF configuration.
+
 ## 1.4.0 - 2026-09-04
 
 - Added built-in PDF generation for individual pages, sections, locale books, and batch builds across book locales.
