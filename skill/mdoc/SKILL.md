@@ -50,6 +50,7 @@ When a coordinator shares one manual workspace with multiple contributors, split
 - For screenshot capture and acceptance, read `references/screenshot-workflow.md`.
 - For staging, publishing, deletion, and rollback boundaries, read `references/publishing-transactions.md`.
 - For Quality Gate profiles, findings, builds, reviews, and PDF checks, read `references/quality-gate.md`.
+- For PDF configuration, generation, checking, outputs, and cleanup, read `references/pdf.md`.
 - For adapter security, read `references/adapters.md` before adding or changing generators/build adapters.
 
 Keep user-facing Markdown concise and in the target manual language. Default CLI human output is Simplified Chinese; stable machine output is available only with `--json`.

@@ -10,9 +10,12 @@
     "required_features": ["venv", "tkinter", "tcl-tk"]
   },
   "capabilities": {
-    "core": {"required": true, "python_packages": ["ruamel.yaml", "jsonschema"]},
-    "pdf-check": {"required": false, "python_packages": ["pdfplumber", "pypdf", "pypdfium2", "Pillow"]},
-    "screenshot-assistant": {"required": false, "python_packages": ["Pillow"], "features": ["tkinter", "tcl-tk", "imagegrab", "imagetk"]}
+    "full": {
+      "required": true,
+      "python_packages": ["ruamel.yaml", "jsonschema", "pdfplumber", "pypdf", "pypdfium2", "Pillow"],
+      "features": ["tkinter", "tcl-tk", "imagegrab", "imagetk"],
+      "tools": {"node": "24.18.0", "honkit": "6.2.2", "calibre": "9.14.0", "qpdf": "12.4.1"}
+    }
   },
   "test_only": {"python_packages": ["reportlab"]}
 }

@@ -46,7 +46,7 @@ class ReleaseBuildTests(unittest.TestCase):
         self.assertIn(b"install-mdoc.cmd -Toolkit", installer_launcher)
         self.assertIn(b"You can install without network access", installer_launcher)
         self.assertIn(b'"path": "\\u5b89\\u88c5 mdoc.cmd"', manifest_bytes)
-        self.assertEqual("2026.08.1", manifest["runtime_contract"]["toolchain_version"])
+        self.assertEqual("2026.09.1", manifest["runtime_contract"]["toolchain_version"])
         self.assertEqual(">=3.12.0,<3.13.0", manifest["runtime_contract"]["python"])
 
     @unittest.skipUnless(sys.platform == "win32", "Windows PowerShell installer test")

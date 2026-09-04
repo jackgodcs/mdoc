@@ -8,6 +8,7 @@ from pathlib import Path
 from .errors import MdocError
 from .io import canonical_digest, inside, read_yaml, relative_path
 from .models import TaskContext, WorkspaceContext, freeze
+from .pdf import validate_book_configs
 
 try:
     from jsonschema import Draft202012Validator
@@ -59,6 +60,7 @@ def load_workspace(start: Path) -> WorkspaceContext:
     local = read_yaml(local_path) if local_path.is_file() else {"schema_version": 1}
     validate_schema(portable, "workspace.schema.json", "workspace.yaml")
     validate_schema(local, "workspace-local.schema.json", "workspace.local.yaml")
+    validate_book_configs(repository, portable)
     normalized = _merge_local(portable, local)
     seen_rule_ids = set()
     for rule in normalized["quality_gate"].get("rules", ()):

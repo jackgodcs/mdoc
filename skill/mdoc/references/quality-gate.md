@@ -25,9 +25,9 @@ Safe fixes are deterministic and limited to task staging. Current built-in safe 
 
 ## Build And PDF Checks
 
-Build adapters receive a materialized candidate book in an isolated directory and must emit a declared artifact. A release profile runs a real build before publishing and again in published-task context after the transaction.
+Build adapters receive a materialized candidate book in an isolated directory and must emit a declared generic artifact. A release profile runs a real build before publishing and again in published-task context after the transaction.
 
-When a build adapter declares `artifact_kind: pdf`, mdoc runs PDF Check against the emitted PDF and includes its counts in the build record. Effective PDF errors block the Quality Gate.
+PDF generation and structural checking use the single built-in `mdoc pdf` pipeline. They are not required by ordinary task publication in the current version; later opt-in Quality Gate integration must call that same pipeline rather than define another adapter.
 
 ## Command Examples
 

@@ -147,16 +147,7 @@ class QualityCliTests(unittest.TestCase):
         self.assertTrue(build["artifact_sha256"])
         self.assertEqual("# Candidate\n\nOnly in staging.\n", Path(build["artifact"]).read_text(encoding="utf-8"))
 
-    def test_release_pdf_artifact_runs_pdf_check_and_blocks_effective_errors(self) -> None:
-        script = self.workspace / "tools" / "build_pdf.py"
-        script.parent.mkdir(exist_ok=True)
-        script.write_text(
-            "import os\n"
-            "from pathlib import Path\n"
-            "target = Path(os.environ['MDOC_ARTIFACT_DIR']) / 'manual.pdf'\n"
-            "target.write_bytes(b'%PDF-not-a-real-document')\n",
-            encoding="utf-8",
-        )
+    def test_release_build_adapter_rejects_the_removed_pdf_artifact_kind(self) -> None:
         cli("workspace", "revise", "--workspace", str(self.workspace), "--json")
         config_path = self.workspace / ".mdoc" / "workspace-draft.yaml"
         config = YAML(typ="safe").load(config_path.read_text(encoding="utf-8"))
@@ -170,21 +161,8 @@ class QualityCliTests(unittest.TestCase):
             }
         }
         write_yaml(config_path, config)
-        cli("workspace", "apply", "--workspace", str(self.workspace), "--json")
-        cli("workspace", "confirm", "--workspace", str(self.workspace), "--json")
-        cli("workspace", "local", "init", "--workspace", str(self.workspace), "--json")
-        local = {"schema_version": 1, "applications": {}, "resources": {}, "runtimes": {"python": {"executable": str(Path(__import__('sys').executable))}}}
-        write_yaml(self.workspace / ".mdoc" / "workspace.local-draft.yaml", local)
-        cli("workspace", "local", "apply", "--workspace", str(self.workspace), "--json")
-        cli("workspace", "local", "confirm", "--workspace", str(self.workspace), "--json")
-
-        directory = self.define_task("release-pdf", profile="release", build_adapter="pdf")
-        self.stage(directory, "release-pdf", "# Release PDF\n\nComplete.\n")
-        state = cli("task", "submit-authoring", "--workspace", str(self.workspace), "--task", "release-pdf", "--no-gui", "--json")
-        self.assertEqual("waiting_for_resolution", state["status"])
-        build = state["quality_gate"]["build"]
-        self.assertEqual("failed", build["status"])
-        self.assertEqual("failed", build["pdf_check"]["status"])
+        result = cli("workspace", "apply", "--workspace", str(self.workspace), "--json", expected=2)
+        self.assertEqual("MDOC-CONFIG-SCHEMA-INVALID", result["error"]["code"])
 
 
 if __name__ == "__main__":

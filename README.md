@@ -10,7 +10,7 @@ Copyright 2026 cshuan. Licensed under Apache-2.0. 该许可证只覆盖 mdoc 源
 
 从 GitHub Stable Release 下载 `mdoc-1.3.12-windows-x64.zip`，完整解压后双击“安装 mdoc.cmd”。安装器默认安装到当前用户的 Codex skills 目录，并为 mdoc 创建独立运行环境；它不会修改外部 Python 的全局包。
 
-网络不稳定或离线安装时，下载 [mdoc Toolchain 2026.08.1](https://github.com/jackgodcs/mdoc-toolchain/releases/download/v2026.08.1/mdoc-toolchain-2026.08.1-windows-x64.zip)，将其保留原文件名或重命名为 `mdoc-toolchain.zip`，并放在已解压的 mdoc 安装包根目录、与“安装 mdoc.cmd”同级。双击安装器后会自动使用本地 Toolchain，校验 SHA-256 后安装，不会再联网下载。
+网络不稳定或离线安装时，下载 [mdoc Toolchain 2026.09.1](https://github.com/jackgodcs/mdoc-toolchain/releases/download/v2026.09.1/mdoc-toolchain-2026.09.1-windows-x64.zip)，将其保留原文件名或重命名为 `mdoc-toolchain.zip`，并放在已解压的 mdoc 安装包根目录、与“安装 mdoc.cmd”同级。双击安装器后会自动使用本地 Toolchain，校验 SHA-256 后安装，不会再联网下载。
 
 官方来源：
 
@@ -18,7 +18,7 @@ Copyright 2026 cshuan. Licensed under Apache-2.0. 该许可证只覆盖 mdoc 源
 - Python：`https://www.python.org/downloads/windows/`
 - mdoc Toolchain：`https://github.com/jackgodcs/mdoc-toolchain/releases`
 
-基础运行需要 CPython 3.12、`ruamel.yaml` 和 `jsonschema`。PDF 检查还需要 `pdfplumber`、`pypdf`、`pypdfium2` 和 Pillow；截图助手需要 Pillow、Tk/Tcl。
+Toolchain 采用单一全包，包含 CPython 3.12、Python 检查与截图依赖、Node.js 24.18.0、HonKit 6.2.2、Calibre Portable 9.14.0 和 qpdf 12.4.1。
 
 ## 从 Git 获取最新版
 

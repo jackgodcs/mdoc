@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import copy
 import subprocess
 import sys
 import tempfile
@@ -11,6 +12,7 @@ from ruamel.yaml import YAML
 
 from skill.mdoc.mdoc_core.errors import MdocError
 from skill.mdoc.mdoc_core.io import relative_path
+from skill.mdoc.mdoc_core import pdf
 from skill.mdoc.tests.support import write_yaml
 
 
@@ -109,6 +111,69 @@ class WorkspaceCliTests(unittest.TestCase):
         self.assertEqual("workspace_ready", json.loads(confirmed.stdout)["status"])
         self.assertEqual("Changed after apply", self.read_yaml(self.repository / ".mdoc" / "workspace.yaml")["product"]["display_name"])
         self.assertFalse((self.repository / ".mdoc" / "cache" / "workspace-candidate.json").exists())
+
+    def test_workspace_pdf_defaults_are_optional_and_use_twenty_kibibytes(self) -> None:
+        self.run_cli("workspace", "init", "--workspace", str(self.repository), "--json")
+        draft = self.read_yaml(self.repository / ".mdoc" / "workspace-draft.yaml")
+        self.assertEqual(20480, draft["pdf"]["defaults"]["image_optimization"]["min_bytes"])
+        self.assertEqual(70, draft["pdf"]["defaults"]["image_optimization"]["jpeg_quality"])
+        self.assertEqual(3, draft["pdf"]["defaults"]["concurrency"]["builds"])
+
+        self.write_draft(valid_workspace())
+        self.run_cli("workspace", "apply", "--workspace", str(self.repository), "--json")
+        self.run_cli("workspace", "confirm", "--workspace", str(self.repository), "--json")
+        self.assertNotIn("pdf", self.read_yaml(self.repository / ".mdoc" / "workspace.yaml"))
+
+    def test_pdf_init_revises_a_draft_without_changing_authority(self) -> None:
+        self.run_cli("workspace", "init", "--workspace", str(self.repository), "--json")
+        self.write_draft(valid_workspace())
+        self.run_cli("workspace", "apply", "--workspace", str(self.repository), "--json")
+        self.run_cli("workspace", "confirm", "--workspace", str(self.repository), "--json")
+        authority = (self.repository / ".mdoc" / "workspace.yaml").read_bytes()
+
+        result = self.run_cli("pdf", "init", "--workspace", str(self.repository), "--json")
+        self.assertEqual("pdf_workspace_draft_created", json.loads(result.stdout)["status"])
+        draft = self.read_yaml(self.repository / ".mdoc" / "workspace-draft.yaml")
+        self.assertEqual(pdf.DEFAULTS, draft["pdf"])
+        self.assertEqual(authority, (self.repository / ".mdoc" / "workspace.yaml").read_bytes())
+
+    def test_pdf_enabled_workspace_requires_book_json_for_each_locale(self) -> None:
+        self.run_cli("workspace", "init", "--workspace", str(self.repository), "--json")
+        workspace = valid_workspace()
+        workspace["pdf"] = copy.deepcopy(pdf.DEFAULTS)
+        self.write_draft(workspace)
+        error = self.run_cli("workspace", "apply", "--workspace", str(self.repository), "--json", expected=2)
+        self.assertEqual("MDOC-PDF-BOOK-CONFIG-MISSING", json.loads(error.stdout)["error"]["code"])
+
+        for locale in ("zh", "en"):
+            (self.repository / "Guide" / locale / "book.json").write_text('{"title":"Guide","language":"' + locale + '"}\n', encoding="utf-8")
+        self.run_cli("workspace", "apply", "--workspace", str(self.repository), "--json")
+
+    def test_generic_build_adapter_cannot_declare_pdf_artifacts(self) -> None:
+        self.run_cli("workspace", "init", "--workspace", str(self.repository), "--json")
+        workspace = valid_workspace()
+        workspace["build_adapters"] = {
+            "old-pdf": {"command": ["runtime:python", "tools/build.py"], "artifact": "manual.pdf", "artifact_kind": "pdf"}
+        }
+        self.write_draft(workspace)
+        error = self.run_cli("workspace", "apply", "--workspace", str(self.repository), "--json", expected=2)
+        self.assertEqual("MDOC-CONFIG-SCHEMA-INVALID", json.loads(error.stdout)["error"]["code"])
+
+    def test_pdf_global_defaults_must_be_complete_but_book_override_may_be_partial(self) -> None:
+        for locale in ("zh", "en"):
+            (self.repository / "Guide" / locale / "book.json").write_text('{"title":"Guide","language":"' + locale + '"}\n', encoding="utf-8")
+        self.run_cli("workspace", "init", "--workspace", str(self.repository), "--json")
+        workspace = valid_workspace()
+        workspace["pdf"] = copy.deepcopy(pdf.DEFAULTS)
+        workspace["pdf"]["defaults"] = {"paper_size": "a4"}
+        self.write_draft(workspace)
+        error = self.run_cli("workspace", "apply", "--workspace", str(self.repository), "--json", expected=2)
+        self.assertEqual("MDOC-CONFIG-SCHEMA-INVALID", json.loads(error.stdout)["error"]["code"])
+
+        workspace["pdf"] = copy.deepcopy(pdf.DEFAULTS)
+        workspace["books"]["guide"]["pdf"] = {"margins_pt": {"top": 80}}
+        self.write_draft(workspace)
+        self.run_cli("workspace", "apply", "--workspace", str(self.repository), "--json")
 
     def test_workspace_revise_and_local_configuration_are_separate(self) -> None:
         self.run_cli("workspace", "init", "--workspace", str(self.repository))

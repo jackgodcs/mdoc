@@ -16,7 +16,7 @@ Generators run during `task define`, produce files in an isolated output directo
 
 Build adapters run against a materialized candidate book and receive `MDOC_ARTIFACT_DIR`. They must write the declared artifact inside that directory. The build record stores command output, adapter digest, script digest, candidate digest, artifact path, artifact digest, and duration.
 
-Use `artifact_kind: pdf` when the artifact is a PDF that must also go through PDF Check in release/full review workflows.
+Build adapters emit only generic artifacts. PDF generation uses the single built-in `mdoc pdf` pipeline and cannot be replaced by a workspace adapter.
 
 ## Isolation
 

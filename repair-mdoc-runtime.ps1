@@ -1,8 +1,8 @@
 ﻿[CmdletBinding()]
 param(
+  [ValidateSet('Full', 'Offline')] [string]$Profile = 'Full',
   [string]$Python,
   [string]$Toolkit,
-  [ValidateSet('Full', 'Core', 'Existing', 'Offline')] [string]$Profile = 'Full',
   [string]$RuntimeRoot = (Join-Path $env:LOCALAPPDATA 'mdoc'),
   [string]$Installation = (Join-Path $HOME '.codex\skills\mdoc'),
   [string]$Proxy,
@@ -164,6 +164,10 @@ try {
   Assert-Sha256 $catalogPath $bootstrap.catalog_sha256 'MDOC-RUNTIME-CATALOG-SHA256-MISMATCH'
   $catalog = Get-Content -LiteralPath $catalogPath -Raw | ConvertFrom-Json
   if ($catalog.schema_version -ne 1 -or $catalog.catalog_version -ne $bootstrap.catalog_version -or $catalog.platform -ne 'windows-x86_64') { throw 'MDOC-RUNTIME-CATALOG-INCOMPATIBLE: Catalog schema, version, or platform mismatch.' }
+  $requiredComponents = @('python-runtime','wheelhouse','node','honkit','calibre','qpdf')
+  $catalogComponentIds = @($catalog.components | ForEach-Object { [string]$_.id })
+  $missingComponents = @($requiredComponents | Where-Object { $_ -notin $catalogComponentIds })
+  if ($missingComponents.Count -gt 0) { throw "MDOC-RUNTIME-TOOLCHAIN-INCOMPLETE: $($missingComponents -join ', ')" }
   foreach ($component in $catalog.components) {
     $asset = Join-Path $toolkitRoot (Join-Path 'components' $component.distribution.asset)
     Assert-Sha256 $asset $component.distribution.sha256 'MDOC-RUNTIME-COMPONENT-SHA256-MISMATCH'
@@ -173,7 +177,6 @@ try {
   $managedPythonRoot = [IO.Path]::GetFullPath((Join-Path $RuntimeRoot 'python')) + [IO.Path]::DirectorySeparatorChar
   $ownership = if ($selected -and [IO.Path]::GetFullPath([string]$selected.executable).StartsWith($managedPythonRoot, [StringComparison]::OrdinalIgnoreCase)) { 'managed-by-mdoc' } else { 'external' }
   if (-not $selected) {
-    if ($Profile -eq 'Existing') { throw 'MDOC-RUNTIME-PYTHON-MISSING: Existing mode requires CPython 3.12 x64.' }
     $pythonComponent = $catalog.components | Where-Object id -eq 'python-runtime' | Select-Object -First 1
     $pythonBundle = Join-Path $toolkitRoot (Join-Path 'components' $pythonComponent.distribution.asset)
     $pythonFiles = Join-Path $work 'python-component'
@@ -193,7 +196,7 @@ try {
   $wheelBundle = Join-Path $toolkitRoot (Join-Path 'components' $wheelComponent.distribution.asset)
   $wheelRoot = Join-Path $work 'wheelhouse'
   Expand-SafeZip $wheelBundle $wheelRoot
-  $lockName = if ($Profile -eq 'Core') { 'core.txt' } else { 'full.txt' }
+  $lockName = 'full.txt'
   $stage = Join-Path $RuntimeRoot 'runtime.new'
   if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
   & $selected.executable -m venv $stage
@@ -201,20 +204,40 @@ try {
   $runtimePython = Join-Path $stage 'Scripts\python.exe'
   & $runtimePython -m pip install --disable-pip-version-check --no-index --require-hashes --find-links (Join-Path $wheelRoot 'wheels') -r (Join-Path $wheelRoot (Join-Path 'locks' $lockName))
   if ($LASTEXITCODE -ne 0) { throw 'MDOC-RUNTIME-WHEEL-INSTALL-FAILED: Offline dependency installation failed.' }
-  $probe = if ($Profile -eq 'Core') { 'import jsonschema,ruamel.yaml' } else { 'import jsonschema,ruamel.yaml,pdfplumber,pypdf,pypdfium2,PIL,tkinter; from PIL import ImageTk,ImageGrab' }
+  $probe = 'import jsonschema,ruamel.yaml,pdfplumber,pypdf,pypdfium2,PIL,tkinter; from PIL import ImageTk,ImageGrab'
   & $runtimePython -c $probe
   if ($LASTEXITCODE -ne 0) { throw 'MDOC-RUNTIME-CAPABILITY-PROBE-FAILED: Runtime capability probe failed.' }
   $current = Join-Path $RuntimeRoot 'runtime'
   $old = Join-Path $RuntimeRoot 'runtime.old'
   if (Test-Path -LiteralPath $old) { Remove-Item -LiteralPath $old -Recurse -Force }
+
+  $toolchainStage = Join-Path $RuntimeRoot 'toolchain.new'
+  if (Test-Path -LiteralPath $toolchainStage) { Remove-Item -LiteralPath $toolchainStage -Recurse -Force }
+  New-Item -ItemType Directory -Path $toolchainStage -Force | Out-Null
+  foreach ($component in $catalog.components | Where-Object { $_.id -notin @('python-runtime','wheelhouse') }) {
+    $bundle = Join-Path $toolkitRoot (Join-Path 'components' $component.distribution.asset)
+    $destination = Join-Path $toolchainStage ([string]$component.install_directory)
+    Expand-SafeZip $bundle $destination
+  }
+  $toolchainCurrent = Join-Path $RuntimeRoot 'toolchain'
+  $toolchainOld = Join-Path $RuntimeRoot 'toolchain.old'
+  if (Test-Path -LiteralPath $toolchainOld) { Remove-Item -LiteralPath $toolchainOld -Recurse -Force }
+  if (Test-Path -LiteralPath $toolchainCurrent) { Move-Item -LiteralPath $toolchainCurrent -Destination $toolchainOld }
+  try { Move-Item -LiteralPath $toolchainStage -Destination $toolchainCurrent } catch {
+    if (-not (Test-Path -LiteralPath $toolchainCurrent) -and (Test-Path -LiteralPath $toolchainOld)) { Move-Item -LiteralPath $toolchainOld -Destination $toolchainCurrent }
+    throw
+  }
   if (Test-Path -LiteralPath $current) { Move-Item -LiteralPath $current -Destination $old }
   try {
     Move-Item -LiteralPath $stage -Destination $current
   } catch {
     if (-not (Test-Path -LiteralPath $current) -and (Test-Path -LiteralPath $old)) { Move-Item -LiteralPath $old -Destination $current }
+    if (Test-Path -LiteralPath $toolchainCurrent) { Remove-Item -LiteralPath $toolchainCurrent -Recurse -Force }
+    if (Test-Path -LiteralPath $toolchainOld) { Move-Item -LiteralPath $toolchainOld -Destination $toolchainCurrent }
     throw
   }
   if (Test-Path -LiteralPath $old) { Remove-Item -LiteralPath $old -Recurse -Force }
+  if (Test-Path -LiteralPath $toolchainOld) { Remove-Item -LiteralPath $toolchainOld -Recurse -Force }
 
   $bin = Join-Path $RuntimeRoot 'bin'; New-Item -ItemType Directory -Path $bin -Force | Out-Null
   $launcher = Join-Path $bin 'mdoc.cmd'
@@ -230,7 +253,7 @@ try {
   $stateRoot = Join-Path $RuntimeRoot 'state'; New-Item -ItemType Directory -Path $stateRoot -Force | Out-Null
   $pythonSource = if ($ownership -eq 'managed-by-mdoc') { 'mdoc-managed' } elseif ([string]$selected.executable -like '*\.cache\codex-runtimes\*') { 'codex-runtime' } else { 'system-or-user' }
   $requirementsHash = Get-Sha256 (Join-Path $packageRoot 'runtime\requirements-v1.json')
-  $state = [ordered]@{schema_version=1; status='ready'; profile=$Profile; catalog_version=$catalog.catalog_version; toolchain_version=$catalog.catalog_version; python_contract='>=3.12.0,<3.13.0'; requirements_sha256=$requirementsHash; capability_probe='ready'; python_source=$pythonSource; python_base=$selected.executable; python_ownership=$ownership; python_installer=if($ownership -eq 'managed-by-mdoc'){(Join-Path $RuntimeRoot 'installers\python-3.12.10-amd64.exe')}else{$null}; runtime_python=(Join-Path $current 'Scripts\python.exe'); path_entry=$bin; start_menu=$startMenu; capabilities=if($Profile -eq 'Core'){@('core')}else{@('core','pdf-check','screenshot-assistant')}}
+  $state = [ordered]@{schema_version=1; status='ready'; profile='Full'; catalog_version=$catalog.catalog_version; toolchain_version=$catalog.catalog_version; python_contract='>=3.12.0,<3.13.0'; requirements_sha256=$requirementsHash; capability_probe='ready'; python_source=$pythonSource; python_base=$selected.executable; python_ownership=$ownership; python_installer=if($ownership -eq 'managed-by-mdoc'){(Join-Path $RuntimeRoot 'installers\python-3.12.10-amd64.exe')}else{$null}; runtime_python=(Join-Path $current 'Scripts\python.exe'); toolchain_root=$toolchainCurrent; path_entry=$bin; start_menu=$startMenu; capabilities=@('core','pdf-check','screenshot-assistant','pdf-build')}
   $state | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $stateRoot 'installed-runtime.json') -Encoding utf8
   $state | ConvertTo-Json -Depth 5
 } finally {

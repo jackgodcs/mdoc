@@ -7,6 +7,7 @@ from pathlib import Path
 from .config import validate_schema
 from .errors import MdocError
 from .io import canonical_digest, file_digest, read_json, read_yaml, write_json_atomic, write_yaml_atomic
+from .pdf import DEFAULTS as PDF_DEFAULTS, validate_book_configs
 
 
 CANDIDATE_NAME = "workspace-candidate.json"
@@ -51,6 +52,7 @@ def validate_portable(workspace: Path, value: dict) -> dict:
     validate_schema(value, "workspace.schema.json", "workspace-draft.yaml")
     normalized = copy.deepcopy(value)
     _validate_paths(workspace, normalized)
+    validate_book_configs(workspace.resolve(), normalized)
     return normalized
 
 
@@ -77,6 +79,7 @@ def _draft_template() -> dict:
         "generators": {},
         "build_adapters": {},
         "retention": {},
+        "pdf": copy.deepcopy(PDF_DEFAULTS),
     }
 
 

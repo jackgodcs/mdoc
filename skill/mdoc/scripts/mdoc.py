@@ -12,7 +12,7 @@ SKILL_DIR = SCRIPT_DIR.parent
 if str(SKILL_DIR) not in sys.path:
     sys.path.insert(0, str(SKILL_DIR))
 
-from mdoc_core import VERSION, screenshots, workspace as workspace_lifecycle
+from mdoc_core import VERSION, pdf, screenshots, workspace as workspace_lifecycle
 from mdoc_core.config import load_task, load_workspace
 from mdoc_core.errors import MdocError
 from mdoc_core.quality import book_check, task_check
@@ -40,6 +40,8 @@ HUMAN_STATUS = {
     "waiting_for_authoring": "等待在受控 staging 中完成编写。",
     "contributor_assistant_opened": "协作者截图助手已打开。",
     "contributor_launcher_created": "协作者截图启动器已生成。",
+    "pdf_workspace_draft_created": "PDF 配置已写入工作区草稿，请执行 workspace apply 和 confirm。",
+    "pdf_cache_cleaned": "PDF 构建缓存已清理。",
 }
 
 
@@ -119,6 +121,12 @@ def parser():
     deletion = ts.add_parser("approve-deletion"); deletion.add_argument("--task", required=True); deletion.add_argument("--workspace", type=Path); deletion.add_argument("--target", required=True); deletion.add_argument("--no-gui", action="store_true")
     conflict = ts.add_parser("approve-publish-conflict"); conflict.add_argument("--task", required=True); conflict.add_argument("--workspace", type=Path); conflict.add_argument("--confirm", action="store_true"); conflict.add_argument("--no-gui", action="store_true")
     quality = sub.add_parser("quality"); qs = quality.add_subparsers(dest="quality_action", required=True); check = qs.add_parser("check"); check.add_argument("--workspace", type=Path); targets = check.add_mutually_exclusive_group(required=True); targets.add_argument("--book"); targets.add_argument("--task"); check.add_argument("--profile", choices=("standard", "full", "release")); check.add_argument("--locale"); check.add_argument("--path"); check.add_argument("--changed", action="store_true"); check.add_argument("--published", action="store_true"); check.add_argument("--enforce", action="store_true")
+    pdf_group = sub.add_parser("pdf"); pdf_actions = pdf_group.add_subparsers(dest="pdf_action", required=True)
+    pdf_init = pdf_actions.add_parser("init"); pdf_init.add_argument("--workspace", type=Path, required=True)
+    pdf_doctor = pdf_actions.add_parser("doctor"); pdf_doctor.add_argument("--workspace", type=Path)
+    pdf_build = pdf_actions.add_parser("build"); pdf_build.add_argument("--workspace", type=Path); pdf_build.add_argument("--book"); pdf_build.add_argument("--locale"); pdf_build.add_argument("--scope", choices=("page", "section", "book"), default="book"); pdf_build.add_argument("--target"); pdf_build.add_argument("--all-locales", action="store_true"); pdf_build.add_argument("--all-books", action="store_true"); pdf_build.add_argument("--output", type=Path); pdf_build.add_argument("--jobs", type=int); pdf_build.add_argument("--force-jobs", action="store_true"); pdf_build.add_argument("--yes", action="store_true"); pdf_build.add_argument("--no-overwrite", action="store_true"); pdf_build.add_argument("--keep-work", action="store_true"); pdf_build.add_argument("--discard-work", action="store_true"); pdf_build.add_argument("--strict-resources", action="store_true"); pdf_build.add_argument("--verify-pipeline", action="store_true")
+    pdf_check = pdf_actions.add_parser("check"); pdf_check.add_argument("--workspace", type=Path); pdf_check.add_argument("--pdf", type=Path, required=True); pdf_check.add_argument("--book"); pdf_check.add_argument("--locale")
+    pdf_clean = pdf_actions.add_parser("clean"); pdf_clean.add_argument("--workspace", type=Path)
     return root
 
 
@@ -152,8 +160,27 @@ def main():
                     review_status=getattr(args, "status", None), target=getattr(args, "target", None) or getattr(args, "output", None),
                     confirmed=getattr(args, "confirm", False),
                 )
-        else:
+        elif args.command == "quality":
             result = cmd_quality(args)
+        else:
+            if args.pdf_action == "init":
+                result = pdf.init(args.workspace)
+            else:
+                pdf_workspace = context(args)
+                if args.pdf_action == "doctor":
+                    result = pdf.doctor(pdf_workspace)
+                elif args.pdf_action == "check":
+                    result = pdf.check(pdf_workspace, args.pdf, args.book, args.locale)
+                elif args.pdf_action == "clean":
+                    result = pdf.clean(pdf_workspace)
+                else:
+                    if args.scope != "book" and not args.target:
+                        raise MdocError("MDOC-PDF-TARGET-REQUIRED", "page 和 section 范围需要 --target。")
+                    if args.output and (args.all_books or args.all_locales):
+                        raise MdocError("MDOC-PDF-OUTPUT-BATCH-INVALID", "批量构建不能指定单一 --output。")
+                    if args.yes and args.no_overwrite:
+                        raise MdocError("MDOC-PDF-OVERWRITE-OPTION-CONFLICT", "--yes 与 --no-overwrite 不能同时使用。")
+                    result = pdf.build(pdf_workspace, args.book, args.locale, args.scope, args.target, args.output.resolve() if args.output else None, args.all_locales, args.all_books, args.jobs, args.force_jobs, args.yes, args.no_overwrite, not args.json and sys.stdin.isatty(), args.keep_work, args.discard_work, args.strict_resources, args.verify_pipeline)
         emit(result, args.json)
         return result.get("exit_code", 0)
     except MdocError as exc:

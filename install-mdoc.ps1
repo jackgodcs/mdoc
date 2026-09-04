@@ -1,6 +1,6 @@
 ﻿[CmdletBinding()]
 param(
-  [ValidateSet('Full', 'Core', 'Existing', 'Offline')] [string]$Profile = 'Full',
+  [ValidateSet('Full', 'Offline')] [string]$Profile = 'Full',
   [string]$Python,
   [string]$Toolkit,
   [string]$Destination = (Join-Path $HOME '.codex\skills\mdoc'),
@@ -101,7 +101,7 @@ try {
   Copy-Item -LiteralPath (Join-Path $packageRoot 'runtime') -Destination $support -Recurse
   if (-not $SkipRuntimeRepair) {
     $repair = Join-Path $packageRoot 'repair-mdoc-runtime.ps1'
-    & $repair -Profile $Profile -Python $Python -Toolkit $Toolkit -Installation $Destination -RuntimeRoot $RuntimeRoot -Proxy $Proxy -AllowNetworkDownload:$AllowNetworkDownload | Write-Host
+    & $repair -Python $Python -Toolkit $Toolkit -Installation $Destination -RuntimeRoot $RuntimeRoot -Proxy $Proxy -AllowNetworkDownload:$AllowNetworkDownload | Write-Host
     if ($LASTEXITCODE -ne 0) { throw "MDOC-INSTALL-RUNTIME-REPAIR-FAILED: $LASTEXITCODE" }
   }
   $transaction = Join-Path $packageRoot 'runtime-bootstrap\mdoc_install_transaction.py'

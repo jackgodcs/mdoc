@@ -34,3 +34,33 @@ publishing:
 generators: {}
 build_adapters: {}
 retention: {}
+pdf:
+  defaults:
+    paper_size: a4
+    margins_pt:
+      left: 67
+      right: 67
+      top: 97
+      bottom: 72
+    image_optimization:
+      enabled: true
+      target_dpi: 180
+      max_width_px: 1128
+      min_bytes: 20480
+      jpeg_quality: 70
+      jpeg_subsampling: "4:4:4"
+      transparent_background: white
+      never_upscale: true
+    optimization:
+      enabled: true
+      recompress_flate: true
+      compression_level: 9
+      object_streams: generate
+    bookmarks:
+      levels: 3
+    concurrency:
+      builds: 3
+      images: auto
+  retention:
+    failed_work_days: 7
+    batch_reports: 20
