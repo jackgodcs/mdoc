@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.2 - 2026-09-04
+
+- Fixed full-book PDF checks incorrectly rejecting embedded Type3 fonts that store glyph programs in `CharProcs` instead of `FontFile*` streams.
+- Added regression coverage for Type3 font embedding detection.
+
 ## 1.4.1 - 2026-09-04
 
 - Fixed PDF builds failing with `cannot pickle 'mappingproxy' object` when merging the immutable workspace PDF defaults used by the real CLI.

@@ -1,4 +1,4 @@
-mdoc 1.4.1 Windows 安装包
+mdoc 1.4.2 Windows 安装包
 
 1. 双击“安装 mdoc.cmd”。
 2. Toolchain 为单一全包，同时准备核心、截图、PDF Check 和 PDF Build 环境。

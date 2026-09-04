@@ -3,8 +3,10 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from PIL import Image
+from pypdf.generic import DictionaryObject, NameObject
 
 from skill.mdoc.mdoc_core import pdf
 from skill.mdoc.mdoc_core.errors import MdocError
@@ -99,6 +101,25 @@ class PdfTests(unittest.TestCase):
         finally:
             pdf.tool_paths = original_paths
             pdf._version = original_version
+
+    def test_structural_check_accepts_type3_font_with_embedded_charprocs(self) -> None:
+        class Page(dict):
+            def extract_text(self):
+                return "icon"
+
+        font = DictionaryObject({
+            NameObject("/Subtype"): NameObject("/Type3"),
+            NameObject("/CharProcs"): DictionaryObject({NameObject("/glyph"): DictionaryObject()}),
+            NameObject("/ToUnicode"): DictionaryObject(),
+        })
+        page = Page({"/Resources": {"/Font": {"/F1": font}}})
+        source = self.root / "type3.pdf"
+        source.write_bytes(b"pdf")
+        reader = type("Reader", (), {"pages": [page], "outline": []})()
+        with patch("pypdf.PdfReader", return_value=reader):
+            report = pdf._structural_check(source)
+        self.assertEqual("passed", report["status"])
+        self.assertTrue(report["fonts"]["/F1"]["embedded"])
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "product_version": "1.4.1",
+  "product_version": "1.4.2",
   "platform": "windows-x86_64",
   "policy": {
     "network_requires_confirmation": true,

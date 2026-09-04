@@ -512,7 +512,7 @@ def _structural_check(path: Path, entries: list[dict] | None = None, bookmark_le
                 descendant = descendants[0].get_object()
                 descriptor = descriptor or descendant.get("/FontDescriptor")
             descriptor = descriptor.get_object() if descriptor else {}
-            embedded = any(key in descriptor for key in ("/FontFile", "/FontFile2", "/FontFile3"))
+            embedded = bool(font.get("/CharProcs")) if font.get("/Subtype") == "/Type3" else any(key in descriptor for key in ("/FontFile", "/FontFile2", "/FontFile3"))
             to_unicode = "/ToUnicode" in font
             key = str(font.get("/BaseFont") or name)
             fonts[key] = {"embedded": embedded, "to_unicode": to_unicode}
