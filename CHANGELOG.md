@@ -5,7 +5,7 @@
 - Fixed full-book PDF checks incorrectly rejecting embedded Type3 fonts that store glyph programs in `CharProcs` instead of `FontFile*` streams.
 - Added regression coverage for Type3 font embedding detection.
 - Increased the default PDF JPEG quality from 70 to 75 to preserve text clarity in large screenshots.
-- Reduced the default maximum PDF image width from 1128 to 1024 pixels after full-book size and readability validation.
+- Set the default maximum PDF image width to 1048 pixels and enabled smooth viewer interpolation for generated PDF images after readability validation.
 - Reduced the default PDF top and bottom margins to 36 points.
 - Fixed PDF bookmark hierarchy when a `Summary.md` mixes tabs, two-space indentation, and four-space indentation, and added bookmark-level validation.
 - Allowed PDF tables and code blocks to split at row or line boundaries while keeping each Markdown page's existing document boundary.

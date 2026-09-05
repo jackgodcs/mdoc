@@ -18,7 +18,7 @@ mdoc pdf clean --workspace <workspace>
 
 `pdf init` creates `.mdoc/workspace-draft.yaml`; it never edits workspace authority directly. Apply and confirm the draft through the normal workspace flow. Existing schema-version 1 workspaces remain valid without `pdf`, but PDF commands require it. Per-book `pdf` values override `pdf.defaults` recursively. Every selected locale must contain a valid `book.json` with `title` and `language`.
 
-The default image profile is 180 DPI, maximum width 1024 pixels, minimum source size 20480 bytes, JPEG quality 75, 4:4:4 subsampling, white transparency flattening, and no upscaling. Only generated copies are changed. qpdf recompresses Flate streams at level 9 and generates object streams; it does not optimize images.
+The default image profile is 180 DPI, maximum width 1048 pixels, minimum source size 20480 bytes, JPEG quality 75, 4:4:4 subsampling, white transparency flattening, and no upscaling. Only generated copies are changed. Generated PDF image objects request smooth viewer interpolation. qpdf recompresses Flate streams at level 9 and generates object streams; it does not optimize images.
 
 The default A4 margins are 67 points on the left and right and 36 points on the top and bottom.
 

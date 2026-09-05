@@ -6,7 +6,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from PIL import Image
-from pypdf.generic import DictionaryObject, NameObject
+from pypdf import PdfReader, PdfWriter
+from pypdf.generic import DictionaryObject, NameObject, StreamObject
 
 from skill.mdoc.mdoc_core import pdf
 from skill.mdoc.mdoc_core.errors import MdocError
@@ -148,6 +149,26 @@ class PdfTests(unittest.TestCase):
             report = pdf._structural_check(source)
         self.assertEqual("passed", report["status"])
         self.assertTrue(report["fonts"]["/F1"]["embedded"])
+
+    def test_pdf_images_request_smooth_interpolation(self) -> None:
+        source = self.root / "source.pdf"
+        output = self.root / "output.pdf"
+        writer = PdfWriter()
+        page = writer.add_blank_page(width=100, height=100)
+        image = StreamObject()
+        image.update({NameObject("/Type"): NameObject("/XObject"), NameObject("/Subtype"): NameObject("/Image")})
+        page[NameObject("/Resources")] = DictionaryObject({NameObject("/XObject"): DictionaryObject({NameObject("/Im1"): writer._add_object(image)})})
+        with source.open("wb") as stream:
+            writer.write(stream)
+
+        reader = PdfReader(source)
+        self.assertEqual(1, pdf._enable_image_interpolation(reader))
+        writer = PdfWriter(clone_from=reader)
+        with output.open("wb") as stream:
+            writer.write(stream)
+
+        rewritten = PdfReader(output).pages[0]["/Resources"]["/XObject"]["/Im1"].get_object()
+        self.assertTrue(rewritten["/Interpolate"])
 
     def test_flatten_outline_reports_bookmark_levels(self) -> None:
         parent = object()

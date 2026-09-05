@@ -45,7 +45,7 @@ pdf:
     image_optimization:
       enabled: true
       target_dpi: 180
-      max_width_px: 1024
+      max_width_px: 1048
       min_bytes: 20480
       jpeg_quality: 75
       jpeg_subsampling: "4:4:4"

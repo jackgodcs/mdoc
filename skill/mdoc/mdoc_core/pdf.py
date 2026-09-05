@@ -36,7 +36,7 @@ DEFAULTS = {
         "image_optimization": {
             "enabled": True,
             "target_dpi": 180,
-            "max_width_px": 1024,
+            "max_width_px": 1048,
             "min_bytes": 20480,
             "jpeg_quality": 75,
             "jpeg_subsampling": "4:4:4",
@@ -471,6 +471,34 @@ def _toc_pages(reader, expected: int) -> list[int]:
     return pages
 
 
+def _enable_image_interpolation(reader) -> int:
+    from pypdf.generic import BooleanObject, IndirectObject, NameObject
+
+    seen = set()
+    changed = 0
+
+    def visit(resources) -> None:
+        nonlocal changed
+        resources = resources.get_object() if isinstance(resources, IndirectObject) else resources
+        for reference in (resources.get("/XObject") or {}).values():
+            key = (reference.idnum, reference.generation) if isinstance(reference, IndirectObject) else id(reference)
+            if key in seen:
+                continue
+            seen.add(key)
+            item = reference.get_object() if isinstance(reference, IndirectObject) else reference
+            if item.get("/Subtype") == "/Image":
+                if not bool(item.get("/Interpolate")):
+                    item[NameObject("/Interpolate")] = BooleanObject(True)
+                    changed += 1
+            elif item.get("/Subtype") == "/Form" and item.get("/Resources"):
+                visit(item["/Resources"])
+
+    for page in reader.pages:
+        if page.get("/Resources"):
+            visit(page["/Resources"])
+    return changed
+
+
 def _repair_outline(source: Path, output: Path, entries: list[dict], levels, qpdf: Path, work: Path) -> dict:
     from pypdf import PdfReader, PdfWriter
 
@@ -478,6 +506,7 @@ def _repair_outline(source: Path, output: Path, entries: list[dict], levels, qpd
     toc_pages = _toc_pages(reader, len(entries))
     if len(toc_pages) < len(entries) - 1:
         raise MdocError("MDOC-PDF-TOC-TARGETS-INVALID", "可点击目录目标数量不足。", {"expected": len(entries), "actual": len(toc_pages)})
+    interpolated = _enable_image_interpolation(reader)
     writer = PdfWriter(clone_from=reader)
     writer._root_object.pop("/Outlines", None)
     parents = {}
@@ -494,7 +523,7 @@ def _repair_outline(source: Path, output: Path, entries: list[dict], levels, qpd
     report = _structural_check(output, entries, levels)
     if report["status"] == "failed":
         raise MdocError("MDOC-PDF-BOOKMARK-REPAIR-FAILED", "重建书签后结构检查失败。", {"findings": report["findings"]})
-    return {"toc_targets": len(toc_pages), "bookmarks": count}
+    return {"toc_targets": len(toc_pages), "bookmarks": count, "interpolated_images": interpolated}
 
 
 def _structural_check(path: Path, entries: list[dict] | None = None, bookmark_levels=3) -> dict:

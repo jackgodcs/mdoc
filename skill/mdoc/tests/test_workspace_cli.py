@@ -118,7 +118,7 @@ class WorkspaceCliTests(unittest.TestCase):
         self.assertEqual({"left": 67, "right": 67, "top": 36, "bottom": 36}, draft["pdf"]["defaults"]["margins_pt"])
         self.assertEqual(20480, draft["pdf"]["defaults"]["image_optimization"]["min_bytes"])
         self.assertEqual(75, draft["pdf"]["defaults"]["image_optimization"]["jpeg_quality"])
-        self.assertEqual(1024, draft["pdf"]["defaults"]["image_optimization"]["max_width_px"])
+        self.assertEqual(1048, draft["pdf"]["defaults"]["image_optimization"]["max_width_px"])
         self.assertEqual(3, draft["pdf"]["defaults"]["concurrency"]["builds"])
 
         self.write_draft(valid_workspace())
