@@ -38,7 +38,7 @@ DEFAULTS = {
             "target_dpi": 180,
             "max_width_px": 1128,
             "min_bytes": 20480,
-            "jpeg_quality": 70,
+            "jpeg_quality": 75,
             "jpeg_subsampling": "4:4:4",
             "transparent_background": "white",
             "never_upscale": True,
@@ -92,6 +92,7 @@ def normalized_target(target: str) -> tuple[str, str]:
 def summary_entries(summary: Path) -> list[dict]:
     counters: list[int] = []
     entries: list[dict] = []
+    indents: list[int] = []
     try:
         lines = summary.read_text(encoding="utf-8-sig").splitlines()
     except (OSError, UnicodeError) as exc:
@@ -100,8 +101,12 @@ def summary_entries(summary: Path) -> list[dict]:
         match = SUMMARY_LINK.match(line)
         if not match:
             continue
-        indent = len(match.group("indent").replace("\t", "    "))
-        level = indent // 4
+        indent = len(match.group("indent").expandtabs(4))
+        while indents and indent < indents[-1]:
+            indents.pop()
+        if not indents or indent > indents[-1]:
+            indents.append(indent)
+        level = len(indents) - 1
         while len(counters) <= level:
             counters.append(0)
         counters = counters[: level + 1]
@@ -401,6 +406,10 @@ def _patch_html(intermediate: Path, pages: list[tuple[dict, str]] | None, entrie
 
     text = re.sub(r'<a href="([^"]+)">(.*?)</a>', number_link, text, flags=re.S)
     summary.write_text(text, encoding="utf-8", newline="\n")
+    pdf_css = intermediate / "gitbook" / "pdf.css"
+    if pdf_css.is_file():
+        with pdf_css.open("a", encoding="utf-8", newline="\n") as stream:
+            stream.write("\n.page .section table,.page .section pre{page-break-inside:auto;break-inside:auto}.page .section tr{page-break-inside:avoid;break-inside:avoid}.page .section thead{display:table-header-group}\n")
 
 
 def _calibre_options(config: dict, settings: dict) -> list[str]:
@@ -430,12 +439,12 @@ def _calibre_options(config: dict, settings: dict) -> list[str]:
     return options
 
 
-def _flatten_outline(items):
+def _flatten_outline(items, level=0):
     for item in items:
         if isinstance(item, list):
-            yield from _flatten_outline(item)
+            yield from _flatten_outline(item, level + 1)
         else:
-            yield item
+            yield item, level
 
 
 def _toc_pages(reader, expected: int) -> list[int]:
@@ -520,9 +529,9 @@ def _structural_check(path: Path, entries: list[dict] | None = None, bookmark_le
                 findings.append({"severity": "error", "kind": "font_mapping", "font": key, "page": page_number, "embedded": embedded, "to_unicode": to_unicode})
     toc_pages = _toc_pages(reader, len(entries)) if entries else []
     outline = []
-    for item in _flatten_outline(reader.outline):
+    for item, level in _flatten_outline(reader.outline):
         try:
-            outline.append({"title": item.title, "page": reader.get_destination_page_number(item)})
+            outline.append({"title": item.title, "page": reader.get_destination_page_number(item), "level": level})
         except Exception as exc:
             findings.append({"severity": "error", "kind": "bookmark_target", "title": getattr(item, "title", ""), "error": str(exc)})
     expected_bookmarks = [entry for entry in entries or [] if bookmark_levels == "all" or entry["level"] < bookmark_levels]
@@ -534,6 +543,8 @@ def _structural_check(path: Path, entries: list[dict] | None = None, bookmark_le
         target, entry = expected
         if item["page"] != target:
             findings.append({"severity": "error", "kind": "bookmark_toc_mismatch", "title": entry["title"], "bookmark_page": item["page"], "toc_page": target})
+        if item["level"] != entry["level"]:
+            findings.append({"severity": "error", "kind": "bookmark_level_mismatch", "title": entry["title"], "bookmark_level": item["level"], "summary_level": entry["level"]})
     status = "failed" if any(item["severity"] == "error" for item in findings) else "passed"
     return {"status": status, "path": str(path), "pages": len(reader.pages), "bytes": path.stat().st_size, "toc_targets": len(toc_pages), "bookmarks": len(outline), "fonts": fonts, "findings": findings}
 
@@ -630,7 +641,7 @@ def _build_one(workspace, book_id: str, locale_id: str, mode: str, target: str |
             pages = _materialize_scope(locale_root, selected, source, findings)
             first = selected[0]
             config = _isolated_book_config(locale_root, pages[0][1], f"{json.loads((locale_root / 'book.json').read_text(encoding='utf-8-sig'))['title']} - {first['number']} {first['title']}")
-            (source / "Summary.md").write_text("\n".join(f"{'    ' * max(0, entry['level'] - first['level'])}* [{entry['title']}]({name})" for entry, name in pages[1:]) + "\n", encoding="utf-8", newline="\n")
+            (source / "Summary.md").write_text("\n".join(f"{'    ' * max(0, entry['level'] - first['level'])}* [{entry['title']}]({name})" for entry, name in pages) + "\n", encoding="utf-8", newline="\n")
         _write_json(source / "book.json", config)
         intermediate.mkdir()
         timings = {"honkit": _run([str(tools["node"]), str(tools["honkit"]), "build", str(source), str(intermediate), "--format", "ebook", "--log", "debug", "--timing"], work, logs / "honkit.log")}

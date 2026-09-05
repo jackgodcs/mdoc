@@ -47,7 +47,7 @@ pdf:
       target_dpi: 180
       max_width_px: 1128
       min_bytes: 20480
-      jpeg_quality: 70
+      jpeg_quality: 75
       jpeg_subsampling: "4:4:4"
       transparent_background: white
       never_upscale: true

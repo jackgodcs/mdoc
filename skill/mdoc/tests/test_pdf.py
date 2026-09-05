@@ -32,6 +32,16 @@ class PdfTests(unittest.TestCase):
         self.assertEqual(["2.1", "2.1.1"], [item["number"] for item in pdf.select_entries(entries, "Main/Target.md", "section")])
         self.assertEqual(["2.1"], [item["number"] for item in pdf.select_entries(entries, "Main/Target.md", "page")])
 
+    def test_summary_entries_support_mixed_two_space_and_tab_indentation(self) -> None:
+        summary = self.root / "Summary.md"
+        summary.write_text(
+            "* [Road](Road.md)\n\t* [Analysis](Analysis.md)\n* [Trench](Trench.md)\n  - [Extraction](Extraction.md)\n    - [Pipe](Pipe.md)\n* [Color](Color.md)\n  * [Height](Height.md)\n",
+            encoding="utf-8",
+        )
+        entries = pdf.summary_entries(summary)
+        self.assertEqual([0, 1, 0, 1, 2, 0, 1], [item["level"] for item in entries])
+        self.assertEqual(["1", "1.1", "2", "2.1", "2.1.1", "3", "3.1"], [item["number"] for item in entries])
+
     def test_summary_target_must_be_unique(self) -> None:
         entries = [
             {"path": "Main/A.md", "anchor": "", "level": 0},
@@ -56,6 +66,24 @@ class PdfTests(unittest.TestCase):
         self.assertIn("images/capture.mdoc.jpg", css.read_text(encoding="utf-8"))
         self.assertEqual(1, stats["optimized"])
         self.assertTrue(image.is_file())
+
+    def test_pdf_layout_splits_tables_and_code(self) -> None:
+        intermediate = self.root / "ebook"
+        chapter = intermediate / "Main" / "Chapter.html"
+        css = intermediate / "gitbook" / "pdf.css"
+        chapter.parent.mkdir(parents=True)
+        css.parent.mkdir(parents=True)
+        chapter.write_text('<title>Chapter</title><h1 class="book-chapter book-chapter-2">Chapter</h1>', encoding="utf-8")
+        css.write_text(".page .section table,.page .section pre{page-break-inside:avoid}", encoding="utf-8")
+        (intermediate / "SUMMARY.html").write_text('<a href="Main/Chapter.html">Chapter</a>', encoding="utf-8")
+        entries = [{"number": "1.1", "title": "Chapter", "path": "Main/Chapter.md"}]
+        pdf._patch_html(intermediate, None, entries)
+        layout = css.read_text(encoding="utf-8")
+        self.assertIn("table,.page .section pre{page-break-inside:auto;break-inside:auto}", layout)
+        self.assertIn("tr{page-break-inside:avoid;break-inside:avoid}", layout)
+        options = pdf._calibre_options({"title": "Guide", "language": "en", "pdf": {"fontFamily": "Arial"}}, pdf.DEFAULTS["defaults"])
+        self.assertEqual("descendant-or-self::*[contains(concat(' ', normalize-space(@class), ' '), ' book-chapter ')]", options[options.index("--chapter") + 1])
+        self.assertEqual("pagebreak", options[options.index("--chapter-mark") + 1])
 
     def test_effective_settings_merge_book_override_without_losing_defaults(self) -> None:
         config = {"pdf": {"defaults": pdf.DEFAULTS["defaults"]}}
@@ -120,6 +148,12 @@ class PdfTests(unittest.TestCase):
             report = pdf._structural_check(source)
         self.assertEqual("passed", report["status"])
         self.assertTrue(report["fonts"]["/F1"]["embedded"])
+
+    def test_flatten_outline_reports_bookmark_levels(self) -> None:
+        parent = object()
+        child = object()
+        leaf = object()
+        self.assertEqual([(parent, 0), (child, 1), (leaf, 2)], list(pdf._flatten_outline([parent, [child, [leaf]]])))
 
 
 if __name__ == "__main__":

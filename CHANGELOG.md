@@ -4,6 +4,9 @@
 
 - Fixed full-book PDF checks incorrectly rejecting embedded Type3 fonts that store glyph programs in `CharProcs` instead of `FontFile*` streams.
 - Added regression coverage for Type3 font embedding detection.
+- Increased the default PDF JPEG quality from 70 to 75 to preserve text clarity in large screenshots.
+- Fixed PDF bookmark hierarchy when a `Summary.md` mixes tabs, two-space indentation, and four-space indentation, and added bookmark-level validation.
+- Allowed PDF tables and code blocks to split at row or line boundaries while keeping each Markdown page's existing document boundary.
 
 ## 1.4.1 - 2026-09-04
 

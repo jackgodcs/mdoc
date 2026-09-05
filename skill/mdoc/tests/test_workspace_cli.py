@@ -116,7 +116,7 @@ class WorkspaceCliTests(unittest.TestCase):
         self.run_cli("workspace", "init", "--workspace", str(self.repository), "--json")
         draft = self.read_yaml(self.repository / ".mdoc" / "workspace-draft.yaml")
         self.assertEqual(20480, draft["pdf"]["defaults"]["image_optimization"]["min_bytes"])
-        self.assertEqual(70, draft["pdf"]["defaults"]["image_optimization"]["jpeg_quality"])
+        self.assertEqual(75, draft["pdf"]["defaults"]["image_optimization"]["jpeg_quality"])
         self.assertEqual(3, draft["pdf"]["defaults"]["concurrency"]["builds"])
 
         self.write_draft(valid_workspace())
