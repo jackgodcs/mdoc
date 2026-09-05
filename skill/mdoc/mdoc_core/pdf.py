@@ -32,11 +32,11 @@ TOOL_VERSIONS = {"node": "24.18.0", "honkit": "6.2.2", "calibre": "9.14.0", "qpd
 DEFAULTS = {
     "defaults": {
         "paper_size": "a4",
-        "margins_pt": {"left": 67, "right": 67, "top": 97, "bottom": 72},
+        "margins_pt": {"left": 67, "right": 67, "top": 36, "bottom": 36},
         "image_optimization": {
             "enabled": True,
             "target_dpi": 180,
-            "max_width_px": 1128,
+            "max_width_px": 1024,
             "min_bytes": 20480,
             "jpeg_quality": 75,
             "jpeg_subsampling": "4:4:4",

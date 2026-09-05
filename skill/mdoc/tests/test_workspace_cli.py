@@ -115,8 +115,10 @@ class WorkspaceCliTests(unittest.TestCase):
     def test_workspace_pdf_defaults_are_optional_and_use_twenty_kibibytes(self) -> None:
         self.run_cli("workspace", "init", "--workspace", str(self.repository), "--json")
         draft = self.read_yaml(self.repository / ".mdoc" / "workspace-draft.yaml")
+        self.assertEqual({"left": 67, "right": 67, "top": 36, "bottom": 36}, draft["pdf"]["defaults"]["margins_pt"])
         self.assertEqual(20480, draft["pdf"]["defaults"]["image_optimization"]["min_bytes"])
         self.assertEqual(75, draft["pdf"]["defaults"]["image_optimization"]["jpeg_quality"])
+        self.assertEqual(1024, draft["pdf"]["defaults"]["image_optimization"]["max_width_px"])
         self.assertEqual(3, draft["pdf"]["defaults"]["concurrency"]["builds"])
 
         self.write_draft(valid_workspace())
