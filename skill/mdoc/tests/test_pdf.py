@@ -110,8 +110,13 @@ class PdfTests(unittest.TestCase):
         self.assertRegex(second, r"^Topic-[0-9a-f]{8}-section-en\.pdf$")
         original = pdf._available_memory
         try:
-            pdf._available_memory = lambda: 1
+            pdf._available_memory = lambda: 10 * 1024**3 - 1
             self.assertEqual(1, pdf.effective_jobs(3, False))
+            pdf._available_memory = lambda: 10 * 1024**3
+            self.assertEqual(2, pdf.effective_jobs(3, False))
+            self.assertEqual(1, pdf.effective_jobs(1, False))
+            pdf._available_memory = lambda: 14 * 1024**3
+            self.assertEqual(3, pdf.effective_jobs(3, False))
             self.assertEqual(3, pdf.effective_jobs(3, True))
         finally:
             pdf._available_memory = original

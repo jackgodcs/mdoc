@@ -12,7 +12,7 @@ mdoc pdf check --workspace <workspace> --pdf <file> --book <book> --locale <loca
 mdoc pdf clean --workspace <workspace>
 ```
 
-`page` and `section` scopes require `--target` containing a unique `Summary.md` target. They retain full-book chapter numbers. Batch builds use `--all-locales` or `--all-books`; configured concurrency defaults to three and may be reduced by the memory guard. `--jobs` overrides the configured value and `--force-jobs` bypasses the guard.
+`page` and `section` scopes require `--target` containing a unique `Summary.md` target. They retain full-book chapter numbers. Batch builds use `--all-locales` or `--all-books`; configured concurrency defaults to three and may be reduced by the memory guard, which reserves 2 GiB and budgets 4 GiB per build. `--jobs` overrides the configured value and `--force-jobs` bypasses the guard.
 
 ## Configuration
 

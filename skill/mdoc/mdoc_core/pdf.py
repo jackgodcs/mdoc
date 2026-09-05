@@ -638,7 +638,7 @@ def effective_jobs(requested: int, force: bool) -> int:
     available = _available_memory()
     if available is None:
         return 1
-    return max(1, min(requested, int(max(0, available - 4 * 1024**3) // (8 * 1024**3))))
+    return max(1, min(requested, int(max(0, available - 2 * 1024**3) // (4 * 1024**3))))
 
 
 def _build_one(workspace, book_id: str, locale_id: str, mode: str, target: str | None, output: Path, keep_work: bool, discard_work: bool, strict_resources: bool, verify_pipeline: bool) -> dict:
