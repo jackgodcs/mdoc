@@ -499,7 +499,7 @@ class ImageTextEditor(tk.Toplevel):
         query = self.search_var.get().strip().lower() if hasattr(self, "search_var") else ""
         selected = self.selected_template_id
         self.template_tree.delete(*self.template_tree.get_children())
-        self.templates = {item["id"]: item for item in [*self.store.system_items(), *self.store.all()]}
+        self.templates = {item["id"]: item for item in self.available_templates()}
         groups = (("system-group", "系统项", "system"), ("default-group", "共享模板", "default"), ("manual-group", "我的字符串", "manual"), ("image-group", "我的贴图", IMAGE_TEMPLATE_KIND))
         for group_id, label, kind in groups:
             group = self.template_tree.insert("", "end", iid=group_id, text=label, open=True)
@@ -518,6 +518,9 @@ class ImageTextEditor(tk.Toplevel):
             self.selected_template_id = first
             self.template_tree.selection_set(first)
         self.template_selected()
+
+    def available_templates(self) -> list[dict]:
+        return [*self.store.system_items(), *self.store.all()]
 
     def template_selected(self, _event=None) -> None:
         selected = self.template_tree.selection()

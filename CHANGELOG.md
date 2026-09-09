@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.3 - 2026-09-09
+
+- Added a standalone image editor that reuses the screenshot editor canvas without requiring or modifying an mdoc workspace, task, screenshot acceptance, or publishing state.
+- Added separate PNG-only save operations and reusable project save operations with sidecar JSON, base snapshot, and image-layer assets.
+- Added `Open-mdoc-Image-Editor.cmd` for direct launch, file selection, and drag-and-drop image opening from both the release package and installed skill.
+
 ## 1.4.2 - 2026-09-04
 
 - Fixed full-book PDF checks incorrectly rejecting embedded Type3 fonts that store glyph programs in `CharProcs` instead of `FontFile*` streams.
