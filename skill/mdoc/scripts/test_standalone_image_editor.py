@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import inspect
 import sys
 import tempfile
 import types
@@ -16,6 +17,19 @@ except ImportError:
 
 
 class StandaloneImageEditorTests(unittest.TestCase):
+    def test_full_image_path_is_in_window_title_not_the_toolbar(self) -> None:
+        editor = StandaloneImageEditor.__new__(StandaloneImageEditor)
+        editor.source_path = Path(r"C:\Users\pc\Desktop\a-very-long-image-name-edited.png")
+        editor.image_dirty = False
+        editor.project_dirty = False
+        titles = []
+        editor.title = titles.append
+
+        editor._update_title()
+
+        self.assertIn(str(editor.source_path), titles[-1])
+        self.assertNotIn("path_label", inspect.getsource(StandaloneImageEditor._build))
+
     def test_project_paths_are_strictly_derived_from_the_selected_image(self) -> None:
         image = Path("example.png")
         record, assets = project_paths(image)
@@ -82,7 +96,6 @@ class StandaloneImageEditorTests(unittest.TestCase):
             editor.project_image_path = None
             editor.source_path = root / "source.jpg"
             editor.allow_overwrite_var = types.SimpleNamespace(get=lambda: False)
-            editor.path_label = types.SimpleNamespace(configure=lambda **_kwargs: None)
             editor.project_dirty = True
             editor.image_dirty = editor.dirty = True
             editor._update_title = lambda: None
@@ -120,7 +133,6 @@ class StandaloneImageEditorTests(unittest.TestCase):
             editor.project_image_path = output
             editor.image_output_path = None
             editor.source_path = root / "source.png"
-            editor.path_label = types.SimpleNamespace(configure=lambda **_kwargs: None)
             editor.selected_layer_id = "image"
             editor._view_record = lambda: {"scale": 1.0, "center": [10, 5]}
             editor.image_dirty = editor.project_dirty = editor.dirty = True
@@ -161,7 +173,6 @@ class StandaloneImageEditorTests(unittest.TestCase):
             editor.project_image_path = output
             editor.image_output_path = None
             editor.source_path = root / "source.png"
-            editor.path_label = types.SimpleNamespace(configure=lambda **_kwargs: None)
             editor.selected_layer_id = None
             editor._view_record = lambda: {"scale": 1.0, "center": [10, 5]}
             editor.image_dirty = editor.project_dirty = editor.dirty = True

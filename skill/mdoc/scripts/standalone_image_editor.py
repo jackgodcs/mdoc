@@ -145,8 +145,6 @@ class StandaloneImageEditor(ImageTextEditor):
         top.pack(fill="x")
         ttk.Button(top, text="打开图片", command=self.open_image).pack(side="left")
         ttk.Button(top, text="导入共享模板", command=self.import_shared_templates).pack(side="left", padx=(4, 0))
-        self.path_label = ttk.Label(top, text=str(self.source_path), anchor="w")
-        self.path_label.pack(side="left", fill="x", expand=True, padx=(8, 12))
         ttk.Button(top, text="撤销", command=self.undo).pack(side="left")
         ttk.Button(top, text="重做", command=self.redo).pack(side="left", padx=(4, 12))
         self.preview_button = ttk.Button(top, text="预览结果", command=self.toggle_preview)
@@ -205,7 +203,7 @@ class StandaloneImageEditor(ImageTextEditor):
         status = " *" if self.image_dirty else ""
         if self.project_dirty:
             status += " [工程未保存]"
-        self.title(f"mdoc Image Editor - {self.source_path.name}{status}")
+        self.title(f"mdoc Image Editor - {self.source_path}{status}")
 
     def available_templates(self) -> list[dict]:
         return [*self.store.system_items(), *self.session_templates, *self.store.all()]
@@ -292,7 +290,6 @@ class StandaloneImageEditor(ImageTextEditor):
             return False
         self.image_output_path = output
         self.source_path = output
-        self.path_label.configure(text=str(output))
         self.image_dirty = False
         self.dirty = self.project_dirty
         self._update_title()
@@ -337,7 +334,6 @@ class StandaloneImageEditor(ImageTextEditor):
         })
         self.image_output_path = self.project_image_path = output
         self.source_path = output
-        self.path_label.configure(text=str(output))
         self.image_dirty = self.project_dirty = self.dirty = False
         self._update_title()
         messagebox.showinfo("mdoc", f"工程已保存：\n{output}\n{record_path}", parent=self)
