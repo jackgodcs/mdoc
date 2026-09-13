@@ -2,6 +2,8 @@
 
 ## 1.4.4 - 2026-09-13
 
+- Reduced page and section PDF build time by materializing only selected Markdown files and their referenced images, styles, and fonts instead of the complete locale resource tree.
+- Added prepare, image, outline, structural-check, output, cleanup, and total durations to workspace PDF build reports.
 - Fixed page and section PDF builds for deeply nested `Summary.md` entries by rebuilding bookmarks from scope-relative levels while preserving full-book chapter numbers.
 - Added `--summary-line` selection for repeated Summary targets and scope-aware `pdf check` validation.
 - Added standalone Markdown PDF builds with `mdoc pdf build --file`, optional language, font, and PDF configuration overrides, unrestricted local relative resources, and atomic output replacement.

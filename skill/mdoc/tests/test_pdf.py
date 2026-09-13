@@ -111,6 +111,16 @@ class PdfTests(unittest.TestCase):
         self.assertRegex(copied_css.read_text(encoding="utf-8"), r"url\(['\"]?[0-9a-f]{12}-capture\.png")
         self.assertEqual("out_of_scope_link", findings[0]["kind"])
 
+    def test_scoped_materialization_copies_only_referenced_resources(self) -> None:
+        locale = self.root / "locale"; source = self.root / "book"; page = locale / "Main" / "Page.md"; image = locale / "images" / "used.png"; css = locale / "styles" / "manual.css"; font = locale / "fonts" / "manual.woff2"
+        page.parent.mkdir(parents=True); image.parent.mkdir(); css.parent.mkdir(); font.parent.mkdir(); source.mkdir()
+        page.write_text('# Page\n\n![Used](../images/used.png)\n<link href="../styles/manual.css">\n', encoding="utf-8")
+        image.write_bytes(b"used"); (locale / "images" / "unused.png").write_bytes(b"unused"); font.write_bytes(b"font"); css.write_text("@font-face{src:url('../fonts/manual.woff2')}", encoding="utf-8")
+        entries = [{"path": "Main/Page.md", "level": 0, "number": "1", "title": "Page"}]; findings = []; pages = pdf._materialize_scope(locale, entries, source, findings)
+        pdf._materialize_scope_resources(locale, source, pages, findings, ["styles/manual.css"])
+        self.assertTrue((source / "images" / "used.png").is_file()); self.assertTrue((source / "styles" / "manual.css").is_file()); self.assertTrue((source / "fonts" / "manual.woff2").is_file())
+        self.assertFalse((source / "images" / "unused.png").exists()); self.assertEqual([], findings)
+
     def test_standalone_build_replaces_output_only_after_success(self) -> None:
         source = self.root / "Page.md"; source.write_text("# Page\n\nContent.\n", encoding="utf-8")
         output = self.root / "Page.pdf"; output.write_bytes(b"old")

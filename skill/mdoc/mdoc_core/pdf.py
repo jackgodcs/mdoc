@@ -460,6 +460,36 @@ def _materialize_scope(locale_root: Path, entries: list[dict], work: Path, findi
     return pages
 
 
+def _materialize_scope_resources(locale_root: Path, work: Path, pages: list[tuple[dict, str]], findings: list[dict], extra: list[str] | None = None) -> None:
+    root = locale_root.resolve(); documents = [(work / name, root) for _entry, name in pages]; pending = [(target, root) for target in extra or []]; copied = set()
+    link = re.compile(r"!?\[[^]]*]\(([^)]+)\)")
+    while documents:
+        document, base = documents.pop()
+        try: text = document.read_text(encoding="utf-8")
+        except (OSError, UnicodeError): continue
+        pattern = CSS_RESOURCE if document.suffix.casefold() == ".css" else HTML_RESOURCE
+        pending.extend((match.group("target"), base) for match in pattern.finditer(text))
+        if document.suffix.casefold() in {".md", ".markdown"}: pending.extend((match.group(1), base) for match in link.finditer(text))
+    while pending:
+        target, base = pending.pop(); path, _fragment = normalized_target(target)
+        if not path or urlsplit(target).scheme or target.startswith(("//", "\\", "/")) or path.casefold().endswith((".md", ".markdown")): continue
+        candidate = (base / path).resolve()
+        try: relative = candidate.relative_to(root)
+        except ValueError:
+            findings.append({"kind": "unsafe_resource", "path": str(candidate)}); continue
+        if relative in copied: continue
+        if not candidate.is_file():
+            findings.append({"kind": "missing_resource", "path": str(candidate)}); continue
+        destination = work / relative; destination.parent.mkdir(parents=True, exist_ok=True)
+        try: os.link(candidate, destination)
+        except OSError as exc:
+            findings.append({"kind": "resource_copy_failed", "path": str(candidate), "error": str(exc)}); continue
+        copied.add(relative)
+        if candidate.suffix.casefold() == ".css":
+            try: pending.extend((match.group("target"), candidate.parent) for match in CSS_RESOURCE.finditer(candidate.read_text(encoding="utf-8")))
+            except (OSError, UnicodeError): pass
+
+
 def _standalone_resource(source: Path, target: str, work: Path, findings: list[dict], copied: dict[Path, Path], destination_parent: Path) -> str | None:
     split = urlsplit(target); raw = unquote(split.path)
     if split.scheme in {"http", "https", "data"} or target.startswith("#"): return target
@@ -773,6 +803,7 @@ def effective_jobs(requested: int, force: bool) -> int:
 
 
 def _build_one(workspace, book_id: str, locale_id: str, mode: str, target: str | None, output: Path, keep_work: bool, discard_work: bool, strict_resources: bool, verify_pipeline: bool, summary_line: int | None = None) -> dict:
+    started = time.monotonic()
     tools = tool_paths()
     missing = [name for name, path in tools.items() if not path.is_file()]
     if missing:
@@ -793,30 +824,33 @@ def _build_one(workspace, book_id: str, locale_id: str, mode: str, target: str |
     logs = work / "logs"
     work.mkdir(parents=True)
     findings = []
-    status = "failed"
+    status = "failed"; report = None
     try:
+        stage = time.monotonic()
         pages = None
         if mode == "book":
             _safe_hardlink_tree(locale_root, source, findings, {"book.json"})
             config = _isolated_book_config(locale_root)
         else:
-            excluded = {"book.json", book["navigation"]["summary"], *(entry["path"] for entry in selected)}
-            _safe_hardlink_tree(locale_root, source, findings, excluded)
+            source.mkdir()
             pages = _materialize_scope(locale_root, selected, source, findings)
             first = selected[0]
             config = _isolated_book_config(locale_root, pages[0][1], f"{json.loads((locale_root / 'book.json').read_text(encoding='utf-8-sig'))['title']} - {first['number']} {first['title']}")
+            _materialize_scope_resources(locale_root, source, pages, findings, [value for value in config.get("styles", {}).values() if isinstance(value, str)])
             (source / "Summary.md").write_text("\n".join(f"{'    ' * max(0, entry['level'] - first['level'])}* [{entry['title']}]({name})" for entry, name in pages) + "\n", encoding="utf-8", newline="\n")
         _write_json(source / "book.json", config)
         intermediate.mkdir()
-        timings = {"honkit": _run([str(tools["node"]), str(tools["honkit"]), "build", str(source), str(intermediate), "--format", "ebook", "--log", "debug", "--timing"], work, logs / "honkit.log")}
+        timings = {"prepare": round(time.monotonic() - stage, 3), "honkit": _run([str(tools["node"]), str(tools["honkit"]), "build", str(source), str(intermediate), "--format", "ebook", "--log", "debug", "--timing"], work, logs / "honkit.log")}
         _patch_html(intermediate, pages, selected)
+        stage = time.monotonic()
         image_stats = optimize_generated_images(intermediate, settings["image_optimization"])
+        timings["images"] = round(time.monotonic() - stage, 3)
         findings.extend(image_stats["findings"])
         raw = work / "raw.pdf"
         outlined = work / "outlined.pdf"
         optimized = work / "optimized.pdf"
         timings["calibre"] = _run([str(tools["calibre"]), str(intermediate / "SUMMARY.html"), str(raw), *_calibre_options(config, settings)], work, logs / "calibre.log")
-        outline = _repair_outline(raw, outlined, selected, settings["bookmarks"]["levels"], tools["qpdf"], work)
+        stage = time.monotonic(); outline = _repair_outline(raw, outlined, selected, settings["bookmarks"]["levels"], tools["qpdf"], work); timings["outline"] = round(time.monotonic() - stage, 3)
         candidate = outlined
         if settings["optimization"]["enabled"]:
             command = [str(tools["qpdf"]), str(outlined), str(optimized)]
@@ -828,7 +862,7 @@ def _build_one(workspace, book_id: str, locale_id: str, mode: str, target: str |
                 candidate = optimized
             except MdocError as exc:
                 findings.append({"kind": "qpdf_optimization_failed", "error": exc.message})
-        structural = _structural_check(candidate, selected, settings["bookmarks"]["levels"])
+        stage = time.monotonic(); structural = _structural_check(candidate, selected, settings["bookmarks"]["levels"]); timings["check"] = round(time.monotonic() - stage, 3)
         verification = _pipeline_comparison(outlined, candidate) if verify_pipeline and candidate != outlined else None
         if verification and not verification["passed"]:
             structural["findings"].append({"severity": "error", "kind": "pipeline_verification", "details": verification})
@@ -842,19 +876,23 @@ def _build_one(workspace, book_id: str, locale_id: str, mode: str, target: str |
         resource_findings = [item for item in findings if item["kind"] in {"missing_resource", "unsafe_resource", "resource_copy_failed"}]
         if strict_resources and resource_findings:
             raise MdocError("MDOC-PDF-RESOURCE-STRICT", "严格资源模式下存在资源 finding。", {"findings": resource_findings})
-        output.parent.mkdir(parents=True, exist_ok=True)
+        stage = time.monotonic(); output.parent.mkdir(parents=True, exist_ok=True)
         temporary = output.with_name(f".{output.name}.{os.getpid()}.tmp")
         shutil.copy2(candidate, temporary)
         os.replace(temporary, output)
+        timings["output"] = round(time.monotonic() - stage, 3)
         status = "passed_with_findings" if findings else "passed"
         report = {"schema_version": 1, "status": status, "book": book_id, "locale": locale_id, "scope": mode, "target": target, "summary_line": summary_line, "output": str(output), "work": str(work), "entries": len(selected), "settings": settings, "images": image_stats, "outline": outline, "check": structural, "findings": findings, "notices": notices, "timings": timings, "pipeline_verification": verification}
-        _write_json(output.with_suffix(".build.json"), report)
         return report
     finally:
+        cleanup = time.monotonic()
         if status.startswith("passed") and not keep_work:
             shutil.rmtree(work, ignore_errors=True)
         elif status == "failed" and discard_work:
             shutil.rmtree(work, ignore_errors=True)
+        if report:
+            report["timings"]["cleanup"] = round(time.monotonic() - cleanup, 3); report["timings"]["total"] = round(time.monotonic() - started, 3)
+            _write_json(output.with_suffix(".build.json"), report)
 
 
 def build(workspace, book_id: str | None, locale_id: str | None, mode: str, target: str | None, output: Path | None, all_locales: bool, all_books: bool, jobs: int | None, force_jobs: bool, overwrite: bool, no_overwrite: bool, interactive: bool, keep_work: bool, discard_work: bool, strict_resources: bool, verify_pipeline: bool, summary_line: int | None = None) -> dict:
