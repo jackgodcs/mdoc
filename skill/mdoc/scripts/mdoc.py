@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""mdoc 1.4.3 command line entry point."""
+"""mdoc 1.4.4 command line entry point."""
 from __future__ import annotations
 
 import argparse
@@ -124,8 +124,8 @@ def parser():
     pdf_group = sub.add_parser("pdf"); pdf_actions = pdf_group.add_subparsers(dest="pdf_action", required=True)
     pdf_init = pdf_actions.add_parser("init"); pdf_init.add_argument("--workspace", type=Path, required=True)
     pdf_doctor = pdf_actions.add_parser("doctor"); pdf_doctor.add_argument("--workspace", type=Path)
-    pdf_build = pdf_actions.add_parser("build"); pdf_build.add_argument("--workspace", type=Path); pdf_build.add_argument("--book"); pdf_build.add_argument("--locale"); pdf_build.add_argument("--scope", choices=("page", "section", "book"), default="book"); pdf_build.add_argument("--target"); pdf_build.add_argument("--all-locales", action="store_true"); pdf_build.add_argument("--all-books", action="store_true"); pdf_build.add_argument("--output", type=Path); pdf_build.add_argument("--jobs", type=int); pdf_build.add_argument("--force-jobs", action="store_true"); pdf_build.add_argument("--yes", action="store_true"); pdf_build.add_argument("--no-overwrite", action="store_true"); pdf_build.add_argument("--keep-work", action="store_true"); pdf_build.add_argument("--discard-work", action="store_true"); pdf_build.add_argument("--strict-resources", action="store_true"); pdf_build.add_argument("--verify-pipeline", action="store_true")
-    pdf_check = pdf_actions.add_parser("check"); pdf_check.add_argument("--workspace", type=Path); pdf_check.add_argument("--pdf", type=Path, required=True); pdf_check.add_argument("--book"); pdf_check.add_argument("--locale")
+    pdf_build = pdf_actions.add_parser("build"); pdf_build.add_argument("--workspace", type=Path); pdf_build.add_argument("--file", type=Path); pdf_build.add_argument("--book"); pdf_build.add_argument("--locale"); pdf_build.add_argument("--scope", choices=("page", "section", "book"), default="book"); pdf_build.add_argument("--target"); pdf_build.add_argument("--summary-line", type=int); pdf_build.add_argument("--all-locales", action="store_true"); pdf_build.add_argument("--all-books", action="store_true"); pdf_build.add_argument("--output", type=Path); pdf_build.add_argument("--pdf-config", type=Path); pdf_build.add_argument("--language", choices=("zh-hans", "en", "ja")); pdf_build.add_argument("--font-family"); pdf_build.add_argument("--jobs", type=int); pdf_build.add_argument("--force-jobs", action="store_true"); pdf_build.add_argument("--yes", action="store_true"); pdf_build.add_argument("--no-overwrite", action="store_true"); work_options = pdf_build.add_mutually_exclusive_group(); work_options.add_argument("--keep-work", action="store_true"); work_options.add_argument("--discard-work", action="store_true"); pdf_build.add_argument("--strict-resources", action="store_true"); pdf_build.add_argument("--verify-pipeline", action="store_true")
+    pdf_check = pdf_actions.add_parser("check"); pdf_check.add_argument("--workspace", type=Path); pdf_check.add_argument("--pdf", type=Path, required=True); pdf_check.add_argument("--book"); pdf_check.add_argument("--locale"); pdf_check.add_argument("--scope", choices=("page", "section", "book"), default="book"); pdf_check.add_argument("--target"); pdf_check.add_argument("--summary-line", type=int)
     pdf_clean = pdf_actions.add_parser("clean"); pdf_clean.add_argument("--workspace", type=Path)
     return root
 
@@ -165,22 +165,32 @@ def main():
         else:
             if args.pdf_action == "init":
                 result = pdf.init(args.workspace)
+            elif args.pdf_action == "build" and args.file:
+                incompatible = [name for name in ("workspace", "book", "locale", "target") if getattr(args, name)]
+                incompatible.extend(name for name in ("all_locales", "all_books", "force_jobs") if getattr(args, name))
+                if args.scope != "book" or args.summary_line is not None or args.jobs is not None or args.yes: incompatible.append("workspace_build_option")
+                if incompatible: raise MdocError("MDOC-PDF-FILE-OPTION-CONFLICT", "--file 不能与工作区 PDF 构建参数同时使用。", {"options": incompatible})
+                result = pdf.build_file(args.file, args.output, args.pdf_config, args.language, args.font_family, args.no_overwrite, args.keep_work, args.discard_work, args.strict_resources, args.verify_pipeline)
             else:
+                if args.pdf_action == "build" and (args.pdf_config or args.language or args.font_family): raise MdocError("MDOC-PDF-WORKSPACE-OPTION-CONFLICT", "--pdf-config、--language 和 --font-family 仅适用于 --file。")
                 pdf_workspace = context(args)
                 if args.pdf_action == "doctor":
                     result = pdf.doctor(pdf_workspace)
                 elif args.pdf_action == "check":
-                    result = pdf.check(pdf_workspace, args.pdf, args.book, args.locale)
+                    if args.scope != "book" and not args.target: raise MdocError("MDOC-PDF-TARGET-REQUIRED", "page 和 section 范围需要 --target。")
+                    if args.scope == "book" and args.summary_line is not None: raise MdocError("MDOC-PDF-SUMMARY-LINE-SCOPE-INVALID", "--summary-line 仅适用于 page 和 section 范围。")
+                    result = pdf.check(pdf_workspace, args.pdf, args.book, args.locale, args.scope, args.target, args.summary_line)
                 elif args.pdf_action == "clean":
                     result = pdf.clean(pdf_workspace)
                 else:
                     if args.scope != "book" and not args.target:
                         raise MdocError("MDOC-PDF-TARGET-REQUIRED", "page 和 section 范围需要 --target。")
+                    if args.scope == "book" and args.summary_line is not None: raise MdocError("MDOC-PDF-SUMMARY-LINE-SCOPE-INVALID", "--summary-line 仅适用于 page 和 section 范围。")
                     if args.output and (args.all_books or args.all_locales):
                         raise MdocError("MDOC-PDF-OUTPUT-BATCH-INVALID", "批量构建不能指定单一 --output。")
                     if args.yes and args.no_overwrite:
                         raise MdocError("MDOC-PDF-OVERWRITE-OPTION-CONFLICT", "--yes 与 --no-overwrite 不能同时使用。")
-                    result = pdf.build(pdf_workspace, args.book, args.locale, args.scope, args.target, args.output.resolve() if args.output else None, args.all_locales, args.all_books, args.jobs, args.force_jobs, args.yes, args.no_overwrite, not args.json and sys.stdin.isatty(), args.keep_work, args.discard_work, args.strict_resources, args.verify_pipeline)
+                    result = pdf.build(pdf_workspace, args.book, args.locale, args.scope, args.target, args.output.resolve() if args.output else None, args.all_locales, args.all_books, args.jobs, args.force_jobs, args.yes, args.no_overwrite, not args.json and sys.stdin.isatty(), args.keep_work, args.discard_work, args.strict_resources, args.verify_pipeline, args.summary_line)
         emit(result, args.json)
         return result.get("exit_code", 0)
     except MdocError as exc:

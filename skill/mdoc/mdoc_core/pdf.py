@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -118,19 +119,98 @@ def summary_entries(summary: Path) -> list[dict]:
     return entries
 
 
-def select_entries(entries: list[dict], target: str, mode: str) -> list[dict]:
+def select_entries(entries: list[dict], target: str, mode: str, summary_line: int | None = None, include_notices: bool = False):
     target_path, target_anchor = normalized_target(target)
     matches = [entry for entry in entries if entry["path"].casefold() == target_path.casefold() and entry["anchor"] == target_anchor]
-    if len(matches) != 1:
-        raise MdocError("MDOC-PDF-SCOPE-AMBIGUOUS", f"PDF 范围必须在 Summary 中唯一匹配：{target}", {"matches": len(matches)})
-    selected = matches[0]
+    if summary_line is not None:
+        selected = next((entry for entry in matches if entry.get("line") == summary_line), None)
+        if not selected: raise MdocError("MDOC-PDF-SUMMARY-LINE-MISMATCH", f"Summary 行号与 PDF 目标不匹配：{summary_line}", {"target": target, "matches": [entry.get("line") for entry in matches]})
+    elif matches:
+        selected = matches[0]
+    else:
+        raise MdocError("MDOC-PDF-TARGET-NOT-IN-SUMMARY", f"PDF 目标未在 Summary 中引用：{target}")
+    notices = [] if len(matches) < 2 or summary_line is not None else [{"kind": "summary_target_multiple_matches", "target": target, "matches": len(matches), "selected_line": selected.get("line")}]
     if mode == "page":
-        return [selected]
+        result = [selected]
+        return (result, notices) if include_notices else result
     start = entries.index(selected)
     end = start + 1
     while end < len(entries) and entries[end]["level"] > selected["level"]:
         end += 1
-    return entries[start:end]
+    result = entries[start:end]
+    return (result, notices) if include_notices else result
+
+
+def scoped_entries(entries: list[dict]) -> list[dict]:
+    base = entries[0]["level"] if entries else 0
+    return [{**entry, "level": entry["level"] - base} for entry in entries]
+
+
+def _content_lines(path: Path) -> list[str]:
+    lines = path.read_text(encoding="utf-8-sig").splitlines(); result = []; front_matter = bool(lines and lines[0].strip() == "---"); fenced = False; comment = False
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if front_matter:
+            if index and stripped == "---": front_matter = False
+            continue
+        if "<!--" in stripped: comment = True
+        if comment:
+            if "-->" in stripped: comment = False
+            continue
+        if stripped.startswith(("```", "~~~")): fenced = not fenced; continue
+        if fenced or not stripped or re.fullmatch(r"!?\[[^]]*]\([^)]+\)", stripped) or re.fullmatch(r"<[^>]+>", stripped): continue
+        result.append(stripped)
+        if len(result) == 5: break
+    return result
+
+
+def standalone_title(path: Path) -> str:
+    for line in _content_lines(path):
+        match = re.match(r"^#(?!#)\s+(.+?)\s*#*\s*$", line)
+        if match:
+            title = re.sub(r"[*_~`]", "", re.sub(r"!?\[([^]]+)]\([^)]+\)", r"\1", match.group(1))).strip()
+            if title: return title
+    return path.stem
+
+
+def standalone_language(path: Path) -> str:
+    text = "\n".join(_content_lines(path))
+    if re.search(r"[\u3040-\u30ff]", text): return "ja"
+    if re.search(r"[\u3400-\u9fff]", text): return "zh-hans"
+    return "en"
+
+
+def standalone_settings(path: Path | None) -> tuple[dict, list[dict]]:
+    settings = copy.deepcopy(DEFAULTS["defaults"]); notices = []
+    if not path: return settings, notices
+    try: override = read_yaml(path) or {}
+    except Exception as exc: raise MdocError("MDOC-PDF-CONFIG-INVALID", f"PDF 配置无法读取：{path}", {"cause": str(exc)}) from exc
+    if not isinstance(override, dict): raise MdocError("MDOC-PDF-CONFIG-INVALID", "PDF 配置顶层必须是对象。")
+    allowed = {"paper_size", "margins_pt", "image_optimization", "optimization", "bookmarks"}
+    filtered = {}
+    for key, value in override.items():
+        if key not in allowed: notices.append({"kind": "pdf_config_unknown_field", "field": key}); continue
+        if isinstance(value, dict) and isinstance(settings.get(key), dict):
+            filtered[key] = {}
+            for child, child_value in value.items():
+                if child in settings[key]: filtered[key][child] = child_value
+                else: notices.append({"kind": "pdf_config_unknown_field", "field": f"{key}.{child}"})
+        else: filtered[key] = value
+    settings = _deep_merge(settings, filtered)
+    validators = {
+        "paper_size": lambda value: isinstance(value, str) and bool(value.strip()),
+        "margins_pt": lambda value: isinstance(value, dict) and all(isinstance(value.get(name), (int, float)) and not isinstance(value.get(name), bool) and value[name] >= 0 for name in ("left", "right", "top", "bottom")),
+        "image_optimization": lambda value: isinstance(value, dict) and isinstance(value.get("enabled"), bool) and isinstance(value.get("target_dpi"), int) and value["target_dpi"] >= 72 and isinstance(value.get("max_width_px"), int) and value["max_width_px"] >= 1 and isinstance(value.get("min_bytes"), int) and value["min_bytes"] >= 0 and isinstance(value.get("jpeg_quality"), int) and 1 <= value["jpeg_quality"] <= 100 and value.get("jpeg_subsampling") in {"4:4:4", "4:2:2", "4:2:0"} and isinstance(value.get("transparent_background"), str) and bool(value["transparent_background"].strip()) and isinstance(value.get("never_upscale"), bool),
+        "optimization": lambda value: isinstance(value, dict) and isinstance(value.get("enabled"), bool) and isinstance(value.get("recompress_flate"), bool) and isinstance(value.get("compression_level"), int) and 0 <= value["compression_level"] <= 9 and value.get("object_streams") in {"disable", "preserve", "generate"},
+        "bookmarks": lambda value: isinstance(value, dict) and (value.get("levels") == "all" or isinstance(value.get("levels"), int) and value["levels"] >= 1),
+    }
+    invalid = [name for name, validate in validators.items() if not validate(settings.get(name))]
+    if invalid: raise MdocError("MDOC-PDF-CONFIG-INVALID", "PDF 配置包含无效字段值。", {"fields": invalid})
+    return settings, notices
+
+
+def standalone_output(source: Path, output: Path | None) -> Path:
+    return output.resolve() if output else Path(tempfile.gettempdir()) / "mdoc" / source.with_suffix(".pdf").name
 
 
 def _local_reference(document: Path, target: str, root: Path) -> Path | None:
@@ -380,6 +460,46 @@ def _materialize_scope(locale_root: Path, entries: list[dict], work: Path, findi
     return pages
 
 
+def _standalone_resource(source: Path, target: str, work: Path, findings: list[dict], copied: dict[Path, Path], destination_parent: Path) -> str | None:
+    split = urlsplit(target); raw = unquote(split.path)
+    if split.scheme in {"http", "https", "data"} or target.startswith("#"): return target
+    if split.scheme == "file": candidate = Path(unquote(split.path.lstrip("/")) if split.netloc in {"", "localhost"} else f"//{split.netloc}{unquote(split.path)}")
+    elif re.match(r"^[A-Za-z]:[\\/]", target) or target.startswith(("\\", "//")): candidate = Path(target)
+    elif split.scheme: return target
+    else: candidate = (source.parent / raw).resolve()
+    candidate = candidate.resolve()
+    if candidate.suffix.casefold() in {".md", ".markdown"}:
+        findings.append({"kind": "out_of_scope_link", "page": str(source), "target": target}); return None
+    if not candidate.is_file():
+        findings.append({"kind": "missing_resource", "page": str(source), "target": target, "path": str(candidate)}); return target
+    if candidate in copied: return os.path.relpath(copied[candidate], destination_parent).replace("\\", "/") + (f"#{split.fragment}" if split.fragment else "")
+    import hashlib
+    name = f"{hashlib.sha256(str(candidate).casefold().encode('utf-8')).hexdigest()[:12]}-{candidate.name}"; destination = work / "resources" / name; destination.parent.mkdir(parents=True, exist_ok=True)
+    try: os.link(candidate, destination)
+    except OSError: shutil.copy2(candidate, destination)
+    copied[candidate] = destination
+    if candidate.suffix.casefold() == ".css":
+        try:
+            text = candidate.read_text(encoding="utf-8")
+            text = CSS_RESOURCE.sub(lambda match: f"{match.group('prefix')}{_standalone_resource(candidate, match.group('target'), work, findings, copied, destination.parent) or match.group('target')}{match.group('suffix')}", text)
+            destination.write_text(text, encoding="utf-8", newline="\n")
+        except (OSError, UnicodeError) as exc: findings.append({"kind": "resource_copy_failed", "path": str(candidate), "error": str(exc)})
+    return os.path.relpath(destination, destination_parent).replace("\\", "/") + (f"#{split.fragment}" if split.fragment else "")
+
+
+def _materialize_standalone(path: Path, work: Path, findings: list[dict]) -> Path:
+    try: text = path.read_text(encoding="utf-8-sig")
+    except (OSError, UnicodeError) as exc: raise MdocError("MDOC-PDF-FILE-INVALID", f"Markdown 文件无法读取：{path}", {"cause": str(exc)}) from exc
+    copied = {}
+    link = re.compile(r"(!?)\[([^]]*)]\(([^)]+)\)")
+    def rewrite(match: re.Match) -> str:
+        marker, label, target = match.groups(); rewritten = _standalone_resource(path, target, work, findings, copied, work)
+        return label if rewritten is None and not marker else match.group(0) if rewritten is None else f"{marker}[{label}]({rewritten})"
+    text = link.sub(rewrite, text)
+    text = HTML_RESOURCE.sub(lambda match: f"{match.group('prefix')}{_standalone_resource(path, match.group('target'), work, findings, copied, work) or '#'}{match.group('suffix')}", text)
+    page = work / "Page.md"; page.write_text(text, encoding="utf-8", newline="\n"); return page
+
+
 def _patch_html(intermediate: Path, pages: list[tuple[dict, str]] | None, entries: list[dict]) -> None:
     if pages is None:
         targets = [(entry, Path(entry["path"]).with_suffix(".html").as_posix()) for entry in entries]
@@ -526,6 +646,13 @@ def _repair_outline(source: Path, output: Path, entries: list[dict], levels, qpd
     return {"toc_targets": len(toc_pages), "bookmarks": count, "interpolated_images": interpolated}
 
 
+def _standalone_outline(source: Path, output: Path, title: str) -> dict:
+    from pypdf import PdfReader, PdfWriter
+    reader = PdfReader(str(source)); interpolated = _enable_image_interpolation(reader); writer = PdfWriter(clone_from=reader); writer._root_object.pop("/Outlines", None); writer.add_outline_item(title, 0)
+    with output.open("wb") as stream: writer.write(stream)
+    return {"bookmarks": 1, "interpolated_images": interpolated}
+
+
 def _structural_check(path: Path, entries: list[dict] | None = None, bookmark_levels=3) -> dict:
     try:
         from pypdf import PdfReader
@@ -592,15 +719,19 @@ def _pipeline_comparison(before: Path, after: Path) -> dict:
     return result
 
 
-def check(workspace, path: Path, book_id: str | None = None, locale_id: str | None = None) -> dict:
+def check(workspace, path: Path, book_id: str | None = None, locale_id: str | None = None, mode: str = "book", target: str | None = None, summary_line: int | None = None) -> dict:
     entries = None
     levels = 3
+    if mode != "book" and (not book_id or not locale_id): raise MdocError("MDOC-PDF-CHECK-SCOPE-CONTEXT-REQUIRED", "局部 PDF 检查需要同时指定 --book 和 --locale。")
     if book_id and locale_id:
         book = workspace.config["books"].get(book_id)
         if not book or locale_id not in book["locales"]:
             raise MdocError("MDOC-PDF-TARGET-INVALID", f"未知书册或语言：{book_id}/{locale_id}")
         locale_root = workspace.repository / book["root"] / book["locales"][locale_id]["root"]
         entries = summary_entries(locale_root / book["navigation"]["summary"])
+        if mode != "book":
+            if not target: raise MdocError("MDOC-PDF-TARGET-REQUIRED", "page 和 section 范围需要 --target。")
+            entries = scoped_entries(select_entries(entries, target, mode, summary_line))
         levels = effective_settings(workspace.config, book)["bookmarks"]["levels"]
     return _structural_check(path.resolve(), entries, levels)
 
@@ -641,7 +772,7 @@ def effective_jobs(requested: int, force: bool) -> int:
     return max(1, min(requested, int(max(0, available - 2 * 1024**3) // (4 * 1024**3))))
 
 
-def _build_one(workspace, book_id: str, locale_id: str, mode: str, target: str | None, output: Path, keep_work: bool, discard_work: bool, strict_resources: bool, verify_pipeline: bool) -> dict:
+def _build_one(workspace, book_id: str, locale_id: str, mode: str, target: str | None, output: Path, keep_work: bool, discard_work: bool, strict_resources: bool, verify_pipeline: bool, summary_line: int | None = None) -> dict:
     tools = tool_paths()
     missing = [name for name, path in tools.items() if not path.is_file()]
     if missing:
@@ -649,7 +780,11 @@ def _build_one(workspace, book_id: str, locale_id: str, mode: str, target: str |
     book = workspace.config["books"][book_id]
     locale_root = (workspace.repository / book["root"] / book["locales"][locale_id]["root"]).resolve()
     entries = summary_entries(locale_root / book["navigation"]["summary"])
-    selected = entries if mode == "book" else select_entries(entries, target or "", mode)
+    notices = []
+    if mode == "book": selected = entries
+    else:
+        selected, notices = select_entries(entries, target or "", mode, summary_line, True)
+        selected = scoped_entries(selected)
     settings = effective_settings(workspace.config, book)
     run_id = f"{int(time.time())}-{uuid.uuid4().hex[:8]}"
     work = workspace.control / "cache" / "pdf-builds" / run_id
@@ -712,7 +847,7 @@ def _build_one(workspace, book_id: str, locale_id: str, mode: str, target: str |
         shutil.copy2(candidate, temporary)
         os.replace(temporary, output)
         status = "passed_with_findings" if findings else "passed"
-        report = {"schema_version": 1, "status": status, "book": book_id, "locale": locale_id, "scope": mode, "target": target, "output": str(output), "work": str(work), "entries": len(selected), "settings": settings, "images": image_stats, "outline": outline, "check": structural, "findings": findings, "timings": timings, "pipeline_verification": verification}
+        report = {"schema_version": 1, "status": status, "book": book_id, "locale": locale_id, "scope": mode, "target": target, "summary_line": summary_line, "output": str(output), "work": str(work), "entries": len(selected), "settings": settings, "images": image_stats, "outline": outline, "check": structural, "findings": findings, "notices": notices, "timings": timings, "pipeline_verification": verification}
         _write_json(output.with_suffix(".build.json"), report)
         return report
     finally:
@@ -722,7 +857,7 @@ def _build_one(workspace, book_id: str, locale_id: str, mode: str, target: str |
             shutil.rmtree(work, ignore_errors=True)
 
 
-def build(workspace, book_id: str | None, locale_id: str | None, mode: str, target: str | None, output: Path | None, all_locales: bool, all_books: bool, jobs: int | None, force_jobs: bool, overwrite: bool, no_overwrite: bool, interactive: bool, keep_work: bool, discard_work: bool, strict_resources: bool, verify_pipeline: bool) -> dict:
+def build(workspace, book_id: str | None, locale_id: str | None, mode: str, target: str | None, output: Path | None, all_locales: bool, all_books: bool, jobs: int | None, force_jobs: bool, overwrite: bool, no_overwrite: bool, interactive: bool, keep_work: bool, discard_work: bool, strict_resources: bool, verify_pipeline: bool, summary_line: int | None = None) -> dict:
     if "pdf" not in workspace.config:
         raise MdocError("MDOC-PDF-NOT-CONFIGURED", "工作区尚未配置 PDF，请先执行 mdoc pdf init。")
     book_ids = list(workspace.config["books"]) if all_books else [book_id]
@@ -747,7 +882,7 @@ def build(workspace, book_id: str | None, locale_id: str | None, mode: str, targ
     actual = effective_jobs(configured, force_jobs)
     results = []
     with ThreadPoolExecutor(max_workers=actual) as executor:
-        futures = {executor.submit(_build_one, workspace, book, locale, mode, target, destination, keep_work, discard_work, strict_resources, verify_pipeline): (book, locale, destination) for book, locale, destination, action in targets if action == "build"}
+        futures = {executor.submit(_build_one, workspace, book, locale, mode, target, destination, keep_work, discard_work, strict_resources, verify_pipeline, summary_line): (book, locale, destination) for book, locale, destination, action in targets if action == "build"}
         results.extend({"status": "skipped", "book": book, "locale": locale, "output": str(destination)} for book, locale, destination, action in targets if action == "skipped")
         for future in as_completed(futures):
             book, locale, destination = futures[future]
@@ -757,6 +892,42 @@ def build(workspace, book_id: str | None, locale_id: str | None, mode: str, targ
                 results.append({"status": "failed", "book": book, "locale": locale, "output": str(destination), "error": exc.payload()["error"]})
     statuses = {item["status"] for item in results}
     return {"status": "failed" if "failed" in statuses else "passed_with_findings" if "passed_with_findings" in statuses else "passed" if "passed" in statuses else "skipped", "configured_jobs": configured, "actual_jobs": actual, "results": results}
+
+
+def build_file(path: Path, output: Path | None, pdf_config: Path | None, language: str | None, font_family: str | None, no_overwrite: bool, keep_work: bool, discard_work: bool, strict_resources: bool, verify_pipeline: bool) -> dict:
+    source_file = path.resolve()
+    if not source_file.is_file() or source_file.suffix.casefold() not in {".md", ".markdown"}: raise MdocError("MDOC-PDF-FILE-INVALID", f"--file 必须指向可读取的 Markdown 文件：{source_file}")
+    if keep_work and discard_work: raise MdocError("MDOC-PDF-WORK-OPTION-CONFLICT", "--keep-work 与 --discard-work 不能同时使用。")
+    destination = standalone_output(source_file, output); destination.parent.mkdir(parents=True, exist_ok=True)
+    if no_overwrite and destination.exists(): return {"status": "skipped", "scope": "file", "file": str(source_file), "output": str(destination)}
+    settings, notices = standalone_settings(pdf_config); title = standalone_title(source_file); detected = language or standalone_language(source_file); default_font = "SimSun" if detected == "zh-hans" else "Arial"
+    config = {"title": title, "language": detected, "structure": {"readme": "Page.md"}, "plugins": [], "pdf": {"fontSize": 12, "fontFamily": font_family or default_font, "pageNumbers": False, "pageBreaksBefore": "/", "chapterMark": "none", "embedFonts": True}}
+    work = Path(tempfile.gettempdir()) / "mdoc" / "work" / f"{int(time.time())}-{uuid.uuid4().hex[:8]}"; book = work / "book"; intermediate = work / "ebook"; logs = work / "logs"; book.mkdir(parents=True); findings = []; status = "failed"
+    try:
+        page = _materialize_standalone(source_file, book, findings); _write_json(book / "book.json", config); intermediate.mkdir()
+        tools = tool_paths(); missing = [name for name, tool in tools.items() if not tool.is_file()]
+        if missing: raise MdocError("MDOC-PDF-TOOLCHAIN-MISSING", "PDF Toolchain 组件缺失。", {"missing": missing, "root": str(toolchain_root())})
+        timings = {"honkit": _run([str(tools["node"]), str(tools["honkit"]), "build", str(book), str(intermediate), "--format", "ebook", "--log", "debug", "--timing"], work, logs / "honkit.log")}
+        image_stats = optimize_generated_images(intermediate, settings["image_optimization"]); findings.extend(image_stats["findings"]); raw = work / "raw.pdf"; outlined = work / "outlined.pdf"; optimized = work / "optimized.pdf"
+        html_page = intermediate / "index.html"
+        if not html_page.is_file(): html_page = intermediate / page.with_suffix(".html").name
+        timings["calibre"] = _run([str(tools["calibre"]), str(html_page), str(raw), *_calibre_options(config, settings)], work, logs / "calibre.log")
+        if not raw.is_file() or not raw.stat().st_size: raise MdocError("MDOC-PDF-EMPTY", "Calibre 未生成有效 PDF。")
+        outline = _standalone_outline(raw, outlined, title); candidate = outlined
+        if settings["optimization"]["enabled"]:
+            command = [str(tools["qpdf"]), str(outlined), str(optimized)]
+            if settings["optimization"]["recompress_flate"]: command.append("--recompress-flate")
+            command.extend([f"--compression-level={settings['optimization']['compression_level']}", f"--object-streams={settings['optimization']['object_streams']}"] )
+            try: timings["qpdf"] = _run(command, work, logs / "qpdf-optimize.log"); candidate = optimized
+            except MdocError as exc: findings.append({"kind": "qpdf_optimization_failed", "error": exc.message})
+        verification = _pipeline_comparison(outlined, candidate) if verify_pipeline and candidate != outlined else None
+        if verification and not verification["passed"]: raise MdocError("MDOC-PDF-PIPELINE-VERIFY-FAILED", "PDF 优化前后结构不一致。", {"verification": verification})
+        resource_findings = [item for item in findings if item["kind"] in {"missing_resource", "unsafe_resource", "resource_copy_failed"}]
+        if strict_resources and resource_findings: raise MdocError("MDOC-PDF-RESOURCE-STRICT", "严格资源模式下存在 resource finding。", {"findings": resource_findings})
+        temporary = destination.with_name(f".{destination.name}.{os.getpid()}.tmp"); shutil.copy2(candidate, temporary); os.replace(temporary, destination); status = "passed_with_findings" if findings else "passed"
+        return {"schema_version": 1, "status": status, "scope": "file", "file": str(source_file), "output": str(destination), "work": str(work), "title": title, "language": detected, "settings": settings, "images": image_stats, "outline": outline, "findings": findings, "notices": notices, "timings": timings, "pipeline_verification": verification}
+    finally:
+        if discard_work or status.startswith("passed") and not keep_work: shutil.rmtree(work, ignore_errors=True)
 
 
 def clean(workspace) -> dict:
@@ -772,6 +943,10 @@ def clean(workspace) -> dict:
     reports = sorted(workspace.control.glob("artifacts/pdf/**/*.build.json"), key=lambda path: path.stat().st_mtime, reverse=True)
     keep = workspace.config.get("pdf", DEFAULTS)["retention"]["batch_reports"]
     for path in reports[keep:]:
+        path.unlink(missing_ok=True)
+        removed.append(str(path))
+    standalone = Path(tempfile.gettempdir()) / "mdoc"
+    for path in standalone.glob("*.pdf") if standalone.is_dir() else []:
         path.unlink(missing_ok=True)
         removed.append(str(path))
     return {"status": "pdf_cache_cleaned", "removed": removed}

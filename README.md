@@ -1,6 +1,6 @@
 # mdoc
 
-`mdoc` 是面向 Windows 10/11 x64 的多语言 Markdown 产品手册工作流工具。产品版本是 `1.4.3`；新版工作区和任务协议统一使用 `schema_version: 1`。
+`mdoc` 是面向 Windows 10/11 x64 的多语言 Markdown 产品手册工作流工具。产品版本是 `1.4.4`；新版工作区和任务协议统一使用 `schema_version: 1`。
 
 新版 mdoc 是一次干净重构：不识别、不迁移、不兼容旧工作区、旧配置、旧任务或旧状态文件。所有流程状态都由同一个 Python CLI 写入，正式手册内容只由发布事务修改；代理和人工编写只能先进入任务的受控 `staging/`。
 
@@ -8,7 +8,7 @@ Copyright 2026 cshuan. Licensed under Apache-2.0. 该许可证只覆盖 mdoc 源
 
 ## 安装
 
-从 GitHub Stable Release 下载 `mdoc-1.4.3-windows-x64.zip`，完整解压后双击“安装 mdoc.cmd”。安装器默认安装到当前用户的 Codex skills 目录，并为 mdoc 创建独立运行环境；它不会修改外部 Python 的全局包。
+从 GitHub Stable Release 下载 `mdoc-1.4.4-windows-x64.zip`，完整解压后双击“安装 mdoc.cmd”。安装器默认安装到当前用户的 Codex skills 目录，并为 mdoc 创建独立运行环境；它不会修改外部 Python 的全局包。
 
 安装后可双击 `%USERPROFILE%\.codex\skills\mdoc\Open-mdoc-Image-Editor.cmd` 独立编辑图片，也可以将一张图片拖到该 CMD 上。独立编辑器不需要 mdoc workspace 或 task，不修改截图任务状态；“保存图片”只输出 PNG，“保存工程”额外输出同名 `.mdoc-image-edit.json` 和 `.mdoc-image-edit-assets`。
 
@@ -23,6 +23,8 @@ Copyright 2026 cshuan. Licensed under Apache-2.0. 该许可证只覆盖 mdoc 源
 Toolchain 采用单一全包，包含 CPython 3.12、Python 检查与截图依赖、Node.js 24.18.0、HonKit 6.2.2、Calibre Portable 9.14.0 和 qpdf 12.4.1。
 
 PDF 生成是独立能力，不是普通手册修改、发布或 Quality Gate 的默认必选项。安装完整 Toolchain 后可按需运行 `mdoc pdf init`、`mdoc pdf doctor`、`mdoc pdf build`、`mdoc pdf check` 和 `mdoc pdf clean`。
+
+工作区模式可按页面、章节或整册生成 PDF；独立文件模式可直接对任意 Markdown 路径运行 `mdoc pdf build --file <file.md>`，无需 workspace、`Summary.md` 或 `book.json`。详细参数见 [PDF 参考](skill/mdoc/references/pdf.md)。
 
 ## 从 Git 获取最新版
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.4 - 2026-09-13
+
+- Fixed page and section PDF builds for deeply nested `Summary.md` entries by rebuilding bookmarks from scope-relative levels while preserving full-book chapter numbers.
+- Added `--summary-line` selection for repeated Summary targets and scope-aware `pdf check` validation.
+- Added standalone Markdown PDF builds with `mdoc pdf build --file`, optional language, font, and PDF configuration overrides, unrestricted local relative resources, and atomic output replacement.
+- Added standalone title and language detection, one-root bookmarks, resource findings, temporary output cleanup, and regression coverage for output preservation after failed builds.
+
 ## 1.4.3 - 2026-09-09
 
 - Added a standalone image editor that reuses the screenshot editor canvas without requiring or modifying an mdoc workspace, task, screenshot acceptance, or publishing state.

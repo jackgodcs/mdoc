@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+import shutil
 from pathlib import Path
 from unittest.mock import patch
 
@@ -32,6 +33,9 @@ class PdfTests(unittest.TestCase):
         self.assertEqual(["1", "1.1", "2", "2.1", "2.1.1"], [item["number"] for item in entries])
         self.assertEqual(["2.1", "2.1.1"], [item["number"] for item in pdf.select_entries(entries, "Main/Target.md", "section")])
         self.assertEqual(["2.1"], [item["number"] for item in pdf.select_entries(entries, "Main/Target.md", "page")])
+        self.assertEqual([0], [item["level"] for item in pdf.scoped_entries(pdf.select_entries(entries, "Main/Target.md", "page"))])
+        self.assertEqual([0, 1], [item["level"] for item in pdf.scoped_entries(pdf.select_entries(entries, "Main/Target.md", "section"))])
+        self.assertEqual(["2.1", "2.1.1"], [item["number"] for item in pdf.scoped_entries(pdf.select_entries(entries, "Main/Target.md", "section"))])
 
     def test_summary_entries_support_mixed_two_space_and_tab_indentation(self) -> None:
         summary = self.root / "Summary.md"
@@ -48,9 +52,88 @@ class PdfTests(unittest.TestCase):
             {"path": "Main/A.md", "anchor": "", "level": 0},
             {"path": "main/a.md", "anchor": "", "level": 0},
         ]
+        selected, notices = pdf.select_entries(entries, "Main/A.md", "page", include_notices=True)
+        self.assertIs(entries[0], selected[0])
+        self.assertEqual("summary_target_multiple_matches", notices[0]["kind"])
+
+    def test_summary_line_selects_repeated_target(self) -> None:
+        entries = [
+            {"line": 3, "path": "Main/A.md", "anchor": "", "level": 0},
+            {"line": 9, "path": "Main/A.md", "anchor": "", "level": 1},
+        ]
+        self.assertIs(entries[1], pdf.select_entries(entries, "Main/A.md", "page", 9)[0])
         with self.assertRaises(MdocError) as caught:
-            pdf.select_entries(entries, "Main/A.md", "page")
-        self.assertEqual("MDOC-PDF-SCOPE-AMBIGUOUS", caught.exception.code)
+            pdf.select_entries(entries, "Main/A.md", "page", 4)
+        self.assertEqual("MDOC-PDF-SUMMARY-LINE-MISMATCH", caught.exception.code)
+
+    def test_standalone_title_and_language_use_first_five_content_lines(self) -> None:
+        source = self.root / "Page.md"
+        source.write_text("---\ntitle: ignored\n---\n\n```text\n中文\n```\n# Configure **RTK** `Parameters`\n这是中文。\n", encoding="utf-8")
+        self.assertEqual("Configure RTK Parameters", pdf.standalone_title(source))
+        self.assertEqual("zh-hans", pdf.standalone_language(source))
+        source.write_text("# 設定\n\nこれはテストです。\n", encoding="utf-8")
+        self.assertEqual("ja", pdf.standalone_language(source))
+        source.write_text("# Setup\n\nEnglish text.\n", encoding="utf-8")
+        self.assertEqual("en", pdf.standalone_language(source))
+
+    def test_standalone_pdf_config_ignores_unknown_fields(self) -> None:
+        config = self.root / "pdf.yaml"
+        config.write_text("margins_pt:\n  top: 20\nunknown: true\nimage_optimization:\n  jpeg_quality: 80\n  mystery: value\n", encoding="utf-8")
+        settings, notices = pdf.standalone_settings(config)
+        self.assertEqual(20, settings["margins_pt"]["top"])
+        self.assertEqual(80, settings["image_optimization"]["jpeg_quality"])
+        self.assertEqual(["unknown", "image_optimization.mystery"], [item["field"] for item in notices])
+        config.write_text("image_optimization:\n  jpeg_quality: 101\n", encoding="utf-8")
+        with self.assertRaises(MdocError) as caught:
+            pdf.standalone_settings(config)
+        self.assertEqual("MDOC-PDF-CONFIG-INVALID", caught.exception.code)
+
+    def test_standalone_default_output_uses_temp_mdoc_directory(self) -> None:
+        with patch("tempfile.gettempdir", return_value=str(self.root / "temp")):
+            self.assertEqual(self.root / "temp" / "mdoc" / "Page.pdf", pdf.standalone_output(self.root / "Page.md", None))
+
+    def test_standalone_materialization_supports_parent_resources_and_downgrades_markdown_links(self) -> None:
+        source = self.root / "pages" / "Page.md"
+        image = self.root / "images" / "capture.png"
+        css = self.root / "styles" / "manual.css"
+        source.parent.mkdir(); image.parent.mkdir(); css.parent.mkdir()
+        image.write_bytes(b"png")
+        css.write_text("body{background:url('../images/capture.png')}", encoding="utf-8")
+        source.write_text("# Page\n\n![Image](../images/capture.png)\n<link href=\"../styles/manual.css\">\n[Other](Other.md)\n", encoding="utf-8")
+        work = self.root / "work"; work.mkdir(); findings = []
+        page = pdf._materialize_standalone(source, work, findings)
+        rendered = page.read_text(encoding="utf-8")
+        self.assertIn("](resources/", rendered)
+        self.assertIn("href=\"resources/", rendered)
+        self.assertIn("Other", rendered)
+        self.assertNotIn("Other.md", rendered)
+        copied_css = next((work / "resources").glob("*-manual.css"))
+        self.assertRegex(copied_css.read_text(encoding="utf-8"), r"url\(['\"]?[0-9a-f]{12}-capture\.png")
+        self.assertEqual("out_of_scope_link", findings[0]["kind"])
+
+    def test_standalone_build_replaces_output_only_after_success(self) -> None:
+        source = self.root / "Page.md"; source.write_text("# Page\n\nContent.\n", encoding="utf-8")
+        output = self.root / "Page.pdf"; output.write_bytes(b"old")
+        tools = {name: self.root / f"{name}.exe" for name in pdf.TOOL_VERSIONS}
+        for path in tools.values(): path.touch()
+
+        def run(command, cwd, log):
+            if command[1] == str(tools["honkit"]):
+                intermediate = Path(command[4]); intermediate.mkdir(exist_ok=True); (intermediate / "index.html").write_text("<html><body>Page</body></html>", encoding="utf-8")
+            elif command[0] == str(tools["calibre"]):
+                writer = PdfWriter(); writer.add_blank_page(width=100, height=100)
+                with Path(command[2]).open("wb") as stream: writer.write(stream)
+            elif command[0] == str(tools["qpdf"]):
+                shutil.copy2(command[1], command[2])
+            return {"seconds": 0.01}
+
+        with patch.object(pdf, "tool_paths", return_value=tools), patch.object(pdf, "_run", side_effect=run):
+            report = pdf.build_file(source, output, None, None, None, False, False, True, False, False)
+        self.assertEqual("passed", report["status"]); self.assertGreater(output.stat().st_size, 3); self.assertFalse(Path(report["work"]).exists())
+        output.write_bytes(b"old")
+        with patch.object(pdf, "tool_paths", return_value=tools), patch.object(pdf, "_run", side_effect=MdocError("TEST", "failed")):
+            with self.assertRaises(MdocError): pdf.build_file(source, output, None, None, None, False, False, True, False, False)
+        self.assertEqual(b"old", output.read_bytes())
 
     def test_html_image_optimization_creates_jpeg_and_rewrites_references(self) -> None:
         html = self.root / "chapter.html"

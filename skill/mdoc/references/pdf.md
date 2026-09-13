@@ -8,11 +8,17 @@ PDF uses one built-in pipeline: workspace `book.json` and `Summary.md`, HonKit 6
 mdoc pdf init --workspace <workspace>
 mdoc pdf doctor --workspace <workspace>
 mdoc pdf build --workspace <workspace> --book <book> --locale <locale> --scope book --yes
+mdoc pdf build --workspace <workspace> --book <book> --locale <locale> --scope page --target Main/Topic.md --yes
+mdoc pdf build --file <file.md>
 mdoc pdf check --workspace <workspace> --pdf <file> --book <book> --locale <locale>
 mdoc pdf clean --workspace <workspace>
 ```
 
-`page` and `section` scopes require `--target` containing a unique `Summary.md` target. They retain full-book chapter numbers. Batch builds use `--all-locales` or `--all-books`; configured concurrency defaults to three and may be reduced by the memory guard, which reserves 2 GiB and budgets 4 GiB per build. `--jobs` overrides the configured value and `--force-jobs` bypasses the guard.
+`page` and `section` scopes require `--target` containing a `Summary.md` target. They retain full-book chapter numbers but normalize bookmark levels relative to the selected root. When a target appears more than once, the first match is used and a notice is reported; pass `--summary-line <line>` to select an exact entry. `pdf check` accepts the same `--scope`, `--target`, and `--summary-line` arguments. Batch builds use `--all-locales` or `--all-books`; configured concurrency defaults to three and may be reduced by the memory guard, which reserves 2 GiB and budgets 4 GiB per build. `--jobs` overrides the configured value and `--force-jobs` bypasses the guard.
+
+`--file` is a separate standalone mode. It accepts any readable `.md` or `.markdown` path without loading a workspace, book, locale, Summary, or `book.json`. Relative resources resolve from the Markdown file, including `../`; absolute Windows paths, UNC paths, and `file://` resources are also supported. Links to other Markdown files become plain text and are reported without pulling those files into the PDF. Missing resources are findings unless `--strict-resources` is used.
+
+Standalone output defaults to `%TEMP%\mdoc\<name>.pdf` and overwrites atomically. Use `--output`, `--no-overwrite`, `--language`, `--font-family`, or `--pdf-config <yaml>` as needed. The optional YAML accepts `paper_size`, `margins_pt`, `image_optimization`, `optimization`, and `bookmarks`; unknown fields are ignored with notices and invalid known values fail. Title and language are inferred from at most the first five effective content lines. Standalone builds skip workspace business and structural checks but require a nonempty Calibre result and add one root bookmark.
 
 ## Configuration
 
@@ -26,6 +32,6 @@ Each Markdown page keeps the HonKit and Calibre document boundary. Within a page
 
 ## Results
 
-Default PDFs are written below `.mdoc/artifacts/pdf/<book>/<locale>/`. Existing output requires `--yes`; `--no-overwrite` skips it. Successful large intermediates are removed unless `--keep-work`; failed work is retained unless `--discard-work`. Cleanup removes expired work and old reports, never final PDFs.
+Default workspace PDFs are written below `.mdoc/artifacts/pdf/<book>/<locale>/`. Existing workspace output requires `--yes`; `--no-overwrite` skips it. Successful large intermediates are removed unless `--keep-work`; failed work is retained unless `--discard-work`. Cleanup removes expired workspace work, old reports, and default standalone PDFs under `%TEMP%\mdoc`; it never removes workspace final PDFs or explicitly selected standalone output paths.
 
 Permanent checks cover parseability, nonempty pages, visible TOC destinations, bookmark destinations matching the TOC, embedded fonts with Unicode mappings, and replacement characters. Missing local resources are findings and do not fail a completed PDF unless `--strict-resources` is used. PDF generation is not currently required for normal task publication.
