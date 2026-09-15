@@ -40,7 +40,11 @@ jobs:
           $checkOut = Join-Path $env:RUNNER_TEMP 'check-tests.log'; $checkErr = Join-Path $env:RUNNER_TEMP 'check-tests.err'
           $core = Start-Process python -ArgumentList '-m','unittest','discover','-s','skill/mdoc/tests','-p','test_*.py','-v' -NoNewWindow -PassThru -RedirectStandardOutput $coreOut -RedirectStandardError $coreErr
           $check = Start-Process python -ArgumentList '-m','unittest','discover','-s','check_tests','-p','test_*.py','-v' -WorkingDirectory skill/mdoc -NoNewWindow -PassThru -RedirectStandardOutput $checkOut -RedirectStandardError $checkErr
-          $core.WaitForExit(); $check.WaitForExit()
+          while (-not $core.HasExited -or -not $check.HasExited) {
+            Write-Host "Waiting for tests: core=$($core.HasExited), check=$($check.HasExited)"
+            Start-Sleep -Seconds 15
+            $core.Refresh(); $check.Refresh()
+          }
           Get-Content $coreOut, $coreErr, $checkOut, $checkErr
           if ($core.ExitCode -ne 0 -or $check.ExitCode -ne 0) { throw "Test suites failed: core=$($core.ExitCode), check=$($check.ExitCode)" }
       - run: python runtime-bootstrap/test_install_transaction.py -v
