@@ -62,6 +62,7 @@ jobs:
           python-version: '3.12'
       - run: python -m pip install --disable-pip-version-check -r requirements-ci.txt
       - shell: pwsh
+        if: matrix.modules != 'check_tests.test_maintenance'
         run: |
           $root = Join-Path $env:RUNNER_TEMP 'mdoc-toolchain'
           $components = @{
@@ -75,8 +76,14 @@ jobs:
             Expand-Archive -LiteralPath $archive -DestinationPath (Join-Path $root $component.Key) -Force
           }
           "MDOC_TOOLCHAIN_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-      - run: python -u -m unittest ${{ matrix.modules }} -v
+      - if: matrix.modules != 'check_tests.test_maintenance'
+        run: python -u -m unittest ${{ matrix.modules }} -v
         working-directory: skill/mdoc
+      - if: matrix.modules == 'check_tests.test_maintenance'
+        shell: pwsh
+        working-directory: skill/mdoc
+        run: |
+          python -u -c "import os,sys,unittest; result=unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.loadTestsFromName('check_tests.test_maintenance')); sys.stdout.flush(); sys.stderr.flush(); os._exit(0 if result.wasSuccessful() else 1)"
   build:
     needs: [core-tests, check-tests]
     runs-on: windows-latest

@@ -339,7 +339,7 @@ def create_server(workspace: Path, host: str = "127.0.0.1", port: int = 0) -> Th
             if not self.allowed(): self.send_json({"error":"会话已失效。"},403);return
             try:
                 report_id=q.get("report",q.get("id",[""]))[0]
-                if parsed.path=="/api/server": print("报告页面已再次打开。",flush=True);value={"workspace":str(workspace)}
+                if parsed.path=="/api/server": value={"workspace":str(workspace)}
                 elif parsed.path=="/api/feedback/context":
                     from .feedback import ensure_configuration,feedback_context
                     ensure_configuration(workspace);value=feedback_context(workspace)
