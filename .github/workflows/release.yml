@@ -80,10 +80,9 @@ jobs:
         run: python -u -m unittest ${{ matrix.modules }} -v
         working-directory: skill/mdoc
       - if: matrix.modules == 'check_tests.test_maintenance'
-        shell: pwsh
+        shell: cmd
         working-directory: skill/mdoc
-        run: |
-          python -u -c "import os,sys,unittest; result=unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.loadTestsFromName('check_tests.test_maintenance')); sys.stdout.flush(); sys.stderr.flush(); os._exit(0 if result.wasSuccessful() else 1)"
+        run: python -u -m unittest check_tests.test_maintenance -v
   build:
     needs: [core-tests, check-tests]
     runs-on: windows-latest
