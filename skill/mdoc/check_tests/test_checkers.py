@@ -41,6 +41,9 @@ class CheckerTests(unittest.TestCase):
             self.assertEqual("warning", by_rule[rule]["severity"])
 
     def test_vale_remains_available_without_builtin_product_names(self) -> None:
+        config = Path(__file__).resolve().parents[1] / "config" / "vale" / ".vale.ini"
+        styles_path = next(line.split("=", 1)[1].strip() for line in config.read_text(encoding="utf-8").splitlines() if line.startswith("StylesPath"))
+        self.assertTrue((config.parent / styles_path).is_dir())
         page = self.root / "Bad.md"
         page.write_text("# Title\n\nUse Lidar360MLS.\n", encoding="utf-8")
         findings = vale([page], {page: "en/Bad.md"})
