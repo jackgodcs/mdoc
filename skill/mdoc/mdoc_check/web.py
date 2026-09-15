@@ -13,7 +13,7 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path, PurePosixPath
 from urllib.parse import parse_qs, unquote, urlsplit
-from urllib.request import Request, urlopen
+from urllib.request import ProxyHandler, Request, build_opener
 
 from .core import book_context, load_workspace
 from .pdf_preview import PdfPreviewManager
@@ -25,6 +25,7 @@ from .sources import source_path
 
 ROOT = Path(__file__).resolve().parents[1]
 MAX_EDIT_BYTES = 10 * 1024 * 1024
+LOCAL_OPENER = build_opener(ProxyHandler({}))
 
 
 def report_root(workspace: Path) -> Path:
@@ -40,7 +41,7 @@ def _reuse_server(workspace: Path, open_browser: bool, page: str = "check") -> s
     try:
         state = json.loads(state_path.read_text(encoding="utf-8"))
         request = Request(state["url"] + "/api/server", headers={"X-Mdoc-Token": state["token"]})
-        with urlopen(request, timeout=1) as response:
+        with LOCAL_OPENER.open(request, timeout=1) as response:
             status = json.loads(response.read().decode("utf-8"))
         if status.get("workspace") != str(workspace.resolve()): raise ValueError("报告服务工作区不匹配。")
         url = state["url"] + ("/feedback/?token=" if page == "feedback" else "/check/?token=") + state["token"]

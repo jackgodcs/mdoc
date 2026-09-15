@@ -17,8 +17,10 @@ jobs:
       matrix:
         modules:
           - skill.mdoc.tests.test_generator_cli skill.mdoc.tests.test_locking_and_transactions skill.mdoc.tests.test_pdf skill.mdoc.tests.test_pdf_cli skill.mdoc.tests.test_public_contract
-          - skill.mdoc.tests.test_quality_cli skill.mdoc.tests.test_task_definition_cli
-          - skill.mdoc.tests.test_task_lifecycle_cli skill.mdoc.tests.test_virtual_book skill.mdoc.tests.test_workspace_cli
+          - skill.mdoc.tests.test_quality_cli
+          - skill.mdoc.tests.test_task_definition_cli
+          - skill.mdoc.tests.test_task_lifecycle_cli
+          - skill.mdoc.tests.test_virtual_book skill.mdoc.tests.test_workspace_cli
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,6 +28,20 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install --disable-pip-version-check -r requirements-ci.txt
+      - shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'mdoc-toolchain'
+          $components = @{
+            node = 'mdoc-node-24.18.0-windows-x64.zip'
+            'markdown-check' = 'mdoc-markdown-check-2026.09.15-windows-x64.zip'
+            vale = 'mdoc-vale-3.20.0-windows-x64.zip'
+          }
+          foreach ($component in $components.GetEnumerator()) {
+            $archive = Join-Path $env:RUNNER_TEMP $component.Value
+            Invoke-WebRequest -Uri "https://github.com/jackgodcs/mdoc-toolchain/releases/download/v2026.09.15/$($component.Value)" -OutFile $archive -MaximumRetryCount 3 -RetryIntervalSec 5
+            Expand-Archive -LiteralPath $archive -DestinationPath (Join-Path $root $component.Key) -Force
+          }
+          "MDOC_TOOLCHAIN_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - run: python -u -m unittest ${{ matrix.modules }} -v
   check-tests:
     strategy:
@@ -34,7 +50,9 @@ jobs:
         modules:
           - check_tests.test_autofix check_tests.test_brands check_tests.test_checkers check_tests.test_domain check_tests.test_editor
           - check_tests.test_cli
-          - check_tests.test_feedback check_tests.test_maintenance check_tests.test_pdf_preview
+          - check_tests.test_feedback
+          - check_tests.test_maintenance
+          - check_tests.test_pdf_preview
           - check_tests.test_web
     runs-on: windows-latest
     steps:

@@ -8,8 +8,7 @@ import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-from urllib.request import Request
-from urllib.request import urlopen
+from urllib.request import ProxyHandler, Request, build_opener
 from urllib.error import HTTPError
 from urllib.parse import quote
 
@@ -22,6 +21,8 @@ from mdoc_check.model import finding
 from mdoc_check.web import _edit_source, _file_page, _reuse_server, _save_source, create_server, report_root
 from mdoc_check.feedback import SearchIndex, image_references, load_markdown, save_markdown
 from mdoc_check.web import _source
+
+HTTP = build_opener(ProxyHandler({}))
 
 
 class WebTests(unittest.TestCase):
@@ -53,12 +54,12 @@ class WebTests(unittest.TestCase):
 
     def get(self, path: str):
         request = Request(self.url + path, headers={"X-Mdoc-Token": self.token})
-        with urlopen(request) as response:
+        with HTTP.open(request) as response:
             return response.headers.get_content_type(), response.read().decode("utf-8")
 
     def post(self, path: str, value: dict) -> dict:
         request = Request(self.url + path, data=json.dumps(value).encode("utf-8"), headers={"Content-Type": "application/json", "X-Mdoc-Token": self.token}, method="POST")
-        with urlopen(request) as response:
+        with HTTP.open(request) as response:
             return json.loads(response.read().decode("utf-8"))
 
     def test_report_center_lists_report_and_source_context(self) -> None:
@@ -202,13 +203,13 @@ class WebTests(unittest.TestCase):
         self.assertEqual("# Special\n", source["content"])
         self.assertEqual((True, 3, 2, "PNG"), (resource["image"], resource["width"], resource["height"], resource["format"]))
         request = Request(self.url + "/api/report-resource?report=" + quote(report_id, safe="") + "&path=" + quote("en/images/Show_Hide + File.png", safe=""), headers={"X-Mdoc-Token": self.token})
-        with urlopen(request) as response:
+        with HTTP.open(request) as response:
             self.assertEqual("image/png", response.headers.get_content_type())
             self.assertEqual(image.read_bytes(), response.read())
 
     def test_editor_static_assets_are_served_locally(self) -> None:
         for name in ("editor.js", "editor-ui.js"):
-            with urlopen(self.url + "/static/" + name + "?token=" + self.token) as response:
+            with HTTP.open(self.url + "/static/" + name + "?token=" + self.token) as response:
                 self.assertEqual("text/javascript", response.headers.get_content_type())
                 self.assertGreater(len(response.read()), 100)
 
@@ -226,7 +227,7 @@ class WebTests(unittest.TestCase):
         path = self.workspace / "preview.pdf"; path.write_bytes(b"%PDF-1.4\n")
         with patch.object(self.server.mdoc_pdf_preview, "pdf_path", return_value=path):
             request = Request(self.url + "/api/pdf/file?kind=file&key=" + "a" * 16, headers={"X-Mdoc-Token": self.token})
-            with urlopen(request) as response:
+            with HTTP.open(request) as response:
                 self.assertEqual("application/pdf", response.headers.get_content_type()); self.assertEqual("no-store", response.headers["Cache-Control"]); self.assertEqual(path.read_bytes(), response.read())
 
     def test_cancelled_preview_resource_request_does_not_report_server_error(self) -> None:
@@ -345,11 +346,11 @@ class WebTests(unittest.TestCase):
         preview = json.loads(self.get("/api/preview?report=" + report_id.replace("/", "%2F") + "&path=en%2FMain%2FPage.md")[1])
         self.assertIn("media/Sample.png", preview["html"])
         resource = self.url + "/api/preview-resource?token=" + self.token + "&report=" + report_id.replace("/", "%2F") + "&path=en%2FMain%2FPage.md&resource=media%2FSample.png"
-        with urlopen(resource) as response:
+        with HTTP.open(resource) as response:
             self.assertEqual("image/png", response.headers.get_content_type())
             self.assertEqual(image.read_bytes(), response.read())
         with self.assertRaises(HTTPError) as raised:
-            urlopen(self.url + "/api/preview-resource?token=" + self.token + "&report=" + report_id.replace("/", "%2F") + "&path=en%2FMain%2FPage.md&resource=..%2F..%2Foutside.png")
+            HTTP.open(self.url + "/api/preview-resource?token=" + self.token + "&report=" + report_id.replace("/", "%2F") + "&path=en%2FMain%2FPage.md&resource=..%2F..%2Foutside.png")
         self.assertEqual(400, raised.exception.code)
 
     def test_markdown_preview_resolves_local_pages_and_same_page_anchors(self) -> None:
@@ -763,7 +764,7 @@ class WebTests(unittest.TestCase):
 
     def test_html_and_static_assets_require_the_loopback_token(self) -> None:
         for path in ("/check/", "/feedback/", "/static/editor.js"):
-            with self.assertRaises(HTTPError) as raised: urlopen(self.url + path)
+            with self.assertRaises(HTTPError) as raised: HTTP.open(self.url + path)
             self.assertEqual(403, raised.exception.code)
 
     def test_ignore_state_is_only_reported_for_its_locale(self) -> None:

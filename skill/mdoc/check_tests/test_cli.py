@@ -340,7 +340,7 @@ class CliTests(unittest.TestCase):
         second_before = file_record(report_path, "en/Main/Second.md")[0]
         (self.workspace / "Guide" / "en" / "Main" / "First.md").write_text("# First\n", encoding="utf-8")
         selection = Path(self.temp.name) / "selection.json"
-        selection.write_text(json.dumps({"schema_version": 1, "kind": "mdoc_check_file_selection", "source_report": report_path.relative_to(self.workspace / ".mdoc" / "reports" / "check").as_posix(), "base_revision": before["revision"], "files": ["en/Main/First.md"]}, indent=2), encoding="utf-8")
+        selection.write_text(json.dumps({"schema_version": 1, "kind": "mdoc_check_file_selection", "source_report": report_path.resolve().relative_to((self.workspace / ".mdoc" / "reports" / "check").resolve()).as_posix(), "base_revision": before["revision"], "files": ["en/Main/First.md"]}, indent=2), encoding="utf-8")
         result = run_selected(self.workspace, selection, internal_only=True)
         current = json.loads(report_path.read_text(encoding="utf-8"))
         self.assertEqual(1, result["updated_files"])
@@ -375,7 +375,7 @@ class CliTests(unittest.TestCase):
     def test_file_selection_rejects_stale_revision(self) -> None:
         report = run(self.workspace, "guide", "en", "page", "Main/First.md", "basic", True); store(report, self.workspace)
         report_path = Path(report["path"]); selection = Path(self.temp.name) / "selection.json"
-        selection.write_text(json.dumps({"schema_version": 1, "kind": "mdoc_check_file_selection", "source_report": report_path.relative_to(self.workspace / ".mdoc" / "reports" / "check").as_posix(), "base_revision": 0, "files": ["en/Main/First.md"]}, indent=2), encoding="utf-8")
+        selection.write_text(json.dumps({"schema_version": 1, "kind": "mdoc_check_file_selection", "source_report": report_path.resolve().relative_to((self.workspace / ".mdoc" / "reports" / "check").resolve()).as_posix(), "base_revision": 0, "files": ["en/Main/First.md"]}, indent=2), encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "revision"):
             run_selected(self.workspace, selection, internal_only=True)
 
