@@ -10,4 +10,6 @@ __pycache__/
 **/.pdf-check/
 **/captures/
 **/*.lock
+**/.mdoc/config/translation-providers.json
 /dist/
+/.integration-toolchain/

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""mdoc 1.4.4 command line entry point."""
+"""mdoc command line entry point."""
 from __future__ import annotations
 
 import argparse
@@ -15,10 +15,16 @@ if str(SKILL_DIR) not in sys.path:
 from mdoc_core import VERSION, pdf, screenshots, workspace as workspace_lifecycle
 from mdoc_core.config import load_task, load_workspace
 from mdoc_core.errors import MdocError
-from mdoc_core.quality import book_check, task_check
 from mdoc_core.state import load_state
 from mdoc_core.task_definition import create as create_task_draft, define as define_task
 from mdoc_core.task import act as task_action
+
+
+def add_check_arguments(item):
+    item.add_argument("--workspace", type=Path, required=True); item.add_argument("--book"); item.add_argument("--locale")
+    item.add_argument("--scope", choices=("page", "section", "book", "workspace", "task")); item.add_argument("--task")
+    item.add_argument("--contributor-manifest", type=Path); item.add_argument("--skip-check", action="store_true"); item.add_argument("--target")
+    item.add_argument("--level", choices=("basic", "full"), default="basic"); item.add_argument("--internal-only", action="store_true"); item.add_argument("--files-from", type=Path)
 
 
 def configure_utf8_console() -> None:
@@ -48,6 +54,16 @@ HUMAN_STATUS = {
 def emit(value, as_json=False):
     if as_json:
         print(json.dumps(value, ensure_ascii=False, indent=2))
+    elif value.get("kind") in {"mdoc_check_result", "mdoc_check_error"}:
+        print(f"状态: {value.get('status', 'incomplete')}")
+        counts = value.get("counts") or {}
+        if counts:
+            print(f"错误: {counts.get('effective_errors', 0)}，警告: {counts.get('effective_warnings', 0)}")
+        report_path = value.get("path") or (value.get("report") or {}).get("path")
+        if report_path:
+            print(f"报告: {report_path}")
+        if value.get("error"):
+            print(f"错误信息: {value['error']}")
     else:
         if "error" in value:
             print(value["error"].get("message", "mdoc 命令执行失败。"))
@@ -62,34 +78,6 @@ def emit(value, as_json=False):
 
 def context(args):
     return load_workspace(args.workspace or Path.cwd())
-
-
-def cmd_quality(args):
-    workspace = context(args)
-    if args.task:
-        if args.profile:
-            raise MdocError("MDOC-QUALITY-PROFILE-FROZEN", "Task Quality Gate profile is frozen in task.yaml.")
-        task = load_task(workspace, args.task)
-        state = load_state(task.directory / "task-state.json", task.task_id)
-        if args.locale or args.path or args.changed:
-            raise MdocError("MDOC-QUALITY-SCOPE-INVALID", "--locale, --path, and --changed apply only to --book.")
-        report = task_check(task, state, published=args.published)
-    else:
-        if args.published:
-            raise MdocError("MDOC-QUALITY-SCOPE-INVALID", "--published applies only to --task.")
-        if not args.book:
-            raise MdocError("MDOC-QUALITY-TARGET-REQUIRED", "quality check requires --book or --task.")
-        if args.book not in workspace.config["books"]:
-            raise MdocError("MDOC-BOOK-MISSING", f"Unknown book: {args.book}")
-        if args.locale and args.locale not in workspace.config["books"][args.book]["locales"]:
-            raise MdocError("MDOC-QUALITY-LOCALE-INVALID", f"Unknown locale for book: {args.locale}")
-        try:
-            report = book_check(workspace, args.book, profile=args.profile, locale=args.locale, path=args.path, changed=args.changed)
-        except ValueError as exc:
-            raise MdocError("MDOC-QUALITY-SCOPE-INVALID", str(exc)) from exc
-    if args.enforce and report["status"] != "passed":
-        report["exit_code"] = 3
-    return report
 
 
 def parser():
@@ -111,6 +99,7 @@ def parser():
     define = ts.add_parser("define"); define.add_argument("--workspace", type=Path, required=True); define.add_argument("--task", required=True)
     for name in ("status", "continue", "contribute", "confirm-definition", "submit-authoring", "confirm-final", "revise", "revise-output"):
         item = ts.add_parser(name); item.add_argument("--task", required=True); item.add_argument("--workspace", type=Path); item.add_argument("--no-gui", action="store_true")
+        if name == "continue": item.add_argument("--skip-check", action="store_true")
     launcher = ts.add_parser("create-contributor-launcher"); launcher.add_argument("--task", required=True); launcher.add_argument("--workspace", type=Path); launcher.add_argument("--output")
     cancel = ts.add_parser("cancel"); cancel.add_argument("--task", required=True); cancel.add_argument("--workspace", type=Path); cancel.add_argument("--confirm", action="store_true"); cancel.add_argument("--no-gui", action="store_true")
     screenshot_group = ts.add_parser("screenshots"); screenshot_actions = screenshot_group.add_subparsers(dest="screenshot_action", required=True)
@@ -120,7 +109,12 @@ def parser():
     review = ts.add_parser("review"); review.add_argument("--task", required=True); review.add_argument("--workspace", type=Path); review.add_argument("--review", choices=("factual_accuracy", "language_quality", "visual_accuracy", "pdf_visual_quality"), required=True); review.add_argument("--status", choices=("human_accepted", "failed"), required=True); review.add_argument("--no-gui", action="store_true")
     deletion = ts.add_parser("approve-deletion"); deletion.add_argument("--task", required=True); deletion.add_argument("--workspace", type=Path); deletion.add_argument("--target", required=True); deletion.add_argument("--no-gui", action="store_true")
     conflict = ts.add_parser("approve-publish-conflict"); conflict.add_argument("--task", required=True); conflict.add_argument("--workspace", type=Path); conflict.add_argument("--confirm", action="store_true"); conflict.add_argument("--no-gui", action="store_true")
-    quality = sub.add_parser("quality"); qs = quality.add_subparsers(dest="quality_action", required=True); check = qs.add_parser("check"); check.add_argument("--workspace", type=Path); targets = check.add_mutually_exclusive_group(required=True); targets.add_argument("--book"); targets.add_argument("--task"); check.add_argument("--profile", choices=("standard", "full", "release")); check.add_argument("--locale"); check.add_argument("--path"); check.add_argument("--changed", action="store_true"); check.add_argument("--published", action="store_true"); check.add_argument("--enforce", action="store_true")
+    check_group = sub.add_parser("check"); check_actions = check_group.add_subparsers(dest="check_action", required=True)
+    add_check_arguments(check_actions.add_parser("run"))
+    check_report = check_actions.add_parser("report"); check_report.add_argument("--workspace", type=Path, required=True); check_report.add_argument("--port", type=int, default=0); check_report.add_argument("--no-open", action="store_true")
+    check_clean = check_actions.add_parser("clean"); check_clean.add_argument("--workspace", type=Path, required=True)
+    check_actions.add_parser("doctor")
+    feedback = sub.add_parser("feedback"); feedback_actions = feedback.add_subparsers(dest="feedback_action", required=True); feedback_open = feedback_actions.add_parser("open"); feedback_open.add_argument("--workspace", type=Path, required=True); feedback_open.add_argument("--port", type=int, default=0); feedback_open.add_argument("--no-open", action="store_true")
     pdf_group = sub.add_parser("pdf"); pdf_actions = pdf_group.add_subparsers(dest="pdf_action", required=True)
     pdf_init = pdf_actions.add_parser("init"); pdf_init.add_argument("--workspace", type=Path, required=True)
     pdf_doctor = pdf_actions.add_parser("doctor"); pdf_doctor.add_argument("--workspace", type=Path)
@@ -137,6 +131,10 @@ def main():
         arguments = ["--json", *[item for item in arguments if item != "--json"]]
     args = parser().parse_args(arguments)
     try:
+        workspace_path = getattr(args, "workspace", None)
+        if workspace_path and (workspace_path.resolve() / ".mdoc" / "workspace.yaml").is_file():
+            from mdoc_check.web import create_launcher
+            create_launcher(workspace_path.resolve())
         if args.command == "workspace":
             if args.workspace_action == "local":
                 actions = {"init": workspace_lifecycle.local_init, "apply": workspace_lifecycle.local_apply, "confirm": workspace_lifecycle.local_confirm, "revise": workspace_lifecycle.local_revise}
@@ -155,13 +153,17 @@ def main():
                     action = {"open": "screenshots-open", "accept": "accept-screenshots", "submit": "submit-screenshots", "set-status": "screenshot-status"}[args.screenshot_action]
                 result = task_action(
                     args.workspace or Path.cwd(), args.task, action,
-                    no_gui=getattr(args, "no_gui", False), item=getattr(args, "item", None),
+                    no_gui=getattr(args, "no_gui", False), skip_check=getattr(args, "skip_check", False), item=getattr(args, "item", None),
                     screenshot_status=getattr(args, "status", None), screenshot_reason=getattr(args, "reason", None), contributor=getattr(args, "contributor", False), review=getattr(args, "review", None),
                     review_status=getattr(args, "status", None), target=getattr(args, "target", None) or getattr(args, "output", None),
                     confirmed=getattr(args, "confirm", False),
                 )
-        elif args.command == "quality":
-            result = cmd_quality(args)
+        elif args.command == "check":
+            from mdoc_check.cli import execute as execute_check
+            result = execute_check(args)
+        elif args.command == "feedback":
+            from mdoc_check.web import create_launcher, serve
+            create_launcher(args.workspace.resolve()); serve(args.workspace.resolve(), "127.0.0.1", args.port, not args.no_open, "feedback"); result = {"status": "feedback_closed"}
         else:
             if args.pdf_action == "init":
                 result = pdf.init(args.workspace)
@@ -197,6 +199,9 @@ def main():
         emit(exc.payload(), args.json)
         return 2
     except Exception as exc:
+        if args.command == "check":
+            emit({"schema_version": 1, "kind": "mdoc_check_error", "status": "incomplete", "error": str(exc)}, args.json)
+            return 4
         emit(MdocError("MDOC-INTERNAL-ERROR", "mdoc 遇到内部错误。", {"cause": str(exc)}).payload(), args.json)
         return 2
 

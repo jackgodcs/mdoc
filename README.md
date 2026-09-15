@@ -1,6 +1,6 @@
 # mdoc
 
-`mdoc` 是面向 Windows 10/11 x64 的多语言 Markdown 产品手册工作流工具。产品版本是 `1.4.4`；新版工作区和任务协议统一使用 `schema_version: 1`。
+`mdoc` 是面向 Windows 10/11 x64 的多语言 Markdown 产品手册工作流工具。产品版本是 `1.5.0`；工作区和任务协议使用 `schema_version: 1`。
 
 新版 mdoc 是一次干净重构：不识别、不迁移、不兼容旧工作区、旧配置、旧任务或旧状态文件。所有流程状态都由同一个 Python CLI 写入，正式手册内容只由发布事务修改；代理和人工编写只能先进入任务的受控 `staging/`。
 
@@ -8,11 +8,11 @@ Copyright 2026 cshuan. Licensed under Apache-2.0. 该许可证只覆盖 mdoc 源
 
 ## 安装
 
-从 GitHub Stable Release 下载 `mdoc-1.4.4-windows-x64.zip`，完整解压后双击“安装 mdoc.cmd”。安装器默认安装到当前用户的 Codex skills 目录，并为 mdoc 创建独立运行环境；它不会修改外部 Python 的全局包。
+从 GitHub Stable Release 下载 `mdoc-1.5.0-windows-x64.zip`，完整解压后双击“安装 mdoc.cmd”。安装器默认安装到当前用户的 Codex skills 目录，并为 mdoc 创建独立运行环境；它不会修改外部 Python 的全局包。
 
 安装后可双击 `%USERPROFILE%\.codex\skills\mdoc\Open-mdoc-Image-Editor.cmd` 独立编辑图片，也可以将一张图片拖到该 CMD 上。独立编辑器不需要 mdoc workspace 或 task，不修改截图任务状态；“保存图片”只输出 PNG，“保存工程”额外输出同名 `.mdoc-image-edit.json` 和 `.mdoc-image-edit-assets`。
 
-网络不稳定或离线安装时，下载 [mdoc Toolchain 2026.09.1](https://github.com/jackgodcs/mdoc-toolchain/releases/download/v2026.09.1/mdoc-toolchain-2026.09.1-windows-x64.zip)，将其保留原文件名或重命名为 `mdoc-toolchain.zip`，并放在已解压的 mdoc 安装包根目录、与“安装 mdoc.cmd”同级。双击安装器后会自动使用本地 Toolchain，校验 SHA-256 后安装，不会再联网下载。
+网络不稳定或离线安装时，下载 [mdoc Toolchain 2026.09.15](https://github.com/jackgodcs/mdoc-toolchain/releases/download/v2026.09.15/mdoc-toolchain-2026.09.15-windows-x64.zip)，将其保留原文件名或重命名为 `mdoc-toolchain.zip`，并放在已解压的 mdoc 安装包根目录、与“安装 mdoc.cmd”同级。双击安装器后会自动使用本地 Toolchain，校验 SHA-256 后安装，不会再联网下载。
 
 官方来源：
 
@@ -20,7 +20,7 @@ Copyright 2026 cshuan. Licensed under Apache-2.0. 该许可证只覆盖 mdoc 源
 - Python：`https://www.python.org/downloads/windows/`
 - mdoc Toolchain：`https://github.com/jackgodcs/mdoc-toolchain/releases`
 
-Toolchain 采用单一全包，包含 CPython 3.12、Python 检查与截图依赖、Node.js 24.18.0、HonKit 6.2.2、Calibre Portable 9.14.0 和 qpdf 12.4.1。
+Toolchain 采用单一全包，包含 CPython 3.12、Python 检查与截图依赖、Node.js 24.18.0、markdownlint-cli2 0.23.2、CSpell 10.3.0、Vale 3.20.0、HonKit 6.2.2、Calibre Portable 9.14.0 和 qpdf 12.4.1。
 
 PDF 生成是独立能力，不是普通手册修改、发布或 Quality Gate 的默认必选项。安装完整 Toolchain 后可按需运行 `mdoc pdf init`、`mdoc pdf doctor`、`mdoc pdf build`、`mdoc pdf check` 和 `mdoc pdf clean`。
 
@@ -63,13 +63,16 @@ mdoc task confirm-final --workspace <manual-repository-root> --task add-search
 
 ## Quality Gate
 
-Quality Gate 是唯一检查引擎，服务任务验证和独立书册审计。任务发布前至少通过 `standard` 档位；`full` 和 `release` 逐级增加人工复核、构建和 PDF 检查。独立书册检查默认返回报告，只有显式 `--enforce` 且存在阻断项时才返回非零。
+`mdoc check` 是唯一自动检查引擎，支持页面、章节、整册、工作区和冻结任务范围。检查等级为 `basic` 和 `full`，当前执行相同的 Markdown、拼写、风格、图片与 mdoc 领域规则；`full` 为后续可选检查预留。任务发布自动执行检查，也可在明确需要时使用任务范围的 `--skip-check` 临时跳过。人工审核仍由任务状态机单独收敛，PDF 生成和 PDF 人工检查均不是普通发布必选项。
 
 ```powershell
-mdoc quality check --workspace <manual-repository-root> --book user-guide
-mdoc quality check --workspace <manual-repository-root> --book user-guide --enforce
-mdoc quality check --workspace <manual-repository-root> --task add-search
+mdoc check run --workspace <manual-repository-root> --book user-guide --locale en --scope book
+mdoc check run --workspace <manual-repository-root> --scope task --task add-search
+mdoc check report --workspace <manual-repository-root>
+mdoc feedback open --workspace <manual-repository-root>
 ```
+
+旧工作区的 `standard/release` 配置仍可读取和修订，但不能创建新任务或执行新检查；请先将工作区改为 `basic/full`。使用旧 profile 冻结的任务不升级，必须重新创建。
 
 ## 开发
 

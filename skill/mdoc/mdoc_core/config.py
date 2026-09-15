@@ -110,6 +110,8 @@ def load_task(workspace: WorkspaceContext, task_id: str) -> TaskContext:
     directory = task_directory(workspace, task_id)
     definition = read_yaml(directory / "task.yaml")
     validate_schema(definition, "task.schema.json", "task.yaml")
+    if definition.get("quality_gate", {}).get("profile") not in {"basic", "full"}:
+        raise MdocError("MDOC-QUALITY-PROFILE-LEGACY", "旧任务使用 standard/release Quality Gate profile，必须重新创建任务。")
     if definition["task"]["id"] != task_id:
         raise MdocError("MDOC-TASK-ID-MISMATCH", "任务目录与 task.yaml ID 不一致。")
     expected = definition.pop("definition_digest")

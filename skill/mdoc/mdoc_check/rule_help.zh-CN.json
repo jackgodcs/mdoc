@@ -1,0 +1,225 @@
+{
+  "markdown.md003": {
+    "title": "标题格式不符合要求",
+    "description": "标题应使用开放式 ATX 格式，只在标题开头保留井号。",
+    "suggestion": "删除标题末尾多余的井号。",
+    "before": "# Annotation #",
+    "after": "# Annotation",
+    "url": "https://github.com/DavidAnson/markdownlint/blob/main/doc/md003.md"
+  },
+  "markdown.md009": {
+    "title": "行尾空格数量不符合规范",
+    "description": "Markdown 行尾应没有空格；需要强制换行时才使用两个空格。",
+    "suggestion": "删除多余的行尾空格，或在确需强制换行时保留两个空格。",
+    "url": "https://github.com/DavidAnson/markdownlint/blob/main/doc/md009.md"
+  },
+  "markdown.md047": {
+    "title": "文件结尾缺少单个换行符",
+    "description": "Markdown 文件应以且仅以一个换行符结束。",
+    "suggestion": "在文件最后一行末尾按一次回车，并删除额外空行。",
+    "url": "https://github.com/DavidAnson/markdownlint/blob/main/doc/md047.md"
+  },
+  "markdown.single-h1": {
+    "title": "一级标题数量不符合要求",
+    "description": "内容页面必须包含且仅包含一个一级标题。",
+    "suggestion": "补充页面标题，或把多余的一级标题改为二级及以下标题。"
+  },
+  "locale.en-no-han": {
+    "title": "英文页面包含汉字",
+    "description": "英文 Markdown 页面不允许出现汉字。",
+    "suggestion": "将汉字替换为正确的英文内容。"
+  },
+  "locale.en-punctuation": {
+    "title": "英文页面使用了非英文标点",
+    "description": "英文正文应使用英文半角标点。",
+    "suggestion": "把当前中文或全角标点替换为对应的英文半角标点。"
+  },
+  "link.target-exists": {
+    "title": "引用目标不存在",
+    "description": "当前 Markdown 引用的本地文件在候选书册中不存在。",
+    "suggestion": "修正相对路径，补充目标文件，或删除无效引用。"
+  },
+  "link.anchor-exists": {
+    "title": "链接锚点不存在",
+    "description": "链接指向的页面内标题或 HTML 锚点不存在。",
+    "suggestion": "修正锚点名称，或在目标页面补充对应标题或锚点。"
+  },
+  "image.decodable": {
+    "title": "图片无法解码",
+    "description": "图片文件损坏、格式不受支持，或扩展名与实际内容不一致。",
+    "suggestion": "使用图片工具重新打开并保存为受支持的格式。"
+  },
+  "spelling.unknown-word": {
+    "title": "可能存在拼写错误",
+    "description": "CSpell 未在内置词典或工作区词典中找到该单词。",
+    "suggestion": "确认拼写；专有名词可加入工作区或语言词典。"
+  },
+  "html.block-blank-line": {
+    "title": "HTML 块后缺少空行",
+    "description": "块级 HTML 结束标签后紧接正文，可能导致 Markdown 渲染器错误合并内容。",
+    "suggestion": "在 HTML 块结束标签与后续 Markdown 内容之间增加一个空行。"
+  },
+  "html.table-structure": {
+    "title": "HTML 表格结构不完整",
+    "description": "table、tr、th 或 td 标签未正确闭合，或嵌套顺序不正确。",
+    "suggestion": "检查表格标签的开始、结束和嵌套顺序，保证每个标签成对出现。"
+  },
+  "image.extension-matches-format": {
+    "title": "图片扩展名与实际格式不一致",
+    "description": "图片文件名扩展名与解码得到的真实图片格式不同。",
+    "suggestion": "将文件重新保存为扩展名对应的格式，或按真实格式修改扩展名并更新引用。"
+  },
+  "markdown.md001": {
+    "title": "标题级别跳跃",
+    "description": "标题层级没有逐级递进，例如从二级标题直接跳到四级标题。",
+    "suggestion": "调整标题级别，使相邻层级每次最多增加一级。",
+    "url": "https://github.com/DavidAnson/markdownlint/blob/main/doc/md001.md"
+  },
+  "markdown.md004": {
+    "title": "无序列表符号不统一",
+    "description": "当前无序列表使用了与项目规则不一致的列表符号。",
+    "suggestion": "将列表项统一改为项目要求的短横线符号。",
+    "url": "https://github.com/DavidAnson/markdownlint/blob/main/doc/md004.md"
+  },
+  "markdown.md005": {
+    "title": "同级列表缩进不一致",
+    "description": "处于同一层级的列表项使用了不同的缩进宽度。",
+    "suggestion": "对齐同级列表项，并检查父子列表的缩进关系。",
+    "url": "https://github.com/DavidAnson/markdownlint/blob/main/doc/md005.md"
+  },
+  "markdown.md010": {
+    "title": "正文中包含制表符",
+    "description": "Markdown 正文使用了 Tab 制表符，可能造成不同编辑器中的缩进差异。",
+    "suggestion": "将制表符替换为空格，并保持列表或代码所需的正确缩进。",
+    "url": "https://github.com/DavidAnson/markdownlint/blob/main/doc/md010.md"
+  },
+  "markdown.md012": {
+    "title": "连续空行过多",
+    "description": "文档中出现了超过规则允许数量的连续空行。",
+    "suggestion": "删除多余空行，段落之间通常保留一个空行。",
+    "url": "https://github.com/DavidAnson/markdownlint/blob/main/doc/md012.md"
+  },
+  "markdown.md018": {
+    "title": "标题井号后缺少空格",
+    "description": "ATX 标题的井号与标题文字之间没有空格。",
+    "suggestion": "在标题井号后增加一个空格，例如将“##标题”改为“## 标题”。",
+    "url": "https://github.com/DavidAnson/markdownlint/blob/main/doc/md018.md"
+  },
+  "markdown.md022": {
+    "title": "标题周围缺少空行",
+    "description": "标题上方或下方没有保留规则要求的空行。",
+    "suggestion": "在标题与相邻正文、列表或其他标题之间增加一个空行。",
+    "url": "https://github.com/DavidAnson/markdownlint/blob/main/doc/md022.md"
+  },
+  "markdown.md023": {
+    "title": "标题前存在缩进",
+    "description": "标题没有从行首开始，前面的空格可能使其被识别为普通文本或代码。",
+    "suggestion": "删除标题井号前的空格，使标题从行首开始。",
+    "url": "https://github.com/DavidAnson/markdownlint/blob/main/doc/md023.md"
+  },
+  "markdown.md025": {
+    "title": "文档包含多个一级标题",
+    "description": "当前文档出现了多个 H1 一级标题。",
+    "suggestion": "保留一个页面主标题，将其余一级标题调整为二级或更低级标题。",
+    "url": "https://github.com/DavidAnson/markdownlint/blob/main/doc/md025.md"
+  },
+  "markdown.md031": {
+    "title": "代码块周围缺少空行",
+    "description": "围栏代码块与前后正文之间没有保留空行，可能影响 Markdown 解析。",
+    "suggestion": "在代码块开始前和结束后各保留一个空行。",
+    "url": "https://github.com/DavidAnson/markdownlint/blob/main/doc/md031.md"
+  },
+  "markdown.md032": {
+    "title": "列表周围缺少空行",
+    "description": "列表与前后正文之间没有空行，可能影响 Markdown 渲染。",
+    "suggestion": "在列表开始前和结束后各保留一个空行。",
+    "url": "https://github.com/DavidAnson/markdownlint/blob/main/doc/md032.md"
+  },
+  "markdown.md034": {
+    "title": "使用了裸露网址或邮箱地址",
+    "description": "网址或邮箱直接出现在正文中，没有使用 Markdown 链接格式。",
+    "suggestion": "使用尖括号自动链接或完整 Markdown 链接格式包裹该地址。",
+    "url": "https://github.com/DavidAnson/markdownlint/blob/main/doc/md034.md"
+  },
+  "markdown.md037": {
+    "title": "强调标记内侧存在空格",
+    "description": "粗体或斜体标记与文字之间存在多余空格。",
+    "suggestion": "删除强调标记内侧的空格，例如将“* 文本 *”改为“*文本*”。",
+    "url": "https://github.com/DavidAnson/markdownlint/blob/main/doc/md037.md"
+  },
+  "markdown.md038": {
+    "title": "行内代码标记内侧存在空格",
+    "description": "反引号与行内代码内容之间存在不符合规则的空格。",
+    "suggestion": "删除反引号内侧多余的空格。",
+    "url": "https://github.com/DavidAnson/markdownlint/blob/main/doc/md038.md"
+  },
+  "markdown.md039": {
+    "title": "链接文字内侧存在空格",
+    "description": "链接方括号与链接文字之间存在多余空格。",
+    "suggestion": "删除链接文字两侧的多余空格。",
+    "url": "https://github.com/DavidAnson/markdownlint/blob/main/doc/md039.md"
+  },
+  "markdown.md040": {
+    "title": "代码块未指定语言",
+    "description": "围栏代码块开头没有声明代码语言，无法获得正确的语法高亮。",
+    "suggestion": "在起始反引号后填写语言名称；纯文本内容使用 text。",
+    "url": "https://github.com/DavidAnson/markdownlint/blob/main/doc/md040.md"
+  },
+  "markdown.md053": {
+    "title": "存在未使用的链接定义",
+    "description": "文档定义了引用链接或图片地址，但正文没有使用该定义。",
+    "suggestion": "删除未使用的链接定义，或修正正文中应引用它的位置。",
+    "url": "https://github.com/DavidAnson/markdownlint/blob/main/doc/md053.md"
+  },
+  "markdown.md054": {
+    "title": "链接或图片写法不符合配置",
+    "description": "当前链接或图片使用了配置不允许的 Markdown 写法。",
+    "suggestion": "将链接或图片转换为项目允许的内联链接或自动链接格式。",
+    "url": "https://github.com/DavidAnson/markdownlint/blob/main/doc/md054.md"
+  },
+  "navigation.duplicate-entry": {
+    "title": "目录中重复引用同一页面",
+    "description": "Summary.md 中有多个目录项指向同一个 Markdown 文件。",
+    "suggestion": "删除重复目录项，或修正其中指向错误页面的链接。"
+  },
+  "navigation.page-linked": {
+    "title": "页面未加入目录",
+    "description": "当前 Markdown 页面位于受管理内容目录中，但没有被 Summary.md 引用。",
+    "suggestion": "将页面加入正确的目录层级；不应发布的文件应移出受管理内容范围。"
+  },
+  "navigation.title-matches-h1": {
+    "title": "目录标题与页面标题不一致",
+    "description": "Summary.md 中显示的标题与目标页面的一级标题不同。",
+    "suggestion": "根据实际内容统一目录标题和页面 H1 标题。"
+  },
+  "path.ascii-only": {
+    "title": "Markdown 文件或目录名称包含非 ASCII 字符或空格",
+    "description": "受管理的 Markdown 路径只能使用 ASCII 字母、数字、点、短横线和下划线；图片、CSS、字体和其他资源文件不受此规则限制。",
+    "suggestion": "使用符合规则的英文名称重命名 Markdown 文件或目录，并同步更新所有引用。"
+  },
+  "path.case-exact": {
+    "title": "引用路径大小写与磁盘不一致",
+    "description": "引用目标存在，但链接中的字母大小写与实际文件名不完全相同。",
+    "suggestion": "按磁盘上的真实文件名修正引用路径的大小写。"
+  },
+  "path.no-local-absolute": {
+    "title": "资源引用使用了本地绝对路径",
+    "description": "图片、链接等资源引用使用了盘符路径或 file:// 地址，其他用户和构建环境无法访问。正文、行内代码和代码块中的路径示例不受此规则限制。",
+    "suggestion": "将被引用资源放入书册目录，并将资源引用改为相对路径。"
+  },
+  "path.forward-slash": {
+    "title": "引用路径使用了反斜杠",
+    "description": "Markdown 本地引用使用了 Windows 反斜杠，不利于跨平台解析。",
+    "suggestion": "将本地引用路径中的反斜杠替换为正斜杠。"
+  },
+  "resource.referenced": {
+    "title": "资源文件未被引用",
+    "description": "受管理的图片或资源文件没有被当前检查范围内的 Markdown 引用。",
+    "suggestion": "确认资源是否仍需使用；需要时补充引用，不再使用时由人工确认后清理。"
+  },
+  "terminology.brand-name": {
+    "title": "产品或品牌名称写法不规范",
+    "description": "当前名称与工作区品牌配置规定的标准产品名或品牌名拼写不一致。",
+    "suggestion": "使用报告给出的标准写法替换当前名称；规则在 .mdoc/check-brands.yaml 或当前语言覆盖文件中维护。"
+  }
+}

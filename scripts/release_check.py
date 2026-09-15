@@ -11,7 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 TEXT_SUFFIXES = {".py", ".md", ".json", ".yaml", ".yml", ".html", ".css", ".js", ".cmd", ".ps1", ""}
 FORBIDDEN_NAMES = {"workspace.local.yaml", "task.local.yaml", "manual_visual_validation.py", "test_manual_visual_validation.py"}
-SKIP_DIRS = {".git", ".git-data", ".pytest_cache", "__pycache__", "dist"}
+SKIP_DIRS = {".git", ".git-data", ".pytest_cache", ".integration-toolchain", "__pycache__", "dist"}
 SKIP_FILES = {"MDOC_V1_REFACTOR_HANDOFF.md"}
 SKIP_TEST_PATTERNS = {"test_*.py", "*_test.py"}
 FORBIDDEN_TEXT = [
@@ -70,7 +70,7 @@ def main() -> int:
             if pattern.search(source):
                 problems.append(f"{label}: {path.relative_to(ROOT)}")
     version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
-    if version != "1.4.4":
+    if version != "1.5.0":
         problems.append(f"unexpected VERSION: {version}")
     expected_version_sources = {
         ROOT / "skill" / "mdoc" / "mdoc_core" / "__init__.py": f'VERSION = "{version}"',

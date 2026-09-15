@@ -1,0 +1,20 @@
+{
+  "name": "mdoc-check-prototype",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "build:editor": "esbuild tools/editor-entry.js --bundle --minify --format=iife --target=es2020 --outfile=mdoc_check/static/editor.js"
+  },
+  "dependencies": {
+    "@codemirror/commands": "6.8.1",
+    "@codemirror/lang-markdown": "6.3.3",
+    "@codemirror/language": "6.11.3",
+    "@codemirror/search": "6.5.11",
+    "@codemirror/state": "6.5.2",
+    "@codemirror/view": "6.38.1",
+    "cspell": "10.3.0",
+    "esbuild": "0.25.9",
+    "markdown-it": "15.0.1",
+    "markdownlint-cli2": "0.23.2"
+  }
+}

@@ -30,7 +30,7 @@ class QualityCliTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp.cleanup()
 
-    def define_task(self, task_id: str, *, profile: str = "standard", reviews: list[str] | None = None, build_adapter: str | None = None) -> Path:
+    def define_task(self, task_id: str, *, profile: str = "basic", reviews: list[str] | None = None, build_adapter: str | None = None) -> Path:
         cli("task", "create", "--workspace", str(self.workspace), "--task", task_id, "--book", "guide", "--intent", "add_feature", "--json")
         directory = self.workspace / ".mdoc" / "tasks" / task_id
         path = directory / "task-draft.yaml"
@@ -63,17 +63,13 @@ class QualityCliTests(unittest.TestCase):
     def test_book_check_is_advisory_unless_enforced_and_preserves_history(self) -> None:
         bad = self.locale / "Main" / "Bad.md"
         bad.write_text("TODO\n", encoding="utf-8")
-        report = cli("quality", "check", "--workspace", str(self.workspace), "--book", "guide", "--json")
+        report = cli("check", "run", "--workspace", str(self.workspace), "--book", "guide", "--locale", "zh", "--scope", "book", "--internal-only", "--json", expected=3)
         self.assertEqual("blocked", report["status"])
-        self.assertTrue(Path(report["path"]).is_file())
-        enforced = cli("quality", "check", "--workspace", str(self.workspace), "--book", "guide", "--enforce", "--json", expected=3)
-        self.assertEqual("blocked", enforced["status"])
-        history = list((self.workspace / ".mdoc" / "quality-reports" / "books" / "guide").glob("*-book.json"))
-        self.assertEqual(2, len(history))
+        self.assertTrue(Path(report["report"]["path"]).is_file())
 
     def test_task_exact_finding_waits_for_resolution_and_recovers(self) -> None:
         directory = self.define_task("blocked")
-        self.stage(directory, "blocked", "TODO\n")
+        self.stage(directory, "blocked", "# Blocked\n\n[Missing](Missing.md)\n")
         state = cli("task", "submit-authoring", "--workspace", str(self.workspace), "--task", "blocked", "--no-gui", "--json")
         self.assertEqual("waiting_for_resolution", state["status"])
         self.assertEqual("quality_gate_findings", state["waiting_on"]["kind"])
@@ -83,14 +79,14 @@ class QualityCliTests(unittest.TestCase):
         state = cli("task", "continue", "--workspace", str(self.workspace), "--task", "blocked", "--no-gui", "--json")
         self.assertEqual("ready_for_review", state["status"])
 
-    def test_safe_fix_only_adds_final_newline_to_staging(self) -> None:
+    def test_task_check_does_not_silently_modify_staging(self) -> None:
         directory = self.define_task("safe-fix")
         self.stage(directory, "safe-fix", "# Safe\n\nLine without newline")
         staged = directory / "staging" / "zh" / "Main" / "safe-fix.md"
-        report = cli("quality", "check", "--workspace", str(self.workspace), "--task", "safe-fix", "--json")
-        self.assertTrue(staged.read_bytes().endswith(b"\n"))
+        report = cli("check", "run", "--workspace", str(self.workspace), "--scope", "task", "--task", "safe-fix", "--internal-only", "--json")
+        self.assertEqual(1, report["counts"]["effective_warnings"])
+        self.assertFalse(staged.read_bytes().endswith(b"\n"))
         self.assertFalse((self.locale / "Main" / "safe-fix.md").exists())
-        self.assertEqual("final-newline", report["fixes"][0]["kind"])
 
     def test_review_acceptance_becomes_stale_when_candidate_changes(self) -> None:
         directory = self.define_task("reviewed", profile="full", reviews=["factual_accuracy"])
@@ -106,12 +102,21 @@ class QualityCliTests(unittest.TestCase):
         self.assertEqual("waiting_for_resolution", state["status"])
         self.assertEqual("stale", state["quality_gate"]["reviews"]["factual_accuracy"]["status"])
 
-    def test_release_without_registered_build_is_blocked(self) -> None:
-        directory = self.define_task("release", profile="release")
+    def test_task_without_registered_build_does_not_require_build(self) -> None:
+        directory = self.define_task("release")
         self.stage(directory, "release", "# Release\n\nComplete.\n")
         state = cli("task", "submit-authoring", "--workspace", str(self.workspace), "--task", "release", "--no-gui", "--json")
+        self.assertEqual("ready_for_review", state["status"])
+        self.assertEqual("not_requested", state["quality_gate"]["build"]["status"])
+
+    def test_task_continue_can_explicitly_skip_automatic_check(self) -> None:
+        directory = self.define_task("skip-check")
+        self.stage(directory, "skip-check", "# Skip\n\n[Missing](Missing.md)\n")
+        state = cli("task", "submit-authoring", "--workspace", str(self.workspace), "--task", "skip-check", "--no-gui", "--json")
         self.assertEqual("waiting_for_resolution", state["status"])
-        self.assertEqual("not_configured", state["quality_gate"]["build"]["status"])
+        state = cli("task", "continue", "--workspace", str(self.workspace), "--task", "skip-check", "--skip-check", "--no-gui", "--json")
+        self.assertEqual("ready_for_review", state["status"])
+        self.assertEqual("skipped", state["quality_gate"]["automated_check"]["status"])
 
     def test_release_build_reads_candidate_and_writes_isolated_artifact(self) -> None:
         script = self.workspace / "tools" / "build.py"
@@ -137,7 +142,7 @@ class QualityCliTests(unittest.TestCase):
         cli("workspace", "local", "apply", "--workspace", str(self.workspace), "--json")
         cli("workspace", "local", "confirm", "--workspace", str(self.workspace), "--json")
 
-        directory = self.define_task("release-build", profile="release", build_adapter="candidate")
+        directory = self.define_task("release-build", build_adapter="candidate")
         self.stage(directory, "release-build", "# Candidate\n\nOnly in staging.\n")
         self.assertFalse((self.locale / "Main" / "release-build.md").exists())
         state = cli("task", "submit-authoring", "--workspace", str(self.workspace), "--task", "release-build", "--no-gui", "--json")

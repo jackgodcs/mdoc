@@ -49,7 +49,7 @@ When a coordinator shares one manual workspace with multiple contributors, split
 - For config fields and local overrides, read `references/configuration-overview.md`.
 - For screenshot capture and acceptance, read `references/screenshot-workflow.md`.
 - For staging, publishing, deletion, and rollback boundaries, read `references/publishing-transactions.md`.
-- For Quality Gate profiles, findings, builds, reviews, and PDF checks, read `references/quality-gate.md`.
+- For `mdoc check`, findings, reports, fixes, builds, reviews, and optional PDF checks, read `references/quality-gate.md`.
 - For PDF configuration, generation, checking, outputs, and cleanup, read `references/pdf.md`.
 - For adapter security, read `references/adapters.md` before adding or changing generators/build adapters.
 

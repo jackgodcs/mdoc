@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.5.0 - 2026-09-15
+
+- Replaced the former partial Quality Gate scanner with the validated `mdoc check` engine for page, section, book, workspace, and frozen-task checks.
+- Added the local HTML report center, per-file refresh, ignores, dictionaries and brands, Markdown preview/editing, user-confirmed automatic fixes, and PDF previews.
+- Added the separate manual feedback revision interface with strict text search, persistent incremental indexes, multilingual editing and translation review, and managed image replacement.
+- Added markdownlint-cli2 0.23.2, markdownlint 0.41.1, markdown-it 15.0.1, CSpell 10.3.0, Vale 3.20.0, and Pillow 12.2.0 to Toolchain 2026.09.15.
+- Changed Quality Gate profiles to `basic` and `full`; old `standard/release` tasks must be recreated, while old workspaces remain readable for explicit revision.
+- Kept PDF generation and PDF human review optional, and preserved configured human reviews and generic build adapters as independent task conditions.
+
 ## 1.4.4 - 2026-09-13
 
 - Reduced page and section PDF build time by materializing only selected Markdown files and their referenced images, styles, and fonts instead of the complete locale resource tree.

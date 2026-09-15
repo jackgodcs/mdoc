@@ -114,7 +114,7 @@ def create_contributor_launcher(task, output: str | None = None) -> dict:
     return {"status": "contributor_launcher_created", "task_id": task.task_id, "path": str(target)}
 
 
-def continue_task(task, state: dict, *, no_gui: bool = False, quality_check=task_check) -> dict:
+def continue_task(task, state: dict, *, no_gui: bool = False, skip_check: bool = False, quality_check=task_check) -> dict:
     recover_transactions(task, state)
     state["preserved_staging_files"] = preserved_staging_files(task)
     if task.definition["screenshots"] and state.get("definition_confirmation"):
@@ -168,10 +168,10 @@ def continue_task(task, state: dict, *, no_gui: bool = False, quality_check=task
     previous = state.get("quality_gate") or {}
     if _quality_check_needed(previous, gate_input):
         transition(state, "verifying", "quality_gate_started")
-        report = quality_check(task, state)
+        report = quality_check(task, state, skip_check=True) if skip_check else quality_check(task, state)
         state["quality_gate"] = {
             "status": report["status"], "digest": report["digest"], "input_digest": gate_input,
-            "reviews": report.get("reviews", {}), "build": report.get("build", {}),
+            "reviews": report.get("reviews", {}), "build": report.get("build", {}), "automated_check": report.get("automated_check", {}),
         }
         if report["status"] != "passed":
             return transition(state, "waiting_for_resolution", "quality_gate_blocked", {"kind": "quality_gate_findings", "report": report["path"], "blocking_count": report.get("blocking_count", 0)})
@@ -180,7 +180,7 @@ def continue_task(task, state: dict, *, no_gui: bool = False, quality_check=task
         with book_publish_lock(task):
             plan = publish_plan(task, state)
             write_json_atomic(task.directory / "reports" / f"publish-plan-r{plan['revision']}.json", plan)
-            execute_transaction(task, state, plan, lambda: quality_check(task, state, published=True))
+            execute_transaction(task, state, plan, lambda: quality_check(task, state, published=True, skip_check=True) if skip_check else quality_check(task, state, published=True))
     except MdocError as exc:
         if exc.code == "MDOC-PUBLISH-CONFLICT":
             state["quality_gate"] = None
@@ -192,7 +192,7 @@ def continue_task(task, state: dict, *, no_gui: bool = False, quality_check=task
     return transition(state, "ready_for_review", "published_and_verified", {"kind": "final_acceptance", "revision": state["revision"]})
 
 
-def act(workspace_path: Path, task_id: str, action: str, *, no_gui: bool = False, item: str | None = None, screenshot_status: str | None = None, screenshot_reason: str | None = None, contributor: bool = False, review: str | None = None, review_status: str | None = None, target: str | None = None, confirmed: bool = False) -> dict:
+def act(workspace_path: Path, task_id: str, action: str, *, no_gui: bool = False, skip_check: bool = False, item: str | None = None, screenshot_status: str | None = None, screenshot_reason: str | None = None, contributor: bool = False, review: str | None = None, review_status: str | None = None, target: str | None = None, confirmed: bool = False) -> dict:
     task, state_path, state = load(workspace_path, task_id)
     if action == "status":
         screenshots.synchronize(task, state)
@@ -207,7 +207,7 @@ def act(workspace_path: Path, task_id: str, action: str, *, no_gui: bool = False
         if action == "create-contributor-launcher":
             return create_contributor_launcher(task, target)
         if action == "continue":
-            continue_task(task, state, no_gui=no_gui)
+            continue_task(task, state, no_gui=no_gui, skip_check=skip_check)
         elif action == "confirm-definition":
             if state["status"] != "waiting_for_definition_confirmation" or state.get("definition_confirmation"):
                 raise MdocError("MDOC-DEFINITION-NOT-EDITABLE", "当前状态不能确认任务定义。")
@@ -218,6 +218,7 @@ def act(workspace_path: Path, task_id: str, action: str, *, no_gui: bool = False
             state["baselines"] = baselines(task)
             import_generator_outputs(task)
             transition(state, "draft", "definition_confirmed")
+            save_state(state_path, state)
             continue_task(task, state, no_gui=no_gui)
         elif action == "accept-screenshots":
             if state["status"] not in {"waiting_for_screenshots", "waiting_for_screenshot_acceptance"}:

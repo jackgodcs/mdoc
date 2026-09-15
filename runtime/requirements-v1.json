@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "product": "mdoc",
-  "product_version": "1.4.4",
+  "product_version": "1.5.0",
   "platform": "windows-x86_64",
   "python": {
     "implementation": "cpython",
@@ -14,7 +14,7 @@
       "required": true,
       "python_packages": ["ruamel.yaml", "jsonschema", "pdfplumber", "pypdf", "pypdfium2", "Pillow"],
       "features": ["tkinter", "tcl-tk", "imagegrab", "imagetk"],
-      "tools": {"node": "24.18.0", "honkit": "6.2.2", "calibre": "9.14.0", "qpdf": "12.4.1"}
+      "tools": {"node": "24.18.0", "markdownlint-cli2": "0.23.2", "markdownlint": "0.41.1", "markdown-it": "15.0.1", "cspell": "10.3.0", "vale": "3.20.0", "honkit": "6.2.2", "calibre": "9.14.0", "qpdf": "12.4.1"}
     }
   },
   "test_only": {"python_packages": ["reportlab"]}

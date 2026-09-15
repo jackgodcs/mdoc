@@ -40,7 +40,7 @@
     "quality_gate": {
       "type": "object", "additionalProperties": false, "required": ["default_profile", "required_reviews", "safe_fixes", "rules"],
       "properties": {
-        "default_profile": {"enum": ["standard", "full", "release"]},
+        "default_profile": {"enum": ["basic", "full", "standard", "release"]},
         "required_reviews": {"type": "array", "items": {"enum": ["factual_accuracy", "language_quality", "visual_accuracy", "pdf_visual_quality"]}, "uniqueItems": true},
         "forbidden_terms": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
         "require_summary_links": {"type": "boolean"}, "safe_fixes": {"type": "boolean"},

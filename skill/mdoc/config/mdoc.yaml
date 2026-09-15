@@ -1,0 +1,60 @@
+schema_version: 1
+severity_overrides:
+  html.block-blank-line: warning
+  html.table-structure: warning
+  image.extension-matches-format: warning
+  link.anchor-exists: warning
+  markdown.single-h1: warning
+  md001: warning
+  md003: warning
+  md004: warning
+  md005: warning
+  md009: warning
+  md010: warning
+  md012: warning
+  md022: warning
+  md032: warning
+  md037: warning
+  md038: warning
+  md047: warning
+  path.case-exact: warning
+disabled_rules: []
+execution:
+  external_checkers: 3
+  image_workers: auto
+  image_workers_max: 8
+  timeouts_seconds:
+    page: 60
+    section: 180
+    book: 600
+    workspace: 600
+    task: 600
+language_detection:
+  scan_lines: 20
+auto_fix:
+  enabled: true
+  timeout_seconds: 30
+  markdownlint:
+    enabled_rules: [MD004, MD005, MD009, MD010, MD012, MD018, MD022, MD031, MD032, MD034, MD037, MD038, MD039, MD047, MD053, MD054]
+  mdoc:
+    enabled_rules: [html.block-blank-line, markdown.md023, path.forward-slash, path.case-exact, terminology.brand-name]
+pdf_preview:
+  enabled: true
+retention:
+  orphan_grace_minutes: 60
+  inactive_report_days: 30
+  pdf_preview_days: 7
+  pdf_preview_max_bytes: 1073741824
+  auto_interval_minutes: 30
+  notify_freed_bytes: 104857600
+images:
+  allowed_formats:
+    - png
+    - jpeg
+  min_width_px: null
+  min_height_px: null
+  max_width_px: null
+  max_height_px: null
+  min_bytes: null
+  max_bytes: null
+  warn_unreferenced: true

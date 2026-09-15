@@ -1,0 +1,8 @@
+{
+  "version": "0.2",
+  "language": "en_US",
+  "useGitignore": false,
+  "enableGlobDot": true,
+  "dictionaries": ["en_US", "softwareTerms"],
+  "words": ["LiDAR360MLS", "LiDAR", "SLAM", "GNSS", "GIS", "HonKit", "CSpell"]
+}

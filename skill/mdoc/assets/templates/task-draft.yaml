@@ -23,5 +23,5 @@ locale_plan:
 screenshots: []
 evidence: []
 quality_gate:
-  profile: standard
+  profile: basic
   required_reviews: []

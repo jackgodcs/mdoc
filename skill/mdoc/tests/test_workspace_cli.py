@@ -42,7 +42,7 @@ def valid_workspace() -> dict:
         "writing": {},
         "screenshots": {"auto_open_assistant": False},
         "quality_gate": {
-            "default_profile": "standard",
+            "default_profile": "basic",
             "required_reviews": [],
             "safe_fixes": True,
             "rules": [],

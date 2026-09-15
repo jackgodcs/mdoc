@@ -1,14 +1,13 @@
 # Quality Gate
 
-Quality Gate is the single checking engine for mdoc tasks and existing books. Task verification does not run a second validator; it calls Quality Gate in task, published-task, or book context.
+`mdoc check` is the single automatic checking engine for mdoc tasks and existing books.
 
 ## Profiles
 
-- `standard`: deterministic checks for UTF-8 Markdown, placeholders, local absolute paths, internal links, summary reachability, locale rules, and declared exact custom rules.
-- `full`: `standard` plus configured human reviews such as factual accuracy, language quality, visual accuracy, and PDF visual quality.
-- `release`: `full` plus at least one real build adapter run. If no adapter is configured, release cannot pass.
+- `basic`: all currently released Markdown, spelling, style, image, navigation, and mdoc domain checks.
+- `full`: currently identical to `basic`; reserved for later optional checks.
 
-Tasks must pass at least `standard` before publishing. Existing-book checks are report-first; use `--enforce` when a nonzero exit code is required for automation.
+Task publication runs the same task-scope checker automatically. `--skip-check` is task-only and must be explicitly requested. Old tasks frozen with `standard` or `release` are blocked and must be recreated.
 
 ## Findings
 
@@ -19,20 +18,20 @@ Findings keep severity and confidence separate:
 
 Only executed human review may produce `human_accepted`. A review finding that has not been performed remains `waiting_for_review` or `stale`; it must not be shown as passed.
 
-## Safe Fixes
+## Reports And Fixes
 
-Safe fixes are deterministic and limited to task staging. Current built-in safe fixes may add a missing final newline to staged Markdown. Safe fixes must not edit formal manual files.
+Reports are stored under `.mdoc/reports/check/`. The report center supports file grouping, filtering, ignores, dictionaries, Markdown preview/editing, preview PDF generation, and user-confirmed automatic fixes. Automatic task verification does not silently edit staging or formal files.
 
 ## Build And PDF Checks
 
-Build adapters receive a materialized candidate book in an isolated directory and must emit a declared generic artifact. A release profile runs a real build before publishing and again in published-task context after the transaction.
+An explicitly configured generic build adapter remains an independent task condition and runs before and after publication. No adapter is required by `basic` or `full`.
 
 PDF generation and structural checking use the single built-in `mdoc pdf` pipeline. They are not required by ordinary task publication in the current version; later opt-in Quality Gate integration must call that same pipeline rather than define another adapter.
 
 ## Command Examples
 
 ```powershell
-mdoc quality check --workspace <manual-repository-root> --task <task-id> --json
-mdoc quality check --workspace <manual-repository-root> --book <book-id> --json
-mdoc quality check --workspace <manual-repository-root> --book <book-id> --enforce --json
+mdoc check run --workspace <manual-repository-root> --scope task --task <task-id> --json
+mdoc check run --workspace <manual-repository-root> --book <book-id> --locale <locale> --scope book --json
+mdoc check report --workspace <manual-repository-root>
 ```

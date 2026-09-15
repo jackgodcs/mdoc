@@ -26,12 +26,14 @@ def _template(task_id: str, book: str, intent: str) -> dict:
         "locale_plan": {"source": "", "targets": {}},
         "screenshots": [],
         "evidence": [],
-        "quality_gate": {"profile": "standard", "required_reviews": []},
+        "quality_gate": {"profile": "basic", "required_reviews": []},
     }
 
 
 def create(workspace_path: Path, task_id: str, book: str, intent: str) -> dict:
     workspace = load_workspace(workspace_path)
+    if workspace.config["quality_gate"]["default_profile"] not in {"basic", "full"}:
+        raise MdocError("MDOC-QUALITY-PROFILE-LEGACY", "工作区仍使用旧 Quality Gate profile，请先将 default_profile 改为 basic 或 full。")
     directory = task_directory(workspace, task_id)
     if book not in workspace.config["books"]:
         raise MdocError("MDOC-TASK-BOOK-MISSING", f"任务引用了未注册书册：{book}")

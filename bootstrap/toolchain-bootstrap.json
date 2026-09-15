@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
   "catalog_schema": 1,
-  "catalog_version": "2026.09.1",
-  "catalog_url": "https://github.com/jackgodcs/mdoc-toolchain/releases/download/v2026.09.1/catalog-v1.json",
-  "catalog_sha256": "b269ca58f6a241db9210fa8a8c6b16860081b6676b94f4b5a2ba89dfe042ecb1",
-  "toolkit_url": "https://github.com/jackgodcs/mdoc-toolchain/releases/download/v2026.09.1/mdoc-toolchain-2026.09.1-windows-x64.zip",
-  "toolkit_sha256": "b61618f6a0c38b724967e6b21b92166336a307b11840d0d3cd1885eaac09ccd6",
+  "catalog_version": "2026.09.15",
+  "catalog_url": "https://github.com/jackgodcs/mdoc-toolchain/releases/download/v2026.09.15/catalog-v1.json",
+  "catalog_sha256": "3aadc248cfd1eb9e4434089b3f8a47729f30f7a5c5f453c056808c8b8b245a68",
+  "toolkit_url": "https://github.com/jackgodcs/mdoc-toolchain/releases/download/v2026.09.15/mdoc-toolchain-2026.09.15-windows-x64.zip",
+  "toolkit_sha256": "6d7b311dbb90e12741f7da90a31e0ba19270742ea72251dbee987a6d76b65e53",
   "repository": "https://github.com/jackgodcs/mdoc-toolchain",
-  "minimum_catalog_version": "2026.09.1"
+  "minimum_catalog_version": "2026.09.15"
 }

@@ -74,7 +74,7 @@ def _draft_template() -> dict:
         "locales": {},
         "writing": {},
         "screenshots": {"auto_open_assistant": True},
-        "quality_gate": {"default_profile": "standard", "required_reviews": [], "safe_fixes": True, "rules": []},
+        "quality_gate": {"default_profile": "basic", "required_reviews": [], "safe_fixes": True, "rules": []},
         "publishing": {"allow_deletions": False},
         "generators": {},
         "build_adapters": {},
