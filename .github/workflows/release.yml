@@ -11,7 +11,17 @@ on:
 permissions:
   contents: read
 jobs:
-  build:
+  core-tests:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --disable-pip-version-check -r requirements-ci.txt
+      - run: python -m unittest discover -s skill/mdoc/scripts -p "test_*.py" -v
+      - run: python -m unittest discover -s skill/mdoc/tests -p "test_*.py" -v
+  check-tests:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -33,20 +43,17 @@ jobs:
             Expand-Archive -LiteralPath $archive -DestinationPath (Join-Path $root $component.Key) -Force
           }
           "MDOC_TOOLCHAIN_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-      - run: python -m unittest discover -s skill/mdoc/scripts -p "test_*.py" -v
-      - shell: pwsh
-        run: |
-          $coreOut = Join-Path $env:RUNNER_TEMP 'core-tests.log'; $coreErr = Join-Path $env:RUNNER_TEMP 'core-tests.err'
-          $checkOut = Join-Path $env:RUNNER_TEMP 'check-tests.log'; $checkErr = Join-Path $env:RUNNER_TEMP 'check-tests.err'
-          $core = Start-Process python -ArgumentList '-m','unittest','discover','-s','skill/mdoc/tests','-p','test_*.py','-v' -NoNewWindow -PassThru -RedirectStandardOutput $coreOut -RedirectStandardError $coreErr
-          $check = Start-Process python -ArgumentList '-m','unittest','discover','-s','check_tests','-p','test_*.py','-v' -WorkingDirectory skill/mdoc -NoNewWindow -PassThru -RedirectStandardOutput $checkOut -RedirectStandardError $checkErr
-          while (-not $core.HasExited -or -not $check.HasExited) {
-            Write-Host "Waiting for tests: core=$($core.HasExited), check=$($check.HasExited)"
-            Start-Sleep -Seconds 15
-            $core.Refresh(); $check.Refresh()
-          }
-          Get-Content $coreOut, $coreErr, $checkOut, $checkErr
-          if ($core.ExitCode -ne 0 -or $check.ExitCode -ne 0) { throw "Test suites failed: core=$($core.ExitCode), check=$($check.ExitCode)" }
+      - run: python -m unittest discover -s check_tests -p "test_*.py" -v
+        working-directory: skill/mdoc
+  build:
+    needs: [core-tests, check-tests]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --disable-pip-version-check -r requirements-ci.txt
       - run: python runtime-bootstrap/test_install_transaction.py -v
       - run: python -m unittest discover -s scripts -p "test_*.py" -v
       - run: python scripts/release_check.py
