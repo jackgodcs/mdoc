@@ -12,6 +12,13 @@ permissions:
   contents: read
 jobs:
   core-tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        modules:
+          - skill.mdoc.tests.test_generator_cli skill.mdoc.tests.test_locking_and_transactions skill.mdoc.tests.test_pdf skill.mdoc.tests.test_pdf_cli skill.mdoc.tests.test_public_contract
+          - skill.mdoc.tests.test_quality_cli skill.mdoc.tests.test_task_definition_cli
+          - skill.mdoc.tests.test_task_lifecycle_cli skill.mdoc.tests.test_virtual_book skill.mdoc.tests.test_workspace_cli
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,9 +26,16 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install --disable-pip-version-check -r requirements-ci.txt
-      - run: python -u -m unittest discover -s skill/mdoc/scripts -p "test_*.py" -v
-      - run: python -u -m unittest discover -s skill/mdoc/tests -p "test_*.py" -v
+      - run: python -u -m unittest ${{ matrix.modules }} -v
   check-tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        modules:
+          - check_tests.test_autofix check_tests.test_brands check_tests.test_checkers check_tests.test_domain check_tests.test_editor
+          - check_tests.test_cli
+          - check_tests.test_feedback check_tests.test_maintenance check_tests.test_pdf_preview
+          - check_tests.test_web
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -43,7 +57,7 @@ jobs:
             Expand-Archive -LiteralPath $archive -DestinationPath (Join-Path $root $component.Key) -Force
           }
           "MDOC_TOOLCHAIN_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-      - run: python -u -m unittest discover -s check_tests -p "test_*.py" -v
+      - run: python -u -m unittest ${{ matrix.modules }} -v
         working-directory: skill/mdoc
   build:
     needs: [core-tests, check-tests]
@@ -54,6 +68,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install --disable-pip-version-check -r requirements-ci.txt
+      - run: python -u -m unittest discover -s skill/mdoc/scripts -p "test_*.py" -v
       - run: python runtime-bootstrap/test_install_transaction.py -v
       - run: python -m unittest discover -s scripts -p "test_*.py" -v
       - run: python scripts/release_check.py
