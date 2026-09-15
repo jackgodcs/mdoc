@@ -50,6 +50,7 @@ When a coordinator shares one manual workspace with multiple contributors, split
 - For screenshot capture and acceptance, read `references/screenshot-workflow.md`.
 - For staging, publishing, deletion, and rollback boundaries, read `references/publishing-transactions.md`.
 - For `mdoc check`, findings, reports, fixes, builds, reviews, and optional PDF checks, read `references/quality-gate.md`.
+- For the HTML check report center and feedback revision, including translation and image replacement, read `references/check-and-feedback.md`.
 - For PDF configuration, generation, checking, outputs, and cleanup, read `references/pdf.md`.
 - For adapter security, read `references/adapters.md` before adding or changing generators/build adapters.
 

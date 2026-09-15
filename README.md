@@ -72,6 +72,8 @@ mdoc check report --workspace <manual-repository-root>
 mdoc feedback open --workspace <manual-repository-root>
 ```
 
+检查报告支持按文件分组、筛选、局部复查、忽略与恢复、词典和品牌维护、Markdown 预览编辑、确认后自动修复，以及按页面或章节生成可选 PDF 预览。手册反馈修订是独立界面，支持严格短语定位、多语言文字对照与统一保存、AI 或网页翻译候选，以及通过临时候选安全替换不同语言的同名图片。详细规则和本地配置路径见 [检查与反馈修订参考](skill/mdoc/references/check-and-feedback.md)。
+
 旧工作区的 `standard/release` 配置仍可读取和修订，但不能创建新任务或执行新检查；请先将工作区改为 `basic/full`。使用旧 profile 冻结的任务不升级，必须重新创建。
 
 ## 开发

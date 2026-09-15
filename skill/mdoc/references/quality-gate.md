@@ -22,6 +22,8 @@ Only executed human review may produce `human_accepted`. A review finding that h
 
 Reports are stored under `.mdoc/reports/check/`. The report center supports file grouping, filtering, ignores, dictionaries, Markdown preview/editing, preview PDF generation, and user-confirmed automatic fixes. Automatic task verification does not silently edit staging or formal files.
 
+Detailed report-center, local recheck, configuration, feedback revision, translation, image replacement, and cleanup behavior is documented in [Check And Feedback Tools](check-and-feedback.md).
+
 ## Build And PDF Checks
 
 An explicitly configured generic build adapter remains an independent task condition and runs before and after publication. No adapter is required by `basic` or `full`.
