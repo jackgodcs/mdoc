@@ -49,6 +49,11 @@ def _inside(path: Path, root: Path) -> bool:
 
 
 def _pid_alive(pid: int) -> bool:
+    if os.name == "nt":
+        import ctypes
+        handle = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)
+        if not handle: return False
+        ctypes.windll.kernel32.CloseHandle(handle); return True
     try: os.kill(pid, 0); return True
     except (OSError, ValueError): return False
 
