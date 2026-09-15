@@ -112,9 +112,18 @@ def summary_items(summary: Path) -> list[dict]:
     if NODE.is_file() and BRIDGE.is_file():
         raw = json.loads(_run([str(NODE), str(BRIDGE)], input_text=json.dumps({"action": "summary", "file": str(summary.resolve())})).stdout)
     else:
-        from mdoc_core.pdf import summary_entries as parse_summary
-
-        raw = [{"depth": item["level"], "href": item["path"] + (f"#{item['anchor']}" if item["anchor"] else ""), "line": item["line"], "title": re.sub(r"[*_`]+", "", item["title"])} for item in parse_summary(summary)]
+        raw = []
+        indents = []
+        for line_number, line in enumerate(summary.read_text(encoding="utf-8-sig").splitlines(), 1):
+            match = re.match(r"^(?P<indent>\s*)[*+-]\s+\[(?P<title>[^]]+)]\((?P<href>[^)]+)\)", line)
+            if not match:
+                continue
+            indent = len(match.group("indent").expandtabs(4))
+            while indents and indent < indents[-1]:
+                indents.pop()
+            if not indents or indent > indents[-1]:
+                indents.append(indent)
+            raw.append({"depth": len(indents) - 1, "href": match.group("href"), "line": line_number, "title": re.sub(r"[*_`]+", "", match.group("title"))})
     entries = []
     for item in raw:
         path = unquote(urlsplit(item["href"]).path).replace("\\", "/")

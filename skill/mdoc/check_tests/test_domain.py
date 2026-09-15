@@ -179,7 +179,7 @@ class DomainTests(unittest.TestCase):
     def test_internal_navigation_check_works_without_toolchain_bridge(self) -> None:
         (self.root / "Summary.md").write_text("# Summary\n\n- [**Page** `API`](Main/Page.md)\n", encoding="utf-8")
         (self.root / "Main" / "Page.md").write_text("# **Page** `API`\n", encoding="utf-8")
-        with patch("mdoc_check.domain.NODE", self.root / "missing-node.exe"), patch("mdoc_check.domain.BRIDGE", self.root / "missing-bridge.mjs"):
+        with patch("mdoc_check.domain.NODE", self.root / "missing-node.exe"), patch("mdoc_check.domain.BRIDGE", self.root / "missing-bridge.mjs"), patch("mdoc_check.checkers.NODE", self.root / "missing-node.exe"), patch("mdoc_check.checkers.BRIDGE", self.root / "missing-bridge.mjs"):
             findings, _ = inspect(self.root, "en", "en", ["Summary.md", "Main/Page.md"], "Main", "images", "Summary.md", True)
         self.assertFalse(any(item["rule"] in {"markdown.single-h1", "navigation.title-matches-h1"} for item in findings))
 
