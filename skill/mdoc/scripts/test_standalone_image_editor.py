@@ -7,6 +7,7 @@ import tempfile
 import types
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from PIL import Image
 
@@ -17,6 +18,26 @@ except ImportError:
 
 
 class StandaloneImageEditorTests(unittest.TestCase):
+    def test_managed_candidate_uses_the_input_as_image_and_project_output(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / "candidate.png"
+            Image.new("RGBA", (20, 10), "white").save(source)
+            editor = StandaloneImageEditor.__new__(StandaloneImageEditor)
+            editor.source_path = editor.image_output_path = editor.project_image_path = source
+            editor.managed_candidate = True
+            editor.base_image = Image.new("RGBA", (20, 10), "red")
+            editor.layers = []; editor.composite = lambda: editor.base_image.copy(); editor.allow_overwrite_var = types.SimpleNamespace(get=lambda: True)
+            editor.project_dirty = True; editor.image_dirty = editor.dirty = True; editor._update_title = lambda: None; editor._png_destination = lambda *_args: self.fail("managed save must not ask for an output path")
+            module = sys.modules[StandaloneImageEditor.__module__]
+            with patch.object(module.messagebox, "showinfo"):
+                self.assertTrue(editor.save_image())
+            with Image.open(source) as saved:
+                self.assertEqual((255, 0, 0, 255), saved.convert("RGBA").getpixel((0, 0)))
+            self.assertEqual(source, editor.project_image_path)
+            build = inspect.getsource(StandaloneImageEditor._build)
+            self.assertIn('state="disabled" if self.managed_candidate', build)
+            self.assertIn("if not self.managed_candidate", build)
+
     def test_full_image_path_is_in_window_title_not_the_toolbar(self) -> None:
         editor = StandaloneImageEditor.__new__(StandaloneImageEditor)
         editor.source_path = Path(r"C:\Users\pc\Desktop\a-very-long-image-name-edited.png")

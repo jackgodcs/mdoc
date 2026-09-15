@@ -90,7 +90,7 @@ def load_project(image: Path, fonts: dict[str, Path] | None = None) -> tuple[dic
 
 
 class StandaloneImageEditor(ImageTextEditor):
-    def __init__(self, owner, image_path: Path, on_open):
+    def __init__(self, owner, image_path: Path, on_open, managed_candidate: bool = False):
         tk.Toplevel.__init__(self, owner)
         self.owner, self.on_open = owner, on_open
         self.task = self.entry = self.on_saved = None
@@ -111,12 +111,13 @@ class StandaloneImageEditor(ImageTextEditor):
         self.base_source, self.base_image, self.base_has_alpha = "image", None, False
         self.editable, self.tracking_ready = True, False
         self.source_path = image_path.resolve()
-        self.image_output_path: Path | None = None
-        self.project_image_path: Path | None = None
+        self.managed_candidate = managed_candidate
+        self.image_output_path: Path | None = self.source_path if managed_candidate else None
+        self.project_image_path: Path | None = self.source_path if managed_candidate else None
         self.session_directory = Path(tempfile.mkdtemp(prefix="mdoc-image-editor-"))
         self.asset_directory = self.session_directory / "assets"
         self.record_path = self.snapshot_path = self.session_directory / "unused"
-        self.allow_overwrite_var = tk.BooleanVar(value=False)
+        self.allow_overwrite_var = tk.BooleanVar(value=managed_candidate)
         self._load_standalone_image()
         self.geometry("1540x930")
         self.minsize(1180, 720)
@@ -143,7 +144,7 @@ class StandaloneImageEditor(ImageTextEditor):
     def _build(self) -> None:
         top = ttk.Frame(self, padding=(8, 8, 8, 4))
         top.pack(fill="x")
-        ttk.Button(top, text="打开图片", command=self.open_image).pack(side="left")
+        ttk.Button(top, text="打开图片", command=self.open_image, state="disabled" if self.managed_candidate else "normal").pack(side="left")
         ttk.Button(top, text="导入共享模板", command=self.import_shared_templates).pack(side="left", padx=(4, 0))
         ttk.Button(top, text="撤销", command=self.undo).pack(side="left")
         ttk.Button(top, text="重做", command=self.redo).pack(side="left", padx=(4, 12))
@@ -157,14 +158,16 @@ class StandaloneImageEditor(ImageTextEditor):
         ttk.Button(top, text="+", command=lambda: self.zoom_by(1.2)).pack(side="left", padx=2)
         image_menu = tk.Menu(self, tearoff=False)
         image_menu.add_command(label="保存图片", command=self.save_image)
-        image_menu.add_command(label="图片另存为", command=lambda: self.save_image(save_as=True))
+        if not self.managed_candidate:
+            image_menu.add_command(label="图片另存为", command=lambda: self.save_image(save_as=True))
         ttk.Menubutton(top, text="保存图片 ▼", menu=image_menu).pack(side="right", padx=(4, 0))
         project_menu = tk.Menu(self, tearoff=False)
         project_menu.add_command(label="保存工程", command=self.save_project)
-        project_menu.add_command(label="工程另存为", command=lambda: self.save_project(save_as=True))
+        if not self.managed_candidate:
+            project_menu.add_command(label="工程另存为", command=lambda: self.save_project(save_as=True))
         ttk.Menubutton(top, text="保存工程 ▼", menu=project_menu).pack(side="right", padx=(4, 0))
         ttk.Button(top, text="关闭", command=self.close).pack(side="right", padx=(0, 8))
-        ttk.Checkbutton(top, text="允许覆盖原图", variable=self.allow_overwrite_var).pack(side="right", padx=(0, 8))
+        ttk.Checkbutton(top, text="受管候选：保存即更新" if self.managed_candidate else "允许覆盖原图", variable=self.allow_overwrite_var, state="disabled" if self.managed_candidate else "normal").pack(side="right", padx=(0, 8))
 
         body = ttk.Panedwindow(self, orient="horizontal")
         body.pack(fill="both", expand=True, padx=8, pady=(0, 8))
@@ -373,7 +376,10 @@ def choose_image(parent=None) -> Path | None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Open the standalone mdoc image editor.")
     parser.add_argument("image", nargs="?", type=Path)
+    parser.add_argument("--managed-candidate", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
+    if args.managed_candidate and args.image is None:
+        parser.error("--managed-candidate requires an image path")
     root = tk.Tk(); root.withdraw()
 
     def close_if_empty() -> None:
@@ -387,7 +393,7 @@ def main() -> int:
             if path is None:
                 root.destroy(); return
         try:
-            editor = StandaloneImageEditor(root, path, open_editor)
+            editor = StandaloneImageEditor(root, path, open_editor, args.managed_candidate)
         except OSError as exc:
             messagebox.showerror("mdoc", f"无法读取图片：\n{exc}", parent=root)
             root.destroy(); return

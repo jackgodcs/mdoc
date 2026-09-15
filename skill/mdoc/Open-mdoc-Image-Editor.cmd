@@ -16,6 +16,10 @@ if not exist "%MDOC_EDITOR%" (
 if "%~1"=="" (
   "%MDOC_PYTHON%" -B "%MDOC_EDITOR%"
 ) else (
-  "%MDOC_PYTHON%" -B "%MDOC_EDITOR%" "%~1"
+  if "%~2"=="" (
+    "%MDOC_PYTHON%" -B "%MDOC_EDITOR%" "%~1"
+  ) else (
+    "%MDOC_PYTHON%" -B "%MDOC_EDITOR%" "%~1" "%~2"
+  )
 )
 exit /b %ERRORLEVEL%
