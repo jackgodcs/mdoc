@@ -35,7 +35,8 @@ jobs:
           "MDOC_TOOLCHAIN_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - run: python -m unittest discover -s skill/mdoc/scripts -p "test_*.py" -v
       - run: python -m unittest discover -s skill/mdoc/tests -p "test_*.py" -v
-      - run: python -m unittest discover -s skill/mdoc/check_tests -p "test_*.py" -v
+      - run: python -m unittest discover -s check_tests -p "test_*.py" -v
+        working-directory: skill/mdoc
       - run: python runtime-bootstrap/test_install_transaction.py -v
       - run: python -m unittest discover -s scripts -p "test_*.py" -v
       - run: python scripts/release_check.py
