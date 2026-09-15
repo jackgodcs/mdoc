@@ -109,7 +109,12 @@ def summary_entries(summary: Path) -> list[tuple[int, str]]:
 def summary_items(summary: Path) -> list[dict]:
     from .checkers import BRIDGE, NODE, _run
 
-    raw = json.loads(_run([str(NODE), str(BRIDGE)], input_text=json.dumps({"action": "summary", "file": str(summary.resolve())})).stdout)
+    if NODE.is_file() and BRIDGE.is_file():
+        raw = json.loads(_run([str(NODE), str(BRIDGE)], input_text=json.dumps({"action": "summary", "file": str(summary.resolve())})).stdout)
+    else:
+        from mdoc_core.pdf import summary_entries as parse_summary
+
+        raw = [{"depth": item["level"], "href": item["path"] + (f"#{item['anchor']}" if item["anchor"] else ""), "line": item["line"], "title": re.sub(r"[*_`]+", "", item["title"])} for item in parse_summary(summary)]
     entries = []
     for item in raw:
         path = unquote(urlsplit(item["href"]).path).replace("\\", "/")

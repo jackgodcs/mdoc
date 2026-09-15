@@ -21,6 +21,7 @@ HTML_CLOSE_WITHOUT_BLANK = re.compile(r"</(?:div|table)>[ \t]*\n(?=\S)", re.IGNO
 HTML_RESOURCE = re.compile(r"<(?:img|a)\b[^>]*?\b(?:src|href)\s*=\s*(['\"])(.*?)\1", re.IGNORECASE)
 HTML_ID = re.compile(r"\bid\s*=\s*(['\"])(.*?)\1", re.IGNORECASE)
 HTML_TABLE_TAG = re.compile(r"<\s*(/?)\s*(table|tr|th|td)\b[^>]*>", re.IGNORECASE)
+MARKDOWN_REFERENCE = re.compile(r"(!?)\[([^]]*)]\(([^)]+)\)")
 INLINE_DISABLE = re.compile(r"<!--\s*markdownlint-(?:disable|enable|capture|restore|disable-file)", re.IGNORECASE)
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tif", ".tiff"}
 FORMAT_EXTENSIONS = {"JPEG": {".jpg", ".jpeg"}, "PNG": {".png"}, "GIF": {".gif"}, "BMP": {".bmp"}, "WEBP": {".webp"}, "TIFF": {".tif", ".tiff"}}
@@ -48,6 +49,8 @@ def _exact_path(root: Path, relative: PurePosixPath) -> tuple[Path | None, bool]
 
 
 def _parsed(files: list[Path]) -> dict[str, dict]:
+    if not NODE.is_file() or not BRIDGE.is_file():
+        return {str(path.resolve()): _parsed_without_bridge(path) for path in files}
     request = {"action": "parse", "files": [str(path.resolve()) for path in files]}
     raw = json.loads(_run([str(NODE), str(BRIDGE)], input_text=json.dumps(request)).stdout)
     results = {}
@@ -80,6 +83,33 @@ def _parsed(files: list[Path]) -> dict[str, dict]:
                     found.append({"kind": "image" if child["type"] == "image" else "link", "target": target, "line": line})
         results[name] = {"references": found, "visible": visible, "headings": headings, "html_ids": sorted(html_ids), "tokens": tokens}
     return results
+
+
+def _parsed_without_bridge(path: Path) -> dict:
+    text = path.read_text(encoding="utf-8")
+    references, visible, headings, html_ids, tokens = [], [], [], set(), []
+    fenced = False
+    for line_number, line in enumerate(text.splitlines(), 1):
+        if line.lstrip().startswith(("```", "~~~")):
+            fenced = not fenced
+            continue
+        if fenced:
+            continue
+        heading = re.match(r"^\s*(#{1,6})\s+(.+?)\s*#*\s*$", line)
+        if heading:
+            level, content = len(heading.group(1)), heading.group(2)
+            children = [{"type": "text", "content": re.sub(r"[*_`]+", "", content)}]
+            tokens.extend(({"type": "heading_open", "tag": f"h{level}", "map": [line_number - 1, line_number]}, {"type": "inline", "children": children, "map": [line_number - 1, line_number]}))
+            headings.append({"level": level, "line": line_number})
+        for match in MARKDOWN_REFERENCE.finditer(line):
+            references.append({"kind": "image" if match.group(1) else "link", "target": match.group(3), "line": line_number})
+        for match in HTML_RESOURCE.finditer(line):
+            references.append({"kind": "image" if match.group(0).lower().startswith("<img") else "link", "target": match.group(2), "line": line_number})
+        html_ids.update(match.group(2) for match in HTML_ID.finditer(line))
+        plain = re.sub(r"<[^>]+>|!?\[([^]]*)]\([^)]+\)|[*_`#]+", lambda match: (match.group(1) or "") if match.lastindex else "", line).strip()
+        if plain:
+            visible.append({"text": plain, "line": line_number})
+    return {"references": references, "visible": visible, "headings": headings, "html_ids": sorted(html_ids), "tokens": tokens}
 
 
 def _slug(value: str) -> str:

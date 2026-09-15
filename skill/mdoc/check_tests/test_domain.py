@@ -3,6 +3,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from PIL import Image
 
@@ -174,6 +175,13 @@ class DomainTests(unittest.TestCase):
         (self.root / "Main" / "Page.md").write_text("# **Page** `API`\n", encoding="utf-8")
         findings, _ = inspect(self.root, "en", "en", ["Summary.md", "Main/Page.md"], "Main", "images", "Summary.md", True)
         self.assertFalse(any(item["rule"] == "navigation.title-matches-h1" for item in findings))
+
+    def test_internal_navigation_check_works_without_toolchain_bridge(self) -> None:
+        (self.root / "Summary.md").write_text("# Summary\n\n- [**Page** `API`](Main/Page.md)\n", encoding="utf-8")
+        (self.root / "Main" / "Page.md").write_text("# **Page** `API`\n", encoding="utf-8")
+        with patch("mdoc_check.domain.NODE", self.root / "missing-node.exe"), patch("mdoc_check.domain.BRIDGE", self.root / "missing-bridge.mjs"):
+            findings, _ = inspect(self.root, "en", "en", ["Summary.md", "Main/Page.md"], "Main", "images", "Summary.md", True)
+        self.assertFalse(any(item["rule"] in {"markdown.single-h1", "navigation.title-matches-h1"} for item in findings))
 
     def test_inline_markdownlint_disable_is_warning(self) -> None:
         (self.root / "Main" / "Page.md").write_text("# Page\n\n<!-- markdownlint-disable MD013 -->\n", encoding="utf-8")
