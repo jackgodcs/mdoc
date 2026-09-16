@@ -37,7 +37,7 @@ def zip_info(name: str, executable: bool = False) -> zipfile.ZipInfo:
 
 def collect() -> list[tuple[Path, str]]:
     result = [(path, path.name) for path in FILES]
-    result.extend((ROOT / name, name) for name in ("安装 mdoc.cmd", "install-mdoc.ps1", "repair-mdoc-runtime.ps1", "开始使用.txt"))
+    result.extend((ROOT / name, name) for name in ("install-mdoc.cmd", "UnInstall-mdoc.cmd", "install-mdoc.ps1", "uninstall-mdoc.ps1", "repair-mdoc-runtime.ps1", "Getting-Started.txt"))
     result.extend((path, path.relative_to(ROOT).as_posix()) for folder in ("bootstrap", "runtime", "runtime-bootstrap") for path in sorted((ROOT / folder).rglob("*")) if path.is_file() and not path.name.startswith("test_") and "__pycache__" not in path.parts)
     skill = ROOT / "skill" / "mdoc"
     for path in sorted(skill.rglob("*")):

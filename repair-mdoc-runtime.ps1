@@ -249,7 +249,7 @@ try {
     if ($parts -notcontains $bin) { [Environment]::SetEnvironmentVariable('Path', (($parts + $bin) -join ';'), 'User') }
   }
   $startMenu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\mdoc'; New-Item -ItemType Directory -Path $startMenu -Force | Out-Null
-  Copy-Item -LiteralPath $launcher -Destination (Join-Path $startMenu 'mdoc 命令行.cmd') -Force
+  Copy-Item -LiteralPath $launcher -Destination (Join-Path $startMenu 'mdoc CLI.cmd') -Force
   $stateRoot = Join-Path $RuntimeRoot 'state'; New-Item -ItemType Directory -Path $stateRoot -Force | Out-Null
   $pythonSource = if ($ownership -eq 'managed-by-mdoc') { 'mdoc-managed' } elseif ([string]$selected.executable -like '*\.cache\codex-runtimes\*') { 'codex-runtime' } else { 'system-or-user' }
   $requirementsHash = Get-Sha256 (Join-Path $packageRoot 'runtime\requirements-v1.json')

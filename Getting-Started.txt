@@ -1,0 +1,13 @@
+mdoc 1.5.3 Windows package
+
+1. Double-click install-mdoc.cmd.
+2. The Toolchain is one complete bundle for core commands, screenshots, PDF Check, and PDF Build.
+3. Every network download requires explicit approval and is verified before installation.
+4. Open a new terminal and run: mdoc --version
+5. For offline installation, place mdoc-toolchain-2026.09.15-windows-x64.zip or mdoc-toolchain.zip beside install-mdoc.cmd.
+6. PDF generation is optional for ordinary manual changes and publication.
+7. Double-click Open-mdoc-Image-Editor.cmd to edit an image without a workspace.
+8. Uninstall with UnInstall-mdoc.cmd or: mdoc uninstall
+
+Project: https://github.com/jackgodcs/mdoc
+Toolchain: https://github.com/jackgodcs/mdoc-toolchain/releases/download/v2026.09.15/mdoc-toolchain-2026.09.15-windows-x64.zip

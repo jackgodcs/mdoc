@@ -70,14 +70,14 @@ def main() -> int:
             if pattern.search(source):
                 problems.append(f"{label}: {path.relative_to(ROOT)}")
     version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
-    if version != "1.5.2":
+    if version != "1.5.3":
         problems.append(f"unexpected VERSION: {version}")
     expected_version_sources = {
         ROOT / "skill" / "mdoc" / "mdoc_core" / "__init__.py": f'VERSION = "{version}"',
         ROOT / "skill" / "mdoc" / "tool-manifest.json": f'"product_version": "{version}"',
         ROOT / "README.md": f"mdoc-{version}-windows-x64.zip",
         ROOT / "CHANGELOG.md": f"## {version} -",
-        ROOT / "开始使用.txt": f"mdoc {version} Windows 安装包",
+        ROOT / "Getting-Started.txt": f"mdoc {version} Windows package",
     }
     for path, marker in expected_version_sources.items():
         if marker not in path.read_text(encoding="utf-8"):

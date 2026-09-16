@@ -1,6 +1,6 @@
 # mdoc
 
-`mdoc` 是面向 Windows 10/11 x64 的多语言 Markdown 产品手册工作流工具。产品版本是 `1.5.2`；工作区和任务协议使用 `schema_version: 1`。
+`mdoc` 是面向 Windows 10/11 x64 的多语言 Markdown 产品手册工作流工具。产品版本是 `1.5.3`；工作区和任务协议使用 `schema_version: 1`。
 
 新版 mdoc 是一次干净重构：不识别、不迁移、不兼容旧工作区、旧配置、旧任务或旧状态文件。所有流程状态都由同一个 Python CLI 写入，正式手册内容只由发布事务修改；代理和人工编写只能先进入任务的受控 `staging/`。
 
@@ -8,11 +8,13 @@ Copyright 2026 cshuan. Licensed under Apache-2.0. 该许可证只覆盖 mdoc 源
 
 ## 安装
 
-从 GitHub Stable Release 下载 `mdoc-1.5.2-windows-x64.zip`，完整解压后双击“安装 mdoc.cmd”。安装器默认安装到当前用户的 Codex skills 目录，并为 mdoc 创建独立运行环境；它不会修改外部 Python 的全局包。
+从 GitHub Stable Release 下载 `mdoc-1.5.3-windows-x64.zip`，完整解压后双击 `install-mdoc.cmd`。安装器默认安装到当前用户的 Codex skills 目录，并为 mdoc 创建独立运行环境；它不会修改外部 Python 的全局包。
 
 安装后可双击 `%USERPROFILE%\.codex\skills\mdoc\Open-mdoc-Image-Editor.cmd` 独立编辑图片，也可以将一张图片拖到该 CMD 上。独立编辑器不需要 mdoc workspace 或 task，不修改截图任务状态；成品默认保持导入图片格式，也可另存为 PNG，“保存工程”额外输出同名 `.mdoc-image-edit.json` 和 `.mdoc-image-edit-assets`。
 
-网络不稳定或离线安装时，下载 [mdoc Toolchain 2026.09.15](https://github.com/jackgodcs/mdoc-toolchain/releases/download/v2026.09.15/mdoc-toolchain-2026.09.15-windows-x64.zip)，将其保留原文件名或重命名为 `mdoc-toolchain.zip`，并放在已解压的 mdoc 安装包根目录、与“安装 mdoc.cmd”同级。双击安装器后会自动使用本地 Toolchain，校验 SHA-256 后安装，不会再联网下载。
+网络不稳定或离线安装时，下载 [mdoc Toolchain 2026.09.15](https://github.com/jackgodcs/mdoc-toolchain/releases/download/v2026.09.15/mdoc-toolchain-2026.09.15-windows-x64.zip)，将其保留原文件名或重命名为 `mdoc-toolchain.zip`，并放在已解压的 mdoc 安装包根目录、与 `install-mdoc.cmd` 同级。双击安装器后会自动使用本地 Toolchain，校验 SHA-256 后安装，不会再联网下载。
+
+卸载时双击 `UnInstall-mdoc.cmd`，或运行 `mdoc uninstall`；自动化场景可使用 `mdoc uninstall --confirm --json`。卸载只删除 mdoc 管理的 skill、Runtime、Toolchain、PATH、开始菜单和 Installed Apps 登记，不删除任何手册工作区及其 `.mdoc` 数据。
 
 官方来源：
 
@@ -35,7 +37,7 @@ python scripts/release_check.py
 python scripts/build_release.py
 ```
 
-构建结果位于 `dist/mdoc-<version>-windows-x64.zip`。解压后双击“安装 mdoc.cmd”即可为当前 Windows 用户安装独立的 mdoc、Python 运行时和截图助手依赖。每台协作者电脑只需安装一次；实际手册工作区、任务、截图与项目模板仍应保留在共享手册目录中，不应提交到本仓库。
+构建结果位于 `dist/mdoc-<version>-windows-x64.zip`。解压后双击 `install-mdoc.cmd` 即可为当前 Windows 用户安装独立的 mdoc、Python 运行时和截图助手依赖。每台协作者电脑只需安装一次；实际手册工作区、任务、截图与项目模板仍应保留在共享手册目录中，不应提交到本仓库。
 
 ## 核心流程
 

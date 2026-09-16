@@ -16,7 +16,7 @@ class ReleaseBuildTests(unittest.TestCase):
     def test_release_build_is_deterministic_and_manifest_matches(self):
         command = [sys.executable, str(ROOT / "scripts" / "build_release.py")]
         subprocess.run(command, check=True, capture_output=True, text=True)
-        asset = ROOT / "dist" / "mdoc-1.5.2-windows-x64.zip"
+        asset = ROOT / "dist" / "mdoc-1.5.3-windows-x64.zip"
         first = hashlib.sha256(asset.read_bytes()).hexdigest()
         subprocess.run(command, check=True, capture_output=True, text=True)
         second = hashlib.sha256(asset.read_bytes()).hexdigest()
@@ -28,10 +28,14 @@ class ReleaseBuildTests(unittest.TestCase):
             manifest = json.loads(manifest_bytes)
             installer_script = package.read("install-mdoc.ps1")
             runtime_repair_script = package.read("repair-mdoc-runtime.ps1")
-            installer_launcher = package.read("\u5b89\u88c5 mdoc.cmd")
+            installer_launcher = package.read("install-mdoc.cmd")
             package_editor_launcher = package.read("Open-mdoc-Image-Editor.cmd")
             installed_editor_launcher = package.read("skill/mdoc/Open-mdoc-Image-Editor.cmd")
-        self.assertIn("安装 mdoc.cmd", names)
+        self.assertIn("install-mdoc.cmd", names)
+        self.assertIn("UnInstall-mdoc.cmd", names)
+        self.assertIn("uninstall-mdoc.ps1", names)
+        self.assertIn("runtime-bootstrap/mdoc_uninstall.py", names)
+        self.assertNotIn("安装 mdoc.cmd", names)
         self.assertIn("Open-mdoc-Image-Editor.cmd", names)
         self.assertIn("skill/mdoc/Open-mdoc-Image-Editor.cmd", names)
         self.assertIn("skill/mdoc/scripts/standalone_image_editor.py", names)
@@ -50,7 +54,7 @@ class ReleaseBuildTests(unittest.TestCase):
         self.assertIn(b"enter local ZIP path", installer_launcher)
         self.assertIn(b"install-mdoc.cmd -Toolkit", installer_launcher)
         self.assertIn(b"You can install without network access", installer_launcher)
-        self.assertIn(b'"path": "\\u5b89\\u88c5 mdoc.cmd"', manifest_bytes)
+        self.assertIn(b'"path": "install-mdoc.cmd"', manifest_bytes)
         self.assertIn(b"skill\\mdoc\\scripts\\standalone_image_editor.py", package_editor_launcher)
         self.assertIn(b"scripts\\standalone_image_editor.py", installed_editor_launcher)
         self.assertNotIn(b"--workspace", installed_editor_launcher)
@@ -62,7 +66,7 @@ class ReleaseBuildTests(unittest.TestCase):
     def test_windows_powershell_installer_validates_chinese_manifest_filename(self):
         command = [sys.executable, str(ROOT / "scripts" / "build_release.py")]
         subprocess.run(command, check=True, capture_output=True, text=True)
-        asset = ROOT / "dist" / "mdoc-1.5.2-windows-x64.zip"
+        asset = ROOT / "dist" / "mdoc-1.5.3-windows-x64.zip"
         powershell = os.environ.get("WINDIR", r"C:\Windows")
         powershell = str(Path(powershell) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe")
         self.assertTrue(Path(powershell).is_file())
@@ -86,6 +90,7 @@ class ReleaseBuildTests(unittest.TestCase):
                 "capability_probe": "ready",
                 "python_source": "system-or-user",
             }), encoding="utf-8")
+            environment = os.environ.copy(); environment["APPDATA"] = str(root / "appdata"); environment["MDOC_TEST_UNINSTALL_REGISTRY"] = "Software\\mdoc-tests\\" + root.name
             result = subprocess.run([
                 powershell,
                 "-NoProfile",
@@ -102,15 +107,16 @@ class ReleaseBuildTests(unittest.TestCase):
                 str(installation),
                 "-RuntimeRoot",
                 str(runtime_root),
-            ], capture_output=True, text=True, encoding="utf-8", errors="replace")
+            ], capture_output=True, text=True, encoding="utf-8", errors="replace", env=environment)
             self.assertEqual(0, result.returncode, result.stdout + result.stderr)
             self.assertTrue((installation / "SKILL.md").is_file())
+            self.assertTrue((runtime_root / "state/uninstall.json").is_file())
 
     @unittest.skipUnless(sys.platform == "win32", "Windows PowerShell local toolkit discovery test")
     def test_windows_powershell_installer_uses_local_toolkit_beside_package(self):
         command = [sys.executable, str(ROOT / "scripts" / "build_release.py")]
         subprocess.run(command, check=True, capture_output=True, text=True)
-        asset = ROOT / "dist" / "mdoc-1.5.2-windows-x64.zip"
+        asset = ROOT / "dist" / "mdoc-1.5.3-windows-x64.zip"
         powershell = Path(os.environ.get("WINDIR", r"C:\Windows")) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
         self.assertTrue(powershell.is_file())
 
@@ -134,6 +140,7 @@ class ReleaseBuildTests(unittest.TestCase):
                 "capability_probe": "ready",
                 "python_source": "system-or-user",
             }), encoding="utf-8")
+            environment = os.environ.copy(); environment["APPDATA"] = str(root / "appdata"); environment["MDOC_TEST_UNINSTALL_REGISTRY"] = "Software\\mdoc-tests\\" + root.name
             result = subprocess.run([
                 str(powershell),
                 "-NoProfile",
@@ -150,7 +157,7 @@ class ReleaseBuildTests(unittest.TestCase):
                 str(installation),
                 "-RuntimeRoot",
                 str(runtime_root),
-            ], capture_output=True, text=True, encoding="utf-8", errors="replace")
+            ], capture_output=True, text=True, encoding="utf-8", errors="replace", env=environment)
             self.assertEqual(0, result.returncode, result.stdout + result.stderr)
             self.assertIn("Using local mdoc Toolchain bundle:", result.stdout)
 

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -115,6 +117,7 @@ def parser():
     check_clean = check_actions.add_parser("clean"); check_clean.add_argument("--workspace", type=Path, required=True)
     check_actions.add_parser("doctor")
     feedback = sub.add_parser("feedback"); feedback_actions = feedback.add_subparsers(dest="feedback_action", required=True); feedback_open = feedback_actions.add_parser("open"); feedback_open.add_argument("--workspace", type=Path, required=True); feedback_open.add_argument("--port", type=int, default=0); feedback_open.add_argument("--no-open", action="store_true")
+    uninstall = sub.add_parser("uninstall"); uninstall.add_argument("--confirm", action="store_true")
     pdf_group = sub.add_parser("pdf"); pdf_actions = pdf_group.add_subparsers(dest="pdf_action", required=True)
     pdf_init = pdf_actions.add_parser("init"); pdf_init.add_argument("--workspace", type=Path, required=True)
     pdf_doctor = pdf_actions.add_parser("doctor"); pdf_doctor.add_argument("--workspace", type=Path)
@@ -164,6 +167,16 @@ def main():
         elif args.command == "feedback":
             from mdoc_check.web import create_launcher, serve
             create_launcher(args.workspace.resolve()); serve(args.workspace.resolve(), "127.0.0.1", args.port, not args.no_open, "feedback"); result = {"status": "feedback_closed"}
+        elif args.command == "uninstall":
+            runtime_root = Path(os.environ.get("LOCALAPPDATA", "")) / "mdoc"
+            uninstaller = runtime_root / "uninstall" / "uninstall-mdoc.ps1"
+            if not uninstaller.is_file():
+                raise MdocError("MDOC-UNINSTALL-NOT-INSTALLED", "未找到托管卸载器；请使用正式发布包中的 UnInstall-mdoc.cmd，并仅在可验证安装上使用 -Recovery。")
+            command = ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(uninstaller)]
+            if args.confirm: command.append("-Confirm")
+            if args.json: command.append("-Json")
+            completed = subprocess.run(command)
+            return completed.returncode
         else:
             if args.pdf_action == "init":
                 result = pdf.init(args.workspace)

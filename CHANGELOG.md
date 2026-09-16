@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.3 - 2026-09-16
+
+- Added managed one-click uninstall from the release package, Start Menu, Windows Installed Apps, and `mdoc uninstall`.
+- Added installation ownership manifests, safe PATH and registry cleanup, managed-Python ownership handling, and delayed cleanup for locked files.
+- Renamed the release launchers to `install-mdoc.cmd` and `UnInstall-mdoc.cmd`, with English installer and uninstaller prompts.
+
 ## 1.5.2 - 2026-09-16
 
 - Separated the feedback image list and image comparison area into independent scroll containers.
