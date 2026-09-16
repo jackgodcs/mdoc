@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.2 - 2026-09-16
+
+- Separated the feedback image list and image comparison area into independent scroll containers.
+- Preserved each image-management scroll position across image selection, candidate refresh, save, discard, and busy-state rerenders.
+
 ## 1.5.1 - 2026-09-16
 
 - Preserved the imported image format when saving from the standalone editor and the exact managed-candidate path and format when editing feedback images.

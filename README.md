@@ -1,6 +1,6 @@
 # mdoc
 
-`mdoc` 是面向 Windows 10/11 x64 的多语言 Markdown 产品手册工作流工具。产品版本是 `1.5.1`；工作区和任务协议使用 `schema_version: 1`。
+`mdoc` 是面向 Windows 10/11 x64 的多语言 Markdown 产品手册工作流工具。产品版本是 `1.5.2`；工作区和任务协议使用 `schema_version: 1`。
 
 新版 mdoc 是一次干净重构：不识别、不迁移、不兼容旧工作区、旧配置、旧任务或旧状态文件。所有流程状态都由同一个 Python CLI 写入，正式手册内容只由发布事务修改；代理和人工编写只能先进入任务的受控 `staging/`。
 
@@ -8,7 +8,7 @@ Copyright 2026 cshuan. Licensed under Apache-2.0. 该许可证只覆盖 mdoc 源
 
 ## 安装
 
-从 GitHub Stable Release 下载 `mdoc-1.5.1-windows-x64.zip`，完整解压后双击“安装 mdoc.cmd”。安装器默认安装到当前用户的 Codex skills 目录，并为 mdoc 创建独立运行环境；它不会修改外部 Python 的全局包。
+从 GitHub Stable Release 下载 `mdoc-1.5.2-windows-x64.zip`，完整解压后双击“安装 mdoc.cmd”。安装器默认安装到当前用户的 Codex skills 目录，并为 mdoc 创建独立运行环境；它不会修改外部 Python 的全局包。
 
 安装后可双击 `%USERPROFILE%\.codex\skills\mdoc\Open-mdoc-Image-Editor.cmd` 独立编辑图片，也可以将一张图片拖到该 CMD 上。独立编辑器不需要 mdoc workspace 或 task，不修改截图任务状态；成品默认保持导入图片格式，也可另存为 PNG，“保存工程”额外输出同名 `.mdoc-image-edit.json` 和 `.mdoc-image-edit-assets`。
 
