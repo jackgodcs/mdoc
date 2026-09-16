@@ -2,16 +2,31 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import shutil
 import subprocess
 import tempfile
 import threading
-import re
+import time
 from pathlib import Path
 
 from PIL import Image
 
 from .feedback import IMAGE_SUFFIXES, configuration, image_references
+
+
+def _replace_with_retry(source: Path, target: Path) -> None:
+    delays = (0.1, 0.2, 0.4, 0.8)
+    for attempt in range(len(delays) + 1):
+        try:
+            os.replace(source, target)
+            return
+        except OSError as exc:
+            if os.name != "nt" or getattr(exc, "winerror", None) not in {5, 32} or attempt == len(delays):
+                if os.name == "nt" and getattr(exc, "winerror", None) in {5, 32}:
+                    raise ValueError("正式图片正在被其他程序占用，请关闭图片查看器或编辑器后重试。候选图片已保留。") from exc
+                raise
+            time.sleep(delays[attempt])
 
 
 class ImageCandidates:
@@ -131,8 +146,11 @@ class ImageCandidates:
                 handle,path=tempfile.mkstemp(prefix=target.name+".",suffix=".tmp",dir=target.parent);os.close(handle)
                 try: converted.save(path,format="PNG" if target.suffix.casefold()==".png" else "JPEG",quality=95,subsampling=0);output=Path(path).read_bytes()
                 finally: Path(path).unlink(missing_ok=True)
+        temporary=target.with_name("."+target.name+".tmp")
+        try: temporary.write_bytes(output);_replace_with_retry(temporary,target)
+        finally: temporary.unlink(missing_ok=True)
+        self._validate(target)
         backup = self.root / "undo" / (hashlib.sha256(str(target).encode()).hexdigest()+target.suffix); backup.parent.mkdir(parents=True,exist_ok=True); backup.write_bytes(before)
-        temporary=target.with_name("."+target.name+".tmp");temporary.write_bytes(output);os.replace(temporary,target);self._validate(target)
         self.undo[str(target)]={"backup":backup,"state":hashlib.sha256(output).hexdigest()};self.candidates.pop(key,None);self._remove_files(candidate, True)
         return {"saved":True,"target":str(target),"old":old,"new":source_info,"warning":"图片尺寸或宽高比已变化。" if (old["width"],old["height"])!=(source_info["width"],source_info["height"]) else ""}
 
@@ -140,4 +158,7 @@ class ImageCandidates:
         target=self._target(book,locale,logical,reference);item=self.undo.get(str(target))
         if not item: raise ValueError("当前服务会话没有可撤销的图片替换。")
         if hashlib.sha256(target.read_bytes()).hexdigest()!=item["state"] and not force: return {"reverted":False,"conflict":True}
-        temporary=target.with_name("."+target.name+".tmp");shutil.copy2(item["backup"],temporary);os.replace(temporary,target);self.undo.pop(str(target),None);item["backup"].unlink(missing_ok=True);return {"reverted":True,"conflict":False}
+        temporary=target.with_name("."+target.name+".tmp")
+        try: shutil.copy2(item["backup"],temporary);_replace_with_retry(temporary,target)
+        finally: temporary.unlink(missing_ok=True)
+        self.undo.pop(str(target),None);item["backup"].unlink(missing_ok=True);return {"reverted":True,"conflict":False}

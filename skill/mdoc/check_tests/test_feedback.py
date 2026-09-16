@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -42,6 +43,51 @@ class FeedbackTests(unittest.TestCase):
             reference = image_references(self.workspace, "guide", "en", "Main/Page.md")[0]["reference"]; target = self.workspace / "Guide" / "en" / "Main" / "media" / "Shot.png"; before = target.read_bytes()
             candidate = manager.copy_locale("00000000-0000-4000-8000-000000000001", "guide", "en", "Main/Page.md", reference, "zh"); self.assertTrue(manager.save(candidate["key"])["saved"]); self.assertNotEqual(before, target.read_bytes())
             self.assertTrue(manager.revert("guide", "en", "Main/Page.md", reference)["reverted"]); self.assertEqual(before, target.read_bytes())
+        finally: manager.close()
+
+    def test_image_save_retries_transient_windows_file_lock(self):
+        manager = ImageCandidates(self.workspace)
+        try:
+            reference = image_references(self.workspace, "guide", "en", "Main/Page.md")[0]["reference"]
+            candidate = manager.copy_locale("00000000-0000-4000-8000-000000000009", "guide", "en", "Main/Page.md", reference, "zh")
+            target = self.workspace / "Guide" / "en" / "Main" / "media" / "Shot.png"; original_replace = os.replace; attempts = 0
+            def occupied_then_replace(source, destination):
+                nonlocal attempts
+                attempts += 1
+                if attempts < 3:
+                    error = PermissionError(13, "denied"); error.winerror = 5; raise error
+                return original_replace(source, destination)
+            with patch("mdoc_check.feedback_images.os.name", "nt"), patch("mdoc_check.feedback_images.os.replace", side_effect=occupied_then_replace), patch("mdoc_check.feedback_images.time.sleep") as sleep:
+                self.assertTrue(manager.save(candidate["key"])["saved"])
+            self.assertEqual(3, attempts); self.assertEqual(2, sleep.call_count); self.assertFalse(target.with_name("." + target.name + ".tmp").exists())
+        finally: manager.close()
+
+    def test_image_save_reports_persistent_windows_file_lock_and_keeps_candidate(self):
+        manager = ImageCandidates(self.workspace)
+        try:
+            reference = image_references(self.workspace, "guide", "en", "Main/Page.md")[0]["reference"]
+            candidate = manager.copy_locale("00000000-0000-4000-8000-000000000010", "guide", "en", "Main/Page.md", reference, "zh")
+            target = self.workspace / "Guide" / "en" / "Main" / "media" / "Shot.png"; before = target.read_bytes()
+            error = PermissionError(13, "denied"); error.winerror = 5
+            with patch("mdoc_check.feedback_images.os.name", "nt"), patch("mdoc_check.feedback_images.os.replace", side_effect=error), patch("mdoc_check.feedback_images.time.sleep"):
+                with self.assertRaisesRegex(ValueError, "正式图片正在被其他程序占用"): manager.save(candidate["key"])
+            self.assertEqual(before, target.read_bytes()); self.assertTrue(Path(candidate["candidate"]).is_file()); self.assertFalse(target.with_name("." + target.name + ".tmp").exists())
+        finally: manager.close()
+
+    def test_image_revert_retries_transient_windows_file_lock(self):
+        manager = ImageCandidates(self.workspace)
+        try:
+            reference = image_references(self.workspace, "guide", "en", "Main/Page.md")[0]["reference"]
+            candidate = manager.copy_locale("00000000-0000-4000-8000-000000000011", "guide", "en", "Main/Page.md", reference, "zh"); manager.save(candidate["key"]); attempts = 0; original_replace = os.replace
+            def occupied_then_replace(source, destination):
+                nonlocal attempts
+                attempts += 1
+                if attempts == 1:
+                    error = PermissionError(13, "denied"); error.winerror = 32; raise error
+                return original_replace(source, destination)
+            with patch("mdoc_check.feedback_images.os.name", "nt"), patch("mdoc_check.feedback_images.os.replace", side_effect=occupied_then_replace), patch("mdoc_check.feedback_images.time.sleep") as sleep:
+                self.assertTrue(manager.revert("guide", "en", "Main/Page.md", reference)["reverted"])
+            self.assertEqual(2, attempts); sleep.assert_called_once_with(0.1)
         finally: manager.close()
 
     def test_image_candidate_status_discard_and_replacement_cleanup(self):
