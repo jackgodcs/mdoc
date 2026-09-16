@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.4 - 2026-09-16
+
+- Fixed feedback revision splitters overwriting the active grid layout and hiding the image-management workbench.
+- Preserved separate file-list and match-list widths when switching among editing, preview, translation, and image-management views.
+
 ## 1.5.3 - 2026-09-16
 
 - Added managed one-click uninstall from the release package, Start Menu, Windows Installed Apps, and `mdoc uninstall`.

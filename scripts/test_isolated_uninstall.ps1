@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-  [string]$Package = (Join-Path $PSScriptRoot '..\dist\mdoc-1.5.3-windows-x64.zip'),
+  [string]$Package = (Join-Path $PSScriptRoot '..\dist\mdoc-1.5.4-windows-x64.zip'),
   [string]$Toolkit = (Join-Path $PSScriptRoot '..\..\mdoc-toolchain\dist\mdoc-toolchain-2026.09.15-windows-x64.zip')
 )
 $ErrorActionPreference = 'Stop'
@@ -18,7 +18,7 @@ try {
   if ($LASTEXITCODE -ne 0) { throw "install failed: $LASTEXITCODE" }
   $launcher = Join-Path $runtime 'bin\mdoc.cmd'
   $version = & $launcher --version
-  if ($LASTEXITCODE -ne 0 -or $version -notcontains 'mdoc 1.5.3') { throw "version check failed: $version" }
+  if ($LASTEXITCODE -ne 0 -or $version -notcontains 'mdoc 1.5.4') { throw "version check failed: $version" }
   $doctor = & $launcher check doctor --json | ConvertFrom-Json
   if ($LASTEXITCODE -ne 0 -or $doctor.status -ne 'passed') { throw 'doctor failed' }
   $ownership = Get-Content -LiteralPath (Join-Path $runtime 'state\uninstall.json') -Raw | ConvertFrom-Json
