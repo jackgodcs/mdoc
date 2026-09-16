@@ -27,7 +27,7 @@ class StandaloneImageEditorTests(unittest.TestCase):
             editor.managed_candidate = True
             editor.base_image = Image.new("RGBA", (20, 10), "red")
             editor.layers = []; editor.composite = lambda: editor.base_image.copy(); editor.allow_overwrite_var = types.SimpleNamespace(get=lambda: True)
-            editor.project_dirty = True; editor.image_dirty = editor.dirty = True; editor._update_title = lambda: None; editor._png_destination = lambda *_args: self.fail("managed save must not ask for an output path")
+            editor.project_dirty = True; editor.image_dirty = editor.dirty = True; editor._update_title = lambda: None; editor._image_destination = lambda *_args: self.fail("managed save must not ask for an output path")
             module = sys.modules[StandaloneImageEditor.__module__]
             with patch.object(module.messagebox, "showinfo"):
                 self.assertTrue(editor.save_image())
@@ -37,6 +37,89 @@ class StandaloneImageEditorTests(unittest.TestCase):
             build = inspect.getsource(StandaloneImageEditor._build)
             self.assertIn('state="disabled" if self.managed_candidate', build)
             self.assertIn("if not self.managed_candidate", build)
+
+    def test_managed_jpeg_candidate_is_overwritten_as_jpeg(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / "candidate.jpg"
+            Image.new("RGB", (20, 10), "white").save(source, format="JPEG")
+            editor = StandaloneImageEditor.__new__(StandaloneImageEditor)
+            editor.source_path = editor.image_output_path = editor.project_image_path = source; editor.managed_candidate = True
+            editor.base_image = Image.new("RGBA", (20, 10), (255, 0, 0, 128)); editor.base_has_alpha = True
+            editor.layers = []; editor.composite = lambda: editor.base_image.copy(); editor.allow_overwrite_var = types.SimpleNamespace(get=lambda: True)
+            editor.project_dirty = True; editor.image_dirty = editor.dirty = True; editor._update_title = lambda: None; editor._image_destination = lambda *_args: self.fail("managed save must not ask for an output path")
+            module = sys.modules[StandaloneImageEditor.__module__]
+            with patch.object(module.messagebox, "showinfo"):
+                self.assertTrue(editor.save_image())
+            with Image.open(source) as saved:
+                self.assertEqual("JPEG", saved.format); self.assertEqual("RGB", saved.mode)
+            self.assertFalse(source.with_suffix(".png").exists())
+
+    def test_normal_save_defaults_to_source_format_and_shares_project_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); source = root / "source.jpg"; output = root / "source-edited.jpg"
+            Image.new("RGB", (20, 10), "white").save(source)
+            editor = StandaloneImageEditor.__new__(StandaloneImageEditor)
+            editor.source_path = source; editor.image_output_path = editor.project_image_path = None; editor.managed_candidate = False
+            editor.base_image = Image.new("RGBA", (20, 10), "red"); editor.base_has_alpha = True; editor.layers = []; editor.composite = lambda: editor.base_image.copy()
+            editor.allow_overwrite_var = types.SimpleNamespace(get=lambda: False); editor.project_dirty = True; editor.image_dirty = editor.dirty = True; editor._update_title = lambda: None
+            editor._image_destination = lambda title, initial: output
+            module = sys.modules[StandaloneImageEditor.__module__]
+            with patch.object(module.messagebox, "showinfo"):
+                self.assertTrue(editor.save_image())
+            with Image.open(output) as saved: self.assertEqual("JPEG", saved.format)
+            self.assertEqual(output, editor.image_output_path); self.assertEqual(output, editor.project_image_path); self.assertTrue(source.is_file())
+
+    def test_save_as_can_change_jpeg_output_to_png(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); source = root / "source.jpg"; output = root / "converted.png"
+            Image.new("RGB", (20, 10), "white").save(source)
+            editor = StandaloneImageEditor.__new__(StandaloneImageEditor)
+            editor.source_path = source; editor.image_output_path = root / "existing.jpg"; editor.project_image_path = root / "existing.jpg"; editor.managed_candidate = False
+            editor.base_image = Image.new("RGBA", (20, 10), (255, 0, 0, 128)); editor.base_has_alpha = True; editor.layers = []; editor.composite = lambda: editor.base_image.copy()
+            editor.allow_overwrite_var = types.SimpleNamespace(get=lambda: False); editor.project_dirty = True; editor.image_dirty = editor.dirty = True; editor._update_title = lambda: None
+            editor._image_destination = lambda title, initial: output
+            module = sys.modules[StandaloneImageEditor.__module__]
+            with patch.object(module.messagebox, "showinfo"):
+                self.assertTrue(editor.save_image(save_as=True))
+            with Image.open(output) as saved: self.assertEqual("PNG", saved.format); self.assertEqual("RGBA", saved.mode)
+            self.assertEqual(output, editor.image_output_path); self.assertEqual(output, editor.project_image_path)
+
+    def test_supported_extensions_write_the_declared_encoding(self) -> None:
+        expectations = {".png": ("PNG", "RGBA"), ".jpg": ("JPEG", "RGB"), ".jpeg": ("JPEG", "RGB"), ".bmp": ("BMP", "RGB"), ".gif": ("GIF", "P"), ".tif": ("TIFF", "RGBA"), ".tiff": ("TIFF", "RGBA"), ".webp": ("WEBP", "RGBA")}
+        with tempfile.TemporaryDirectory() as temporary:
+            editor = StandaloneImageEditor.__new__(StandaloneImageEditor)
+            editor.base_image = Image.new("RGBA", (8, 6), (255, 0, 0, 128)); editor.composite = lambda: editor.base_image.copy()
+            editor.managed_candidate = False
+            module = sys.modules[StandaloneImageEditor.__module__]
+            with patch.object(module.messagebox, "showerror"):
+                for suffix, expected in expectations.items():
+                    output = Path(temporary) / f"result{suffix}"
+                    saved, flattened = editor._write_image(output)
+                    self.assertTrue(saved, suffix); self.assertEqual(suffix in {".jpg", ".jpeg", ".bmp", ".gif"}, flattened, suffix)
+                    with Image.open(output) as image:
+                        self.assertEqual(expected[0], image.format, suffix); self.assertEqual(expected[1], image.mode, suffix)
+
+    def test_ordinary_lossy_container_overwrite_requires_confirmation(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / "source.webp"
+            Image.new("RGBA", (8, 6), (255, 0, 0, 128)).save(source, format="WEBP", lossless=True)
+            editor = StandaloneImageEditor.__new__(StandaloneImageEditor)
+            editor.source_path = source; editor.image_output_path = editor.project_image_path = None; editor.managed_candidate = False
+            editor.base_image = Image.new("RGBA", (8, 6), "red"); editor.composite = lambda: editor.base_image.copy()
+            editor.allow_overwrite_var = types.SimpleNamespace(get=lambda: True); editor.project_dirty = True; editor.image_dirty = editor.dirty = True; editor._update_title = lambda: None
+            module = sys.modules[StandaloneImageEditor.__module__]
+            with patch.object(module.messagebox, "askokcancel", return_value=False) as confirm, patch.object(module.messagebox, "showinfo"):
+                self.assertFalse(editor.save_image())
+            confirm.assert_called_once()
+            with Image.open(source) as saved: self.assertEqual("WEBP", saved.format)
+
+    def test_managed_candidate_does_not_prompt_for_flattened_overwrite(self) -> None:
+        editor = StandaloneImageEditor.__new__(StandaloneImageEditor)
+        editor.managed_candidate = True; editor.source_path = Path("candidate.webp")
+        module = sys.modules[StandaloneImageEditor.__module__]
+        with patch.object(module.messagebox, "askokcancel") as confirm:
+            self.assertTrue(editor._confirm_flattened_overwrite(editor.source_path))
+        confirm.assert_not_called()
 
     def test_full_image_path_is_in_window_title_not_the_toolbar(self) -> None:
         editor = StandaloneImageEditor.__new__(StandaloneImageEditor)
@@ -105,7 +188,7 @@ class StandaloneImageEditorTests(unittest.TestCase):
             self.assertEqual([], layers)
             self.assertEqual(0, skipped)
 
-    def test_image_save_writes_only_png_without_project_files(self) -> None:
+    def test_image_save_writes_flattened_image_without_project_files(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             output = root / "result.png"

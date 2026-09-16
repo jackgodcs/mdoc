@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.1 - 2026-09-16
+
+- Preserved the imported image format when saving from the standalone editor and the exact managed-candidate path and format when editing feedback images.
+- Added format-correct PNG, JPEG, BMP, GIF, TIFF, and WebP output, atomic replacement, transparent-image handling, and overwrite warnings for flattened GIF, TIFF, and WebP originals.
+- Removed legacy same-stem PNG candidates during feedback refresh so edited JPEG and other non-PNG candidates remain authoritative.
+
 ## 1.5.0 - 2026-09-15
 
 - Replaced the former partial Quality Gate scanner with the validated `mdoc check` engine for page, section, book, workspace, and frozen-task checks.

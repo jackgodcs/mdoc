@@ -50,9 +50,9 @@ class FeedbackTests(unittest.TestCase):
             reference = image_references(self.workspace, "guide", "en", "Main/Page.md")[0]["reference"]
             first = manager.create("00000000-0000-4000-8000-000000000001", "guide", "en", "Main/Page.md", reference); self.assertTrue(manager.has_pending())
             self.assertEqual(first["key"], manager.list("guide", "en", "Main/Page.md")[0]["candidate_key"])
-            first_path = Path(first["candidate"]); first_path.with_name(first_path.stem + "-edited.png").write_bytes(first_path.read_bytes()); first_path.with_name(first_path.stem + ".mdoc-image-edit.json").write_text("{}", encoding="utf-8"); first_path.with_name(first_path.stem + ".mdoc-image-edit-assets").mkdir()
+            first_path = Path(first["candidate"]); first_path.with_name(first_path.stem + ".mdoc-image-edit.json").write_text("{}", encoding="utf-8"); first_path.with_name(first_path.stem + ".mdoc-image-edit-assets").mkdir()
             second = manager.copy_locale("00000000-0000-4000-8000-000000000002", "guide", "en", "Main/Page.md", reference, "zh")
-            self.assertFalse(first_path.exists()); self.assertFalse(first_path.with_name(first_path.stem + "-edited.png").exists()); self.assertFalse(first_path.with_name(first_path.stem + ".mdoc-image-edit.json").exists()); self.assertFalse(first_path.with_name(first_path.stem + ".mdoc-image-edit-assets").exists()); self.assertTrue(Path(second["candidate"]).exists())
+            self.assertFalse(first_path.exists()); self.assertFalse(first_path.with_name(first_path.stem + ".mdoc-image-edit.json").exists()); self.assertFalse(first_path.with_name(first_path.stem + ".mdoc-image-edit-assets").exists()); self.assertTrue(Path(second["candidate"]).exists())
             second_parent = Path(second["candidate"]).parent; self.assertTrue(manager.discard(second["key"])["discarded"]); self.assertFalse(manager.has_pending()); self.assertFalse(second_parent.exists())
         finally: manager.close()
 
@@ -73,6 +73,18 @@ class FeedbackTests(unittest.TestCase):
             with patch("mdoc_check.feedback_images.Path.home", return_value=self.workspace), patch("mdoc_check.feedback_images.subprocess.Popen") as opened:
                 launcher = self.workspace / ".codex" / "skills" / "mdoc" / "Open-mdoc-Image-Editor.cmd"; launcher.parent.mkdir(parents=True); launcher.write_text("@echo off\n", encoding="utf-8")
                 self.assertEqual("opened", manager.open_editor(candidate["key"])["status"]); self.assertEqual("--managed-candidate", opened.call_args.args[0][-1])
+        finally: manager.close()
+
+    def test_jpeg_candidate_refresh_keeps_jpeg_and_removes_legacy_sibling_png(self):
+        page = self.workspace / "Guide" / "en" / "Main" / "Page.md"; page.write_text("# Page\n\n![shot](media/Shot.jpg)\n", encoding="utf-8")
+        target = page.parent / "media" / "Shot.jpg"; Image.new("RGB", (10, 8), "blue").save(target, format="JPEG")
+        manager = ImageCandidates(self.workspace)
+        try:
+            reference = image_references(self.workspace, "guide", "en", "Main/Page.md")[0]["reference"]
+            candidate = manager.create("00000000-0000-4000-8000-000000000007", "guide", "en", "Main/Page.md", reference); path = Path(candidate["candidate"]); legacy = path.with_suffix(".png")
+            Image.new("RGBA", (10, 8), "red").save(legacy, format="PNG")
+            refreshed = manager.info(candidate["key"])
+            self.assertFalse(legacy.exists()); self.assertEqual("jpeg", refreshed["info"]["format"]); self.assertEqual(path, Path(refreshed["candidate"]))
         finally: manager.close()
 
     def test_image_format_extension_mismatch_is_a_non_blocking_warning(self):

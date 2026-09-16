@@ -24,6 +24,10 @@ from image_text_editor import DEFAULT_STYLE, IMAGE_LAYER_KINDS, PASTED_IMAGE_KIN
 
 
 SUPPORTED_INPUTS = {".png", ".jpg", ".jpeg", ".bmp", ".gif", ".tif", ".tiff", ".webp"}
+OUTPUT_TYPES = {
+    ".png": ("PNG", {}), ".jpg": ("JPEG", {"quality": 95, "subsampling": 0}), ".jpeg": ("JPEG", {"quality": 95, "subsampling": 0}),
+    ".bmp": ("BMP", {}), ".gif": ("GIF", {}), ".tif": ("TIFF", {"compression": "tiff_lzw"}), ".tiff": ("TIFF", {"compression": "tiff_lzw"}), ".webp": ("WEBP", {"lossless": True}),
+}
 PROJECT_SUFFIX = ".mdoc-image-edit.json"
 ASSET_SUFFIX = ".mdoc-image-edit-assets"
 
@@ -263,52 +267,76 @@ class StandaloneImageEditor(ImageTextEditor):
         if moved:
             self._mark_view_dirty()
 
-    def _png_destination(self, title: str, initial: Path) -> Path | None:
-        selected = filedialog.asksaveasfilename(parent=self, title=title, initialdir=initial.parent, initialfile=initial.name, defaultextension=".png", filetypes=(("PNG 图片", "*.png"),))
+    def _image_destination(self, title: str, initial: Path) -> Path | None:
+        suffix = initial.suffix.casefold() if initial.suffix.casefold() in OUTPUT_TYPES else ".png"
+        labels = {".png": "PNG", ".jpg": "JPEG", ".jpeg": "JPEG", ".bmp": "BMP", ".gif": "GIF", ".tif": "TIFF", ".tiff": "TIFF", ".webp": "WebP"}
+        patterns = {".jpg": "*.jpg *.jpeg", ".jpeg": "*.jpg *.jpeg", ".tif": "*.tif *.tiff", ".tiff": "*.tif *.tiff"}
+        current = (f"{labels[suffix]} 图片", patterns.get(suffix, f"*{suffix}"))
+        filetypes = (current,) if suffix == ".png" else (current, ("PNG 图片", "*.png"))
+        selected = filedialog.asksaveasfilename(parent=self, title=title, initialdir=initial.parent, initialfile=initial.name, defaultextension=suffix, filetypes=filetypes)
         return Path(selected).resolve() if selected else None
 
-    def _write_png(self, output: Path) -> bool:
+    def _write_image(self, output: Path) -> tuple[bool, bool]:
+        image_format, options = OUTPUT_TYPES.get(output.suffix.casefold(), (None, None))
+        if image_format is None:
+            messagebox.showerror("mdoc", "不支持该输出格式，请使用 PNG、JPG、JPEG、BMP、GIF、TIFF 或 WebP。", parent=self)
+            return False, False
         output.parent.mkdir(parents=True, exist_ok=True)
         temporary = output.with_name(f".{output.name}.tmp")
         try:
-            self.composite().save(temporary, format="PNG")
+            image = self.composite(); alpha = image.mode in {"RGBA", "LA"} and image.getextrema()[-1][0] < 255
+            flattened = image_format in {"JPEG", "BMP", "GIF"} and alpha
+            if flattened:
+                background = Image.new("RGB", image.size, "white"); background.paste(image, mask=image.getchannel("A")); image = background
+            elif image_format in {"JPEG", "BMP", "GIF"}: image = image.convert("RGB")
+            elif image_format in {"PNG", "WEBP", "TIFF"} and alpha: image = image.convert("RGBA")
+            image.save(temporary, format=image_format, **options)
             temporary.replace(output)
         except OSError as exc:
             temporary.unlink(missing_ok=True)
-            messagebox.showerror("mdoc", f"无法保存 PNG 图片：\n{exc}", parent=self)
-            return False
-        return True
+            messagebox.showerror("mdoc", f"无法保存图片：\n{exc}", parent=self)
+            return False, False
+        return True, flattened
+
+    def _confirm_flattened_overwrite(self, output: Path) -> bool:
+        if getattr(self, "managed_candidate", False) or output != self.source_path or output.suffix.casefold() not in {".gif", ".tif", ".tiff", ".webp"}:
+            return True
+        return messagebox.askokcancel(
+            "覆盖原图",
+            "覆盖后将保存为当前编辑画面的单帧扁平图片，动画、多页和原始元数据不会保留。",
+            parent=self,
+        )
 
     def save_image(self, save_as: bool = False) -> bool:
         output = None if save_as else self.image_output_path
-        if output is None and self.allow_overwrite_var.get() and self.source_path.suffix.casefold() == ".png":
+        if output is None and self.allow_overwrite_var.get():
             output = self.source_path
         if output is None or (output == self.source_path and not self.allow_overwrite_var.get() and self.project_image_path is None):
-            output = self._png_destination("图片另存为", self.source_path.with_name(f"{self.source_path.stem}-edited.png"))
-        if output is None:
+            output = self._image_destination("图片另存为", self.source_path.with_name(f"{self.source_path.stem}-edited{self.source_path.suffix.lower()}"))
+        if output is None or not self._confirm_flattened_overwrite(output):
             return False
-        if output.suffix.casefold() != ".png":
-            output = output.with_suffix(".png")
-        if not self._write_png(output):
+        saved, flattened = self._write_image(output)
+        if not saved:
             return False
-        self.image_output_path = output
+        self.image_output_path = self.project_image_path = output
         self.source_path = output
         self.image_dirty = False
         self.dirty = self.project_dirty
         self._update_title()
-        messagebox.showinfo("mdoc", f"成品 PNG 已保存：\n{output}", parent=self)
+        messagebox.showinfo("mdoc", f"图片已保存：\n{output}" + ("\n目标格式不支持完整透明通道，透明区域已使用白色背景合成。" if flattened else ""), parent=self)
         return True
 
     def save_project(self, save_as: bool = False) -> bool:
         output = None if save_as else self.project_image_path
+        if output is None and self.allow_overwrite_var.get():
+            output = self.source_path
         if output is None:
-            initial = self.image_output_path or self.source_path.with_name(f"{self.source_path.stem}-edited.png")
-            output = self._png_destination("工程另存为", initial)
-        if output is None:
+            initial = self.image_output_path or self.source_path.with_name(f"{self.source_path.stem}-edited{self.source_path.suffix.lower()}")
+            output = self._image_destination("工程另存为", initial)
+        if output is None or not self._confirm_flattened_overwrite(output):
             return False
-        if output.suffix.casefold() != ".png":
-            output = output.with_suffix(".png")
-        if not self._write_png(output):
+        saved, flattened = self._write_image(output)
+        if not saved:
             return False
         record_path, target_assets = project_paths(output)
         temporary_assets = target_assets.with_name(f".{target_assets.name}.tmp")
@@ -339,16 +367,16 @@ class StandaloneImageEditor(ImageTextEditor):
         self.source_path = output
         self.image_dirty = self.project_dirty = self.dirty = False
         self._update_title()
-        messagebox.showinfo("mdoc", f"工程已保存：\n{output}\n{record_path}", parent=self)
+        messagebox.showinfo("mdoc", f"工程已保存：\n{output}\n{record_path}" + ("\n目标格式不支持完整透明通道，透明区域已使用白色背景合成。" if flattened else ""), parent=self)
         return True
 
     def _confirm_leave(self) -> bool:
         if self.image_dirty:
-            answer = messagebox.askyesnocancel("未保存图片", "成品 PNG 尚未保存。\n\n是否先保存图片？", parent=self)
+            answer = messagebox.askyesnocancel("未保存图片", "成品图片尚未保存。\n\n是否先保存图片？", parent=self)
             if answer is None or (answer and not self.save_image()):
                 return False
         if self.project_dirty:
-            answer = messagebox.askyesnocancel("工程未保存", "成品 PNG 与编辑工程分开保存。\n当前编辑图层尚未保存为工程，是否保存工程？", parent=self)
+            answer = messagebox.askyesnocancel("工程未保存", "成品图片与编辑工程分开保存。\n当前编辑图层尚未保存为工程，是否保存工程？", parent=self)
             if answer is None or (answer and not self.save_project()):
                 return False
         return True

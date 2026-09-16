@@ -35,8 +35,9 @@ class ImageCandidates:
 
     @staticmethod
     def _remove_files(path: Path, remove_parent: bool = False) -> None:
-        edited = path.with_name(path.stem + "-edited.png"); path.unlink(missing_ok=True); edited.unlink(missing_ok=True)
-        for image in (path, edited):
+        legacy = path.with_suffix(".png") if path.suffix.casefold() != ".png" else None; path.unlink(missing_ok=True)
+        if legacy: legacy.unlink(missing_ok=True)
+        for image in (path, *([legacy] if legacy else [])):
             image.with_name(image.stem + ".mdoc-image-edit.json").unlink(missing_ok=True); shutil.rmtree(image.with_name(image.stem + ".mdoc-image-edit-assets"), ignore_errors=True)
         if remove_parent:
             try: path.parent.rmdir()
@@ -109,12 +110,8 @@ class ImageCandidates:
     def info(self, key: str) -> dict:
         item = self.candidates.get(key)
         if not item or not item["path"].is_file(): raise ValueError("图片候选已失效。")
-        edited = item["path"].with_name(item["path"].stem + "-edited.png")
-        if edited.is_file() and edited.stat().st_mtime_ns >= item["path"].stat().st_mtime_ns:
-            with Image.open(edited) as image:
-                converted=image.convert("RGBA") if item["path"].suffix.casefold()==".png" else image.convert("RGB")
-                temporary=item["path"].with_name("."+item["path"].name+".tmp");converted.save(temporary,format="PNG" if item["path"].suffix.casefold()==".png" else "JPEG",quality=95,subsampling=0);os.replace(temporary,item["path"])
-            edited.unlink(missing_ok=True)
+        legacy = item["path"].with_suffix(".png") if item["path"].suffix.casefold() != ".png" else None
+        if legacy: legacy.unlink(missing_ok=True)
         return {"key":key, "target":str(item["target"]), "candidate":str(item["path"]), "info":self._validate(item["path"])}
 
     def discard(self, key: str) -> dict:
