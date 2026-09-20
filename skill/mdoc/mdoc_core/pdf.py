@@ -53,7 +53,7 @@ DEFAULTS = {
         "bookmarks": {"levels": 3},
         "concurrency": {"builds": 3, "images": "auto"},
     },
-    "retention": {"failed_work_days": 7, "batch_reports": 20},
+    "retention": {"failed_work_days": 7, "batch_reports": 20, "keep_successful_book_work": False},
 }
 
 
@@ -898,6 +898,7 @@ def _build_one(workspace, book_id: str, locale_id: str, mode: str, target: str |
 def build(workspace, book_id: str | None, locale_id: str | None, mode: str, target: str | None, output: Path | None, all_locales: bool, all_books: bool, jobs: int | None, force_jobs: bool, overwrite: bool, no_overwrite: bool, interactive: bool, keep_work: bool, discard_work: bool, strict_resources: bool, verify_pipeline: bool, summary_line: int | None = None) -> dict:
     if "pdf" not in workspace.config:
         raise MdocError("MDOC-PDF-NOT-CONFIGURED", "工作区尚未配置 PDF，请先执行 mdoc pdf init。")
+    keep_work = keep_work or mode == "book" and not discard_work and workspace.config["pdf"]["retention"].get("keep_successful_book_work", False)
     book_ids = list(workspace.config["books"]) if all_books else [book_id]
     if not all_books and (not book_id or book_id not in workspace.config["books"]):
         raise MdocError("MDOC-PDF-BOOK-REQUIRED", "请指定有效的 --book，或使用 --all-books。")

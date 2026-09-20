@@ -32,7 +32,7 @@ Each Markdown page keeps the HonKit and Calibre document boundary. Within a page
 
 ## Results
 
-Default workspace PDFs are written below `.mdoc/artifacts/pdf/<book>/<locale>/`. Existing workspace output requires `--yes`; `--no-overwrite` skips it. Successful large intermediates are removed unless `--keep-work`; failed work is retained unless `--discard-work`. Cleanup removes expired workspace work, old reports, and default standalone PDFs under `%TEMP%\mdoc`; it never removes workspace final PDFs or explicitly selected standalone output paths.
+Default workspace PDFs are written below `.mdoc/artifacts/pdf/<book>/<locale>/`. Existing workspace output requires `--yes`; `--no-overwrite` skips it. Successful large intermediates are removed unless `--keep-work` is passed or `pdf.retention.keep_successful_book_work` is `true` for a full-book workspace build; explicit `--discard-work` overrides that workspace default. Failed work is retained unless `--discard-work`. Cleanup removes expired workspace work, old reports, and default standalone PDFs under `%TEMP%\mdoc`; it never removes workspace final PDFs or explicitly selected standalone output paths.
 
 Workspace build reports include durations for preparation, HonKit, image optimization, Calibre, outline repair, qpdf, structural checks, output replacement, cleanup, and the complete build.
 

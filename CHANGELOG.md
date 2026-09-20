@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Added `pdf.retention.keep_successful_book_work` so successful full-book builds, including all-locale batches, can retain generated HTML and other work files by default while `--discard-work` remains an explicit override.
+
 ## 1.5.4 - 2026-09-16
 
 - Fixed feedback revision splitters overwriting the active grid layout and hiding the image-management workbench.

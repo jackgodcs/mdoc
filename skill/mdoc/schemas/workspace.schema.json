@@ -69,7 +69,8 @@
           "type": "object", "additionalProperties": false, "required": ["failed_work_days", "batch_reports"],
           "properties": {
             "failed_work_days": {"type": "integer", "minimum": 0},
-            "batch_reports": {"type": "integer", "minimum": 1}
+            "batch_reports": {"type": "integer", "minimum": 1},
+            "keep_successful_book_work": {"type": "boolean"}
           }
         }
       }

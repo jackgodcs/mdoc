@@ -64,3 +64,4 @@ pdf:
   retention:
     failed_work_days: 7
     batch_reports: 20
+    keep_successful_book_work: false

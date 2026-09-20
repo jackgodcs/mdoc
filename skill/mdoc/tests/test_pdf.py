@@ -4,6 +4,7 @@ import tempfile
 import unittest
 import shutil
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from PIL import Image
@@ -194,6 +195,39 @@ class PdfTests(unittest.TestCase):
         settings = pdf.effective_settings(config, book)
         self.assertEqual(80, settings["margins_pt"]["top"])
         self.assertEqual(67, settings["margins_pt"]["left"])
+
+    def test_workspace_can_keep_successful_full_book_work_by_default(self) -> None:
+        calls = []
+        workspace = SimpleNamespace(
+            config={
+                "pdf": {
+                    "defaults": {"concurrency": {"builds": 1}},
+                    "retention": {"keep_successful_book_work": True},
+                },
+                "books": {"guide": {"locales": {"zh": {}, "en": {}}}},
+            },
+            control=self.root / ".mdoc",
+        )
+
+        def build_one(_workspace, book, locale, mode, _target, output, keep_work, discard_work, _strict_resources, _verify_pipeline, _summary_line=None):
+            calls.append((book, locale, mode, keep_work, discard_work))
+            return {"status": "passed", "book": book, "locale": locale, "output": str(output)}
+
+        with patch.object(pdf, "_build_one", side_effect=build_one):
+            pdf.build(workspace, "guide", "zh", "book", None, None, False, False, 1, True, True, False, False, False, False, False, False)
+            self.assertEqual([("guide", "zh", "book", True, False)], calls)
+            calls.clear()
+
+            pdf.build(workspace, "guide", None, "book", None, None, True, False, 1, True, True, False, False, False, False, False, False)
+            self.assertEqual([("guide", "en", "book", True, False), ("guide", "zh", "book", True, False)], sorted(calls))
+            calls.clear()
+
+            pdf.build(workspace, "guide", "zh", "book", None, None, False, False, 1, True, True, False, False, False, True, False, False)
+            self.assertEqual([("guide", "zh", "book", False, True)], calls)
+            calls.clear()
+
+            pdf.build(workspace, "guide", "zh", "section", "Main/Topic.md", None, False, False, 1, True, True, False, False, False, False, False, False)
+            self.assertEqual([("guide", "zh", "section", False, False)], calls)
 
     def test_output_names_are_stable_and_memory_guard_never_returns_zero(self) -> None:
         self.assertEqual("guide-en.pdf", pdf._output_name("guide", "en", "book", None))
