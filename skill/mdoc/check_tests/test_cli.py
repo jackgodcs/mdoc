@@ -213,7 +213,12 @@ class CliTests(unittest.TestCase):
         self.assertEqual("md032", _rule_id("markdown.md032"))
 
     def test_mandatory_rule_cannot_be_overridden_or_disabled(self) -> None:
-        for config in ("severity_overrides:\n  text.utf8: warning\n", "disabled_rules:\n  - path.inside-locale\n"):
+        for config in (
+            "severity_overrides:\n  text.utf8: warning\n",
+            "disabled_rules:\n  - path.inside-locale\n",
+            "severity_overrides:\n  path.resource-ascii-only: warning\n",
+            "disabled_rules:\n  - path.resource-ascii-only\n",
+        ):
             with self.subTest(config=config):
                 (self.workspace / ".mdoc" / "check.yaml").write_text(config, encoding="utf-8")
                 report = self.run_cli("run", "--workspace", str(self.workspace), "--book", "guide", "--locale", "en", "--scope", "page", "--target", "Main/First.md", expected=4)

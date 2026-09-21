@@ -14,6 +14,7 @@ from .model import finding
 
 
 ALLOWED_SEGMENT = re.compile(r"^[A-Za-z0-9._-]+$")
+ALLOWED_RESOURCE_PATH = re.compile(r"^[A-Za-z0-9/._~-]+$")
 LOCAL_ABSOLUTE = re.compile(r"(?:file://|(?<![A-Za-z])[A-Za-z]:[\\/])", re.IGNORECASE)
 HEADING = re.compile(r"^(#{1,6})\s+\S", re.MULTILINE)
 ENGLISH_PUNCTUATION = re.compile(r"[，。；：！？、“”‘’（）]")
@@ -81,6 +82,15 @@ def _parsed(files: list[Path]) -> dict[str, dict]:
                 target = attrs.get("href") or attrs.get("src")
                 if target:
                     found.append({"kind": "image" if child["type"] == "image" else "link", "target": target, "line": line})
+        source_references = _parsed_without_bridge(Path(name))["references"]
+        unused = set(range(len(source_references)))
+        for reference in found:
+            match = next((index for index in unused if source_references[index]["kind"] == reference["kind"] and (source_references[index]["target"] == reference["target"] or source_references[index]["target"] == unquote(reference["target"]))), None)
+            if match is not None:
+                reference.update(source_references[match])
+                unused.remove(match)
+        found.extend(source_references[index] for index in sorted(unused))
+        found.sort(key=lambda reference: reference["line"])
         results[name] = {"references": found, "visible": visible, "headings": headings, "html_ids": sorted(html_ids), "tokens": tokens}
     return results
 
@@ -229,7 +239,13 @@ def inspect(locale_root: Path, locale: str, language: str, logical_paths: list[s
                 if unquote(parsed_target.fragment) not in _anchors(page_parsed):
                     findings.append(finding("link.anchor-exists", "error", display, f"Linked anchor is missing: {target}", reference["line"], 1))
                 continue
-            relative_text = unquote(parsed_target.path).replace("\\", "/")
+            try:
+                decoded_path = unquote(parsed_target.path, errors="strict")
+            except UnicodeDecodeError:
+                decoded_path = parsed_target.path
+            if not re.search(r"%(?![0-9A-Fa-f]{2})", parsed_target.path) and not decoded_path.lower().endswith((".md", ".markdown")) and not ALLOWED_RESOURCE_PATH.fullmatch(decoded_path.replace("\\", "/")):
+                findings.append(finding("path.resource-ascii-only", "error", display, f"Local resource path must use only ASCII letters, digits, '/', '.', '-', '_' or '~': {target}", reference["line"], 1, mandatory=True))
+            relative_text = decoded_path.replace("\\", "/")
             if "\\" in parsed_target.path:
                 findings.append(finding("path.forward-slash", "error", display, f"Local reference must use '/': {target}", reference["line"], 1))
             relative = PurePosixPath(logical).parent / PurePosixPath(relative_text)

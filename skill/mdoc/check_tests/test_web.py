@@ -299,7 +299,7 @@ class WebTests(unittest.TestCase):
             "markdown.md018", "markdown.md022", "markdown.md023", "markdown.md025", "markdown.md032",
             "markdown.md034", "markdown.md037", "markdown.md038", "markdown.md040",
             "navigation.duplicate-entry", "navigation.page-linked", "navigation.title-matches-h1",
-            "path.ascii-only", "path.case-exact", "path.no-local-absolute", "resource.referenced",
+            "path.ascii-only", "path.case-exact", "path.no-local-absolute", "path.resource-ascii-only", "resource.referenced",
             "terminology.brand-name",
         ]
         for rule in current:

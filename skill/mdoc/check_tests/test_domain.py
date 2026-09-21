@@ -42,12 +42,52 @@ class DomainTests(unittest.TestCase):
         self.assertEqual(["en/images/Sample.jpg"], resources["images"])
         self.assertTrue(any(item["rule"] == "image.extension-matches-format" for item in findings))
 
-    def test_non_ascii_or_spaced_resource_path_is_allowed(self) -> None:
+    def test_non_ascii_or_spaced_resource_path_is_mandatory_error(self) -> None:
         image = self.root / "images" / "中文 Image + Name.png"
         Image.new("RGB", (10, 10), "white").save(image)
         (self.root / "Main" / "Page.md").write_text("# Page\n\n![Sample](../images/中文%20Image%20%2B%20Name.png)\n", encoding="utf-8")
         findings, _ = inspect(self.root, "en", "en", ["Main/Page.md"], "Main", "images", "Summary.md", False)
-        self.assertFalse(any(item["rule"] == "path.ascii-only" for item in findings))
+        issue = next(item for item in findings if item["rule"] == "path.resource-ascii-only")
+        self.assertEqual("error", issue["severity"])
+        self.assertTrue(issue["mandatory"])
+        self.assertEqual(3, issue["line"])
+
+    def test_resource_ascii_rule_checks_markdown_and_html_references_individually(self) -> None:
+        image = self.root / "images" / "中文.png"
+        Image.new("RGB", (10, 10), "white").save(image)
+        attachment = self.root / "images" / "data file.zip"
+        attachment.write_bytes(b"zip")
+        (self.root / "Main" / "Page.md").write_text(
+            "# Page\n\n![One](../images/%E4%B8%AD%E6%96%87.png?version=1#preview)\n"
+            "\n<img src=\"../images/%E4%B8%AD%E6%96%87.png\">\n"
+            "\n[Download](../images/data%20file.zip)\n"
+            "\n<a href=\"../images/data%20file.zip\">Download</a>\n",
+            encoding="utf-8",
+        )
+        findings, _ = inspect(self.root, "en", "en", ["Main/Page.md"], "Main", "images", "Summary.md", False)
+        issues = [item for item in findings if item["rule"] == "path.resource-ascii-only"]
+        self.assertEqual([3, 5, 7, 9], [item["line"] for item in issues])
+
+    def test_resource_ascii_rule_excludes_external_anchor_and_markdown_targets(self) -> None:
+        (self.root / "Main" / "目标.md").write_text("# Target\n", encoding="utf-8")
+        (self.root / "Main" / "Page.md").write_text(
+            "# Page\n\n[Web](https://example.com/%E4%B8%AD%E6%96%87.png)\n"
+            "[Protocol](//example.com/中文.png)\n[Mail](mailto:test@example.com)\n[Anchor](#page)\n"
+            "[Target](%E7%9B%AE%E6%A0%87.md)\n",
+            encoding="utf-8",
+        )
+        findings, _ = inspect(self.root, "en", "en", ["Main/Page.md", "Main/目标.md"], "Main", "images", "Summary.md", False)
+        self.assertFalse(any(item["rule"] == "path.resource-ascii-only" for item in findings))
+
+    def test_resource_ascii_rule_allows_safe_path_and_skips_malformed_percent_encoding(self) -> None:
+        image = self.root / "images" / "road_scene-01~draft.png"
+        Image.new("RGB", (10, 10), "white").save(image)
+        (self.root / "Main" / "Page.md").write_text(
+            "# Page\n\n![Safe](../images/road_scene-01~draft.png)\n![Malformed](../images/bad%name.png)\n",
+            encoding="utf-8",
+        )
+        findings, _ = inspect(self.root, "en", "en", ["Main/Page.md"], "Main", "images", "Summary.md", False)
+        self.assertFalse(any(item["rule"] == "path.resource-ascii-only" for item in findings))
 
     def test_referenced_markdown_path_still_requires_ascii_name(self) -> None:
         (self.root / "Main" / "目标 Page.md").write_text("# Target\n", encoding="utf-8")

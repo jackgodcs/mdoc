@@ -19,7 +19,7 @@ from urllib.parse import unquote, urlsplit
 
 HAN = re.compile(r"[\u3400-\u9fff]")
 PROTOTYPE_CONFIG = Path(__file__).resolve().parents[1] / "config" / "mdoc.yaml"
-MANDATORY_RULES = {"text.utf8", "locale.en-no-han", "image.non-empty", "image.decodable", "path.no-local-absolute", "path.inside-locale"}
+MANDATORY_RULES = {"text.utf8", "locale.en-no-han", "image.non-empty", "image.decodable", "path.no-local-absolute", "path.inside-locale", "path.resource-ascii-only"}
 
 
 def _finding_identity(item: dict) -> tuple:
