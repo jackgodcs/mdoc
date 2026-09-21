@@ -50,7 +50,8 @@ DEFAULTS = {
             "compression_level": 9,
             "object_streams": "generate",
         },
-        "bookmarks": {"levels": 3},
+        "toc": {"right_value": "page", "show_left_number": True},
+        "bookmarks": {"levels": 5, "show_left_number": True},
         "concurrency": {"builds": 3, "images": "auto"},
     },
     "retention": {"failed_work_days": 7, "batch_reports": 20, "keep_successful_book_work": False},
@@ -81,8 +82,8 @@ def _deep_merge(base: dict, override: dict) -> dict:
 
 
 def effective_settings(config: dict, book: dict) -> dict:
-    defaults = config.get("pdf", {}).get("defaults", DEFAULTS["defaults"])
-    return _deep_merge(thaw(defaults), thaw(book.get("pdf", {})))
+    defaults = _deep_merge(DEFAULTS["defaults"], thaw(config.get("pdf", {}).get("defaults", {})))
+    return _deep_merge(defaults, thaw(book.get("pdf", {})))
 
 
 def normalized_target(target: str) -> tuple[str, str]:
@@ -530,36 +531,68 @@ def _materialize_standalone(path: Path, work: Path, findings: list[dict]) -> Pat
     page = work / "Page.md"; page.write_text(text, encoding="utf-8", newline="\n"); return page
 
 
-def _patch_html(intermediate: Path, pages: list[tuple[dict, str]] | None, entries: list[dict]) -> None:
+def _patch_html(intermediate: Path, pages: list[tuple[dict, str]] | None, entries: list[dict], toc: dict, right_values: list[int] | None = None, readme: str = "README.md") -> dict:
     if pages is None:
-        targets = [(entry, Path(entry["path"]).with_suffix(".html").as_posix()) for entry in entries]
+        readme_path = normalized_target(readme)[0].casefold()
+        targets = [(entry, "index.html" if entry["path"].casefold() == readme_path else Path(entry["path"]).with_suffix(".html").as_posix()) for entry in entries]
     else:
         targets = [(entry, "index.html" if index == 0 else Path(name).with_suffix(".html").as_posix()) for index, (entry, name) in enumerate(pages)]
-    href_numbers = {}
+    href_entries = {}
+    patched_pages = set()
     for entry, href in targets:
         page = intermediate / href
-        if not page.is_file():
-            continue
-        text = page.read_text(encoding="utf-8")
-        display = html.escape(f"{entry['number']} {entry['title']}")
-        text = re.sub(r"<title>.*?</title>", f"<title>{display}</title>", text, count=1, flags=re.S)
-        text = re.sub(r'(<h1 class="book-chapter[^>]*">).*?(</h1>)', lambda match: f"{match.group(1)}{display}{match.group(2)}", text, count=1, flags=re.S)
-        page.write_text(text, encoding="utf-8", newline="\n")
-        href_numbers[href.casefold()] = entry["number"]
+        if page.is_file() and href.casefold() not in patched_pages:
+            text = page.read_text(encoding="utf-8")
+            display = html.escape(f"{entry['number']} {entry['title']}")
+            text = re.sub(r"<title>.*?</title>", f"<title>{display}</title>", text, count=1, flags=re.S)
+            text = re.sub(r'(<h1 class="book-chapter[^>]*">).*?(</h1>)', lambda match: f"{match.group(1)}{display}{match.group(2)}", text, count=1, flags=re.S)
+            page.write_text(text, encoding="utf-8", newline="\n")
+            patched_pages.add(href.casefold())
+        if page.is_file() and entry.get("anchor"):
+            text = page.read_text(encoding="utf-8")
+            display = html.escape(f"{entry['number']} {entry['title']}")
+            if entry["anchor"].isdigit():
+                heading = 0
+                def number_heading(match: re.Match) -> str:
+                    nonlocal heading
+                    heading += 1
+                    return f"{match.group(1)}{display}{match.group(3)}" if heading == int(entry["anchor"]) else match.group(0)
+                text = re.sub(r'(<h1 id="[^"]+">)(.*?)(</h1>)', number_heading, text, flags=re.S)
+            else:
+                anchor = re.escape(html.escape(entry["anchor"], quote=True))
+                text = re.sub(rf'(<h1 id="{anchor}">).*?(</h1>)', lambda match: f"{match.group(1)}{display}{match.group(2)}", text, count=1, flags=re.S)
+            page.write_text(text, encoding="utf-8", newline="\n")
+        key = (unquote(urlsplit(href).path).removeprefix("./").casefold(), entry.get("anchor", ""))
+        href_entries[key] = entry
     summary = intermediate / "SUMMARY.html"
     text = summary.read_text(encoding="utf-8")
+    item_pattern = re.compile(r'(<a href="([^"]+)">)(.*?)(</a>)(.*?<span class="page">)(.*?)(</span>)', re.S)
+    item_count = 0
+    explicit_count = 0
 
-    def number_link(match: re.Match) -> str:
-        href, label = match.group(1), match.group(2)
-        number = href_numbers.get(unquote(urlsplit(href).path).removeprefix("./").casefold())
-        return match.group(0) if not number or label.lstrip().startswith(number + " ") else f'<a href="{href}">{number} {label}</a>'
+    def patch_item(match: re.Match) -> str:
+        nonlocal item_count, explicit_count
+        href = match.group(2); split = urlsplit(href)
+        key = (unquote(split.path).removeprefix("./").casefold(), unquote(split.fragment))
+        entry = href_entries.get(key)
+        label = match.group(3) if not entry else html.escape(f"{entry['number']} {entry['title']}" if toc["show_left_number"] else entry["title"])
+        if entry: explicit_count += 1
+        if right_values is not None:
+            right = str(right_values[item_count])
+        elif toc["right_value"] == "hierarchy" and entry:
+            right = entry["number"]
+        else:
+            right = match.group(6)
+        item_count += 1
+        return f"{match.group(1)}{label}{match.group(4)}{match.group(5)}{html.escape(right)}{match.group(7)}"
 
-    text = re.sub(r'<a href="([^"]+)">(.*?)</a>', number_link, text, flags=re.S)
+    text = item_pattern.sub(patch_item, text)
     summary.write_text(text, encoding="utf-8", newline="\n")
     pdf_css = intermediate / "gitbook" / "pdf.css"
     if pdf_css.is_file():
         with pdf_css.open("a", encoding="utf-8", newline="\n") as stream:
             stream.write("\n.page .section table,.page .section pre{page-break-inside:auto;break-inside:auto}.page .section tr{page-break-inside:avoid;break-inside:avoid}.page .section thead{display:table-header-group}\n")
+    return {"items": item_count, "explicit_items": explicit_count, "implicit_items": item_count - explicit_count}
 
 
 def _calibre_options(config: dict, settings: dict) -> list[str]:
@@ -597,7 +630,7 @@ def _flatten_outline(items, level=0):
             yield item, level
 
 
-def _toc_pages(reader, expected: int) -> list[int]:
+def _toc_pages(reader, expected: int, skip: int = 0) -> list[int]:
     from pypdf.generic import ArrayObject, IndirectObject
 
     pages = []
@@ -616,9 +649,9 @@ def _toc_pages(reader, expected: int) -> list[int]:
                 target = reader._get_page_number_by_indirect(destination[0])
             if target is not None:
                 pages.append(target)
-                if len(pages) == expected:
-                    return pages
-    return pages
+                if len(pages) == expected + skip:
+                    return pages[skip:]
+    return pages[skip:]
 
 
 def _enable_image_interpolation(reader) -> int:
@@ -649,12 +682,12 @@ def _enable_image_interpolation(reader) -> int:
     return changed
 
 
-def _repair_outline(source: Path, output: Path, entries: list[dict], levels, qpdf: Path, work: Path) -> dict:
+def _repair_outline(source: Path, output: Path, entries: list[dict], bookmarks: dict, toc_items: int, implicit_items: int) -> dict:
     from pypdf import PdfReader, PdfWriter
 
     reader = PdfReader(str(source))
-    toc_pages = _toc_pages(reader, len(entries))
-    if len(toc_pages) < len(entries) - 1:
+    toc_pages = _toc_pages(reader, len(entries), implicit_items)
+    if len(toc_pages) != len(entries):
         raise MdocError("MDOC-PDF-TOC-TARGETS-INVALID", "可点击目录目标数量不足。", {"expected": len(entries), "actual": len(toc_pages)})
     interpolated = _enable_image_interpolation(reader)
     writer = PdfWriter(clone_from=reader)
@@ -662,18 +695,19 @@ def _repair_outline(source: Path, output: Path, entries: list[dict], levels, qpd
     parents = {}
     count = 0
     for index, entry in enumerate(entries):
-        if levels != "all" and entry["level"] >= levels:
+        if bookmarks["levels"] != "all" and entry["level"] >= bookmarks["levels"]:
             continue
         parent = parents.get(entry["level"] - 1)
-        parents[entry["level"]] = writer.add_outline_item(f"{entry['number']} {entry['title']}", min(toc_pages[index], len(reader.pages) - 1), parent=parent)
+        title = f"{entry['number']} {entry['title']}" if bookmarks["show_left_number"] else entry["title"]
+        parents[entry["level"]] = writer.add_outline_item(title, min(toc_pages[index], len(reader.pages) - 1), parent=parent)
         parents = {level: item for level, item in parents.items() if level <= entry["level"]}
         count += 1
     with output.open("wb") as stream:
         writer.write(stream)
-    report = _structural_check(output, entries, levels)
+    report = _structural_check(output, entries, bookmarks, implicit_items)
     if report["status"] == "failed":
         raise MdocError("MDOC-PDF-BOOKMARK-REPAIR-FAILED", "重建书签后结构检查失败。", {"findings": report["findings"]})
-    return {"toc_targets": len(toc_pages), "bookmarks": count, "interpolated_images": interpolated}
+    return {"toc_targets": len(toc_pages), "toc_items": toc_items, "bookmarks": count, "interpolated_images": interpolated}
 
 
 def _standalone_outline(source: Path, output: Path, title: str) -> dict:
@@ -683,7 +717,7 @@ def _standalone_outline(source: Path, output: Path, title: str) -> dict:
     return {"bookmarks": 1, "interpolated_images": interpolated}
 
 
-def _structural_check(path: Path, entries: list[dict] | None = None, bookmark_levels=3) -> dict:
+def _structural_check(path: Path, entries: list[dict] | None = None, bookmarks: dict | None = None, implicit_items: int = 0) -> dict:
     try:
         from pypdf import PdfReader
 
@@ -713,24 +747,28 @@ def _structural_check(path: Path, entries: list[dict] | None = None, bookmark_le
             fonts[key] = {"embedded": embedded, "to_unicode": to_unicode}
             if not embedded or not to_unicode:
                 findings.append({"severity": "error", "kind": "font_mapping", "font": key, "page": page_number, "embedded": embedded, "to_unicode": to_unicode})
-    toc_pages = _toc_pages(reader, len(entries)) if entries else []
+    bookmarks = bookmarks or DEFAULTS["defaults"]["bookmarks"]
+    toc_pages = _toc_pages(reader, len(entries), implicit_items) if entries else []
     outline = []
     for item, level in _flatten_outline(reader.outline):
         try:
             outline.append({"title": item.title, "page": reader.get_destination_page_number(item), "level": level})
         except Exception as exc:
             findings.append({"severity": "error", "kind": "bookmark_target", "title": getattr(item, "title", ""), "error": str(exc)})
-    expected_bookmarks = [entry for entry in entries or [] if bookmark_levels == "all" or entry["level"] < bookmark_levels]
+    expected_bookmarks = [entry for entry in entries or [] if bookmarks["levels"] == "all" or entry["level"] < bookmarks["levels"]]
     if entries and len(toc_pages) != len(entries):
         findings.append({"severity": "error", "kind": "toc_target_count", "expected": len(entries), "actual": len(toc_pages)})
     if expected_bookmarks and len(outline) != len(expected_bookmarks):
         findings.append({"severity": "error", "kind": "bookmark_count", "expected": len(expected_bookmarks), "actual": len(outline)})
-    for item, expected in zip(outline, [(toc_pages[index], entry) for index, entry in enumerate(entries or []) if bookmark_levels == "all" or entry["level"] < bookmark_levels]):
+    for item, expected in zip(outline, [(toc_pages[index], entry) for index, entry in enumerate(entries or []) if bookmarks["levels"] == "all" or entry["level"] < bookmarks["levels"]]):
         target, entry = expected
         if item["page"] != target:
             findings.append({"severity": "error", "kind": "bookmark_toc_mismatch", "title": entry["title"], "bookmark_page": item["page"], "toc_page": target})
         if item["level"] != entry["level"]:
             findings.append({"severity": "error", "kind": "bookmark_level_mismatch", "title": entry["title"], "bookmark_level": item["level"], "summary_level": entry["level"]})
+        expected_title = f"{entry['number']} {entry['title']}" if bookmarks["show_left_number"] else entry["title"]
+        if item["title"] != expected_title:
+            findings.append({"severity": "error", "kind": "bookmark_title_mismatch", "expected": expected_title, "actual": item["title"]})
     status = "failed" if any(item["severity"] == "error" for item in findings) else "passed"
     return {"status": status, "path": str(path), "pages": len(reader.pages), "bytes": path.stat().st_size, "toc_targets": len(toc_pages), "bookmarks": len(outline), "fonts": fonts, "findings": findings}
 
@@ -751,7 +789,8 @@ def _pipeline_comparison(before: Path, after: Path) -> dict:
 
 def check(workspace, path: Path, book_id: str | None = None, locale_id: str | None = None, mode: str = "book", target: str | None = None, summary_line: int | None = None) -> dict:
     entries = None
-    levels = 3
+    bookmarks = DEFAULTS["defaults"]["bookmarks"]
+    implicit_items = 0
     if mode != "book" and (not book_id or not locale_id): raise MdocError("MDOC-PDF-CHECK-SCOPE-CONTEXT-REQUIRED", "局部 PDF 检查需要同时指定 --book 和 --locale。")
     if book_id and locale_id:
         book = workspace.config["books"].get(book_id)
@@ -762,8 +801,10 @@ def check(workspace, path: Path, book_id: str | None = None, locale_id: str | No
         if mode != "book":
             if not target: raise MdocError("MDOC-PDF-TARGET-REQUIRED", "page 和 section 范围需要 --target。")
             entries = scoped_entries(select_entries(entries, target, mode, summary_line))
-        levels = effective_settings(workspace.config, book)["bookmarks"]["levels"]
-    return _structural_check(path.resolve(), entries, levels)
+        elif not any(entry["path"].casefold() == normalized_target(_isolated_book_config(locale_root).get("structure", {}).get("readme", "README.md"))[0].casefold() for entry in entries):
+            implicit_items = 1
+        bookmarks = effective_settings(workspace.config, book)["bookmarks"]
+    return _structural_check(path.resolve(), entries, bookmarks, implicit_items)
 
 
 def _output_name(book_id: str, locale_id: str, mode: str, target: str | None) -> str:
@@ -837,11 +878,16 @@ def _build_one(workspace, book_id: str, locale_id: str, mode: str, target: str |
             first = selected[0]
             config = _isolated_book_config(locale_root, pages[0][1], f"{json.loads((locale_root / 'book.json').read_text(encoding='utf-8-sig'))['title']} - {first['number']} {first['title']}")
             _materialize_scope_resources(locale_root, source, pages, findings, [value for value in config.get("styles", {}).values() if isinstance(value, str)])
-            (source / "Summary.md").write_text("\n".join(f"{'    ' * max(0, entry['level'] - first['level'])}* [{entry['title']}]({name})" for entry, name in pages) + "\n", encoding="utf-8", newline="\n")
+            (source / "Summary.md").write_text("\n".join(f"{'    ' * max(0, entry['level'] - first['level'])}* [{entry['title']}]({name}{f'#{entry['anchor']}' if entry.get('anchor') else ''})" for entry, name in pages) + "\n", encoding="utf-8", newline="\n")
         _write_json(source / "book.json", config)
         intermediate.mkdir()
         timings = {"prepare": round(time.monotonic() - stage, 3), "honkit": _run([str(tools["node"]), str(tools["honkit"]), "build", str(source), str(intermediate), "--format", "ebook", "--log", "debug", "--timing"], work, logs / "honkit.log")}
-        _patch_html(intermediate, pages, selected)
+        readme = config.get("structure", {}).get("readme", "README.md")
+        toc_report = _patch_html(intermediate, pages, selected, settings["toc"], readme=readme)
+        if toc_report["explicit_items"] != len(selected):
+            raise MdocError("MDOC-PDF-TOC-TARGETS-INVALID", "HTML 目录与 Summary 条目无法一一匹配。", {"expected": len(selected), "actual": toc_report["explicit_items"]})
+        if settings["toc"]["right_value"] == "hierarchy" and settings["toc"]["show_left_number"]:
+            notices.append({"kind": "toc_hierarchy_number_repeated"})
         stage = time.monotonic()
         image_stats = optimize_generated_images(intermediate, settings["image_optimization"])
         timings["images"] = round(time.monotonic() - stage, 3)
@@ -849,8 +895,32 @@ def _build_one(workspace, book_id: str, locale_id: str, mode: str, target: str |
         raw = work / "raw.pdf"
         outlined = work / "outlined.pdf"
         optimized = work / "optimized.pdf"
-        timings["calibre"] = _run([str(tools["calibre"]), str(intermediate / "SUMMARY.html"), str(raw), *_calibre_options(config, settings)], work, logs / "calibre.log")
-        stage = time.monotonic(); outline = _repair_outline(raw, outlined, selected, settings["bookmarks"]["levels"], tools["qpdf"], work); timings["outline"] = round(time.monotonic() - stage, 3)
+        toc_iterations = []
+        if settings["toc"]["right_value"] == "page":
+            right_values = None
+            for iteration in range(1, 4):
+                current = raw if iteration == 1 else work / f"raw-{iteration}.pdf"
+                duration = _run([str(tools["calibre"]), str(intermediate / "SUMMARY.html"), str(current), *_calibre_options(config, settings)], work, logs / f"calibre-{iteration}.log")
+                from pypdf import PdfReader
+                targets = _toc_pages(PdfReader(str(current)), toc_report["items"])
+                if len(targets) != toc_report["items"]:
+                    raise MdocError("MDOC-PDF-TOC-TARGETS-INVALID", "可点击目录目标数量不足。", {"expected": toc_report["items"], "actual": len(targets)})
+                desired = [page + 1 for page in targets]
+                changed = len(desired) if right_values is None else sum(left != right for left, right in zip(right_values, desired))
+                toc_iterations.append({"iteration": iteration, "changed_targets": changed, "duration": duration})
+                raw = current
+                if right_values == desired:
+                    break
+                right_values = desired
+                _patch_html(intermediate, pages, selected, settings["toc"], right_values, readme)
+            else:
+                raise MdocError("MDOC-PDF-TOC-PAGE-NUMBERS-NOT-STABLE", "目录页码在三轮分页后仍未收敛。", {"iterations": toc_iterations})
+            timings["calibre"] = round(sum(item["duration"] for item in toc_iterations), 3)
+        else:
+            timings["calibre"] = _run([str(tools["calibre"]), str(intermediate / "SUMMARY.html"), str(raw), *_calibre_options(config, settings)], work, logs / "calibre.log")
+            right_values = None
+            toc_iterations.append({"iteration": 1, "changed_targets": 0, "duration": timings["calibre"]})
+        stage = time.monotonic(); outline = _repair_outline(raw, outlined, selected, settings["bookmarks"], toc_report["items"], toc_report["implicit_items"]); timings["outline"] = round(time.monotonic() - stage, 3)
         candidate = outlined
         if settings["optimization"]["enabled"]:
             command = [str(tools["qpdf"]), str(outlined), str(optimized)]
@@ -862,16 +932,18 @@ def _build_one(workspace, book_id: str, locale_id: str, mode: str, target: str |
                 candidate = optimized
             except MdocError as exc:
                 findings.append({"kind": "qpdf_optimization_failed", "error": exc.message})
-        stage = time.monotonic(); structural = _structural_check(candidate, selected, settings["bookmarks"]["levels"]); timings["check"] = round(time.monotonic() - stage, 3)
+        stage = time.monotonic(); structural = _structural_check(candidate, selected, settings["bookmarks"], toc_report["implicit_items"]); timings["check"] = round(time.monotonic() - stage, 3)
+        if right_values is not None:
+            from pypdf import PdfReader
+            final_values = [page + 1 for page in _toc_pages(PdfReader(str(candidate)), toc_report["items"])]
+            if final_values != right_values:
+                structural["findings"].append({"severity": "error", "kind": "toc_value_mismatch", "expected": right_values, "actual": final_values})
+                structural["status"] = "failed"
         verification = _pipeline_comparison(outlined, candidate) if verify_pipeline and candidate != outlined else None
         if verification and not verification["passed"]:
             structural["findings"].append({"severity": "error", "kind": "pipeline_verification", "details": verification})
             structural["status"] = "failed"
         if structural["status"] == "failed":
-            output.parent.mkdir(parents=True, exist_ok=True)
-            temporary = output.with_name(f".{output.name}.{os.getpid()}.tmp")
-            shutil.copy2(candidate, temporary)
-            os.replace(temporary, output)
             raise MdocError("MDOC-PDF-CHECK-FAILED", "生成的 PDF 未通过结构检查。", {"findings": structural["findings"]})
         resource_findings = [item for item in findings if item["kind"] in {"missing_resource", "unsafe_resource", "resource_copy_failed"}]
         if strict_resources and resource_findings:
@@ -882,7 +954,7 @@ def _build_one(workspace, book_id: str, locale_id: str, mode: str, target: str |
         os.replace(temporary, output)
         timings["output"] = round(time.monotonic() - stage, 3)
         status = "passed_with_findings" if findings else "passed"
-        report = {"schema_version": 1, "status": status, "book": book_id, "locale": locale_id, "scope": mode, "target": target, "summary_line": summary_line, "output": str(output), "work": str(work), "entries": len(selected), "settings": settings, "images": image_stats, "outline": outline, "check": structural, "findings": findings, "notices": notices, "timings": timings, "pipeline_verification": verification}
+        report = {"schema_version": 1, "status": status, "book": book_id, "locale": locale_id, "scope": mode, "target": target, "summary_line": summary_line, "output": str(output), "work": str(work), "entries": len(selected), "settings": settings, "toc": {"mode": settings["toc"]["right_value"], "items": toc_report["items"], "implicit_items": toc_report["implicit_items"], "iterations": len(toc_iterations), "changed_targets_per_iteration": [item["changed_targets"] for item in toc_iterations]}, "images": image_stats, "outline": outline, "check": structural, "findings": findings, "notices": notices, "timings": timings, "pipeline_verification": verification}
         return report
     finally:
         cleanup = time.monotonic()

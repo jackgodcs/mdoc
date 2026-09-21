@@ -170,9 +170,13 @@ class PdfTests(unittest.TestCase):
         css.parent.mkdir(parents=True)
         chapter.write_text('<title>Chapter</title><h1 class="book-chapter book-chapter-2">Chapter</h1>', encoding="utf-8")
         css.write_text(".page .section table,.page .section pre{page-break-inside:avoid}", encoding="utf-8")
-        (intermediate / "SUMMARY.html").write_text('<a href="Main/Chapter.html">Chapter</a>', encoding="utf-8")
+        (intermediate / "SUMMARY.html").write_text('<a href="Main/Chapter.html">Chapter</a><span class="page">1</span>', encoding="utf-8")
         entries = [{"number": "1.1", "title": "Chapter", "path": "Main/Chapter.md"}]
-        pdf._patch_html(intermediate, None, entries)
+        report = pdf._patch_html(intermediate, None, entries, pdf.DEFAULTS["defaults"]["toc"])
+        self.assertEqual({"items": 1, "explicit_items": 1, "implicit_items": 0}, report)
+        summary = (intermediate / "SUMMARY.html").read_text(encoding="utf-8")
+        self.assertIn('>1.1 Chapter</a>', summary)
+        self.assertIn('<span class="page">1</span>', summary)
         layout = css.read_text(encoding="utf-8")
         self.assertIn("table,.page .section pre{page-break-inside:auto;break-inside:auto}", layout)
         self.assertIn("tr{page-break-inside:avoid;break-inside:avoid}", layout)
@@ -188,6 +192,46 @@ class PdfTests(unittest.TestCase):
         self.assertEqual(67, settings["margins_pt"]["left"])
         self.assertEqual(65, settings["image_optimization"]["jpeg_quality"])
         self.assertEqual(20480, settings["image_optimization"]["min_bytes"])
+        self.assertEqual("page", settings["toc"]["right_value"])
+        self.assertTrue(settings["toc"]["show_left_number"])
+        self.assertEqual(5, settings["bookmarks"]["levels"])
+        self.assertTrue(settings["bookmarks"]["show_left_number"])
+
+    def test_effective_settings_fill_new_pdf_defaults_for_old_workspace(self) -> None:
+        settings = pdf.effective_settings({"pdf": {"defaults": {"bookmarks": {"levels": 2}}}}, {})
+        self.assertEqual({"right_value": "page", "show_left_number": True}, settings["toc"])
+        self.assertEqual({"levels": 2, "show_left_number": True}, settings["bookmarks"])
+
+    def test_patch_html_numbers_fragment_headings_and_supports_toc_switches(self) -> None:
+        intermediate = self.root / "ebook"
+        chapter = intermediate / "Main" / "Chapter.html"
+        chapter.parent.mkdir(parents=True)
+        chapter.write_text(
+            '<title>Chapter</title><h1 class="book-chapter">Chapter</h1>'
+            '<div id="2"></div><h1 id="first">First</h1><h1 id="second">Second</h1>',
+            encoding="utf-8",
+        )
+        (intermediate / "SUMMARY.html").write_text(
+            '<a href="Main/Chapter.html">Chapter</a><span class="page">1</span>'
+            '<a href="Main/Chapter.html#2">Second</a><span class="page">2</span>',
+            encoding="utf-8",
+        )
+        entries = [
+            {"number": "3", "title": "Chapter", "path": "Main/Chapter.md", "anchor": ""},
+            {"number": "3.2", "title": "Second", "path": "Main/Chapter.md", "anchor": "2"},
+        ]
+        report = pdf._patch_html(
+            intermediate, None, entries, {"right_value": "page", "show_left_number": False}, [7, 8]
+        )
+        self.assertEqual({"items": 2, "explicit_items": 2, "implicit_items": 0}, report)
+        rendered = chapter.read_text(encoding="utf-8")
+        self.assertIn('<h1 id="first">First</h1>', rendered)
+        self.assertIn('<h1 id="second">3.2 Second</h1>', rendered)
+        summary = (intermediate / "SUMMARY.html").read_text(encoding="utf-8")
+        self.assertNotIn(">3 Chapter</a>", summary)
+        self.assertIn(">Chapter</a>", summary)
+        self.assertIn('<span class="page">7</span>', summary)
+        self.assertIn('<span class="page">8</span>', summary)
 
     def test_effective_settings_accept_frozen_workspace_configuration(self) -> None:
         config = freeze({"pdf": {"defaults": pdf.DEFAULTS["defaults"]}})

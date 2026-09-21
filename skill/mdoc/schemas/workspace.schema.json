@@ -152,9 +152,19 @@
             "object_streams": {"enum": ["disable", "preserve", "generate"]}
           }
         },
+        "toc": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "right_value": {"enum": ["page", "hierarchy"]},
+            "show_left_number": {"type": "boolean"}
+          }
+        },
         "bookmarks": {
           "type": "object", "additionalProperties": false,
-          "properties": {"levels": {"oneOf": [{"type": "integer", "minimum": 1}, {"const": "all"}]}}
+          "properties": {
+            "levels": {"oneOf": [{"type": "integer", "minimum": 1}, {"const": "all"}]},
+            "show_left_number": {"type": "boolean"}
+          }
         },
         "concurrency": {
           "type": "object", "additionalProperties": false,

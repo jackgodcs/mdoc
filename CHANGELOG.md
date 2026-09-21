@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 1.5.5 - 2026-09-21
+
+- Added independent switches for mdoc hierarchy numbers in PDF TOC labels and bookmark labels, with five bookmark levels by default.
+- Added mandatory TOC right-side values using either final one-based PDF page numbers or mdoc hierarchy numbers.
+- Added up to three lightweight Calibre pagination passes for page-number convergence while reusing the HonKit output and optimized images.
+- Fixed TOC and bookmark matching for multiple fragments in one Markdown file, explicit README mappings, and implicit Introduction pages.
+- Prevented failed structural checks from replacing an existing PDF and expanded bookmark title, level, and destination validation.
 - Added `pdf.retention.keep_successful_book_work` with per-locale overrides at `books.<book>.locales.<locale>.pdf.keep_successful_book_work`, so successful full-book builds can retain generated HTML and other work files independently for each language while CLI flags remain explicit overrides.
 
 ## 1.5.4 - 2026-09-16
