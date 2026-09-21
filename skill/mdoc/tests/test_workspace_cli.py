@@ -177,6 +177,22 @@ class WorkspaceCliTests(unittest.TestCase):
         self.write_draft(workspace)
         self.run_cli("workspace", "apply", "--workspace", str(self.repository), "--json")
 
+    def test_pdf_locale_retention_override_must_be_boolean(self) -> None:
+        for locale in ("zh", "en"):
+            (self.repository / "Guide" / locale / "book.json").write_text('{"title":"Guide","language":"' + locale + '"}\n', encoding="utf-8")
+        self.run_cli("workspace", "init", "--workspace", str(self.repository), "--json")
+        workspace = valid_workspace()
+        workspace["pdf"] = copy.deepcopy(pdf.DEFAULTS)
+        workspace["books"]["guide"]["locales"]["en"]["pdf"] = {"keep_successful_book_work": True}
+        self.write_draft(workspace)
+        self.run_cli("workspace", "apply", "--workspace", str(self.repository), "--json")
+
+        (self.repository / ".mdoc" / "cache" / "workspace-candidate.json").unlink()
+        workspace["books"]["guide"]["locales"]["en"]["pdf"] = {"keep_successful_book_work": "yes"}
+        self.write_draft(workspace)
+        error = self.run_cli("workspace", "apply", "--workspace", str(self.repository), "--json", expected=2)
+        self.assertEqual("MDOC-CONFIG-SCHEMA-INVALID", json.loads(error.stdout)["error"]["code"])
+
     def test_workspace_revise_and_local_configuration_are_separate(self) -> None:
         self.run_cli("workspace", "init", "--workspace", str(self.repository))
         self.write_draft(valid_workspace())

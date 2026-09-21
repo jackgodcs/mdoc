@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Added `pdf.retention.keep_successful_book_work` so successful full-book builds, including all-locale batches, can retain generated HTML and other work files by default while `--discard-work` remains an explicit override.
+- Added `pdf.retention.keep_successful_book_work` with per-locale overrides at `books.<book>.locales.<locale>.pdf.keep_successful_book_work`, so successful full-book builds can retain generated HTML and other work files independently for each language while CLI flags remain explicit overrides.
 
 ## 1.5.4 - 2026-09-16
 

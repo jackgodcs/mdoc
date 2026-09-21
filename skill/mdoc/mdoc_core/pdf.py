@@ -898,7 +898,6 @@ def _build_one(workspace, book_id: str, locale_id: str, mode: str, target: str |
 def build(workspace, book_id: str | None, locale_id: str | None, mode: str, target: str | None, output: Path | None, all_locales: bool, all_books: bool, jobs: int | None, force_jobs: bool, overwrite: bool, no_overwrite: bool, interactive: bool, keep_work: bool, discard_work: bool, strict_resources: bool, verify_pipeline: bool, summary_line: int | None = None) -> dict:
     if "pdf" not in workspace.config:
         raise MdocError("MDOC-PDF-NOT-CONFIGURED", "工作区尚未配置 PDF，请先执行 mdoc pdf init。")
-    keep_work = keep_work or mode == "book" and not discard_work and workspace.config["pdf"]["retention"].get("keep_successful_book_work", False)
     book_ids = list(workspace.config["books"]) if all_books else [book_id]
     if not all_books and (not book_id or book_id not in workspace.config["books"]):
         raise MdocError("MDOC-PDF-BOOK-REQUIRED", "请指定有效的 --book，或使用 --all-books。")
@@ -908,21 +907,23 @@ def build(workspace, book_id: str | None, locale_id: str | None, mode: str, targ
         for current_locale in locales:
             if not current_locale or current_locale not in workspace.config["books"][current_book]["locales"]:
                 raise MdocError("MDOC-PDF-LOCALE-REQUIRED", f"请为书册指定有效的 --locale：{current_book}")
+            locale = workspace.config["books"][current_book]["locales"][current_locale]
+            keep_locale_work = keep_work or mode == "book" and not discard_work and (locale.get("pdf") or {}).get("keep_successful_book_work", workspace.config["pdf"]["retention"].get("keep_successful_book_work", False))
             destination = output if output and len(book_ids) == 1 and len(locales) == 1 else workspace.control / "artifacts" / "pdf" / current_book / current_locale / _output_name(current_book, current_locale, mode, target)
             if destination.exists():
                 if no_overwrite:
-                    targets.append((current_book, current_locale, destination, "skipped"))
+                    targets.append((current_book, current_locale, destination, "skipped", keep_locale_work))
                     continue
                 if not overwrite:
                     if not interactive or input(f"目标 PDF 已存在，覆盖？{destination} [y/N] ").strip().casefold() not in {"y", "yes"}:
                         raise MdocError("MDOC-PDF-OVERWRITE-CONFIRMATION-REQUIRED", f"目标 PDF 已存在：{destination}")
-            targets.append((current_book, current_locale, destination, "build"))
+            targets.append((current_book, current_locale, destination, "build", keep_locale_work))
     configured = jobs or workspace.config["pdf"]["defaults"]["concurrency"]["builds"]
     actual = effective_jobs(configured, force_jobs)
     results = []
     with ThreadPoolExecutor(max_workers=actual) as executor:
-        futures = {executor.submit(_build_one, workspace, book, locale, mode, target, destination, keep_work, discard_work, strict_resources, verify_pipeline, summary_line): (book, locale, destination) for book, locale, destination, action in targets if action == "build"}
-        results.extend({"status": "skipped", "book": book, "locale": locale, "output": str(destination)} for book, locale, destination, action in targets if action == "skipped")
+        futures = {executor.submit(_build_one, workspace, book, locale, mode, target, destination, keep_locale_work, discard_work, strict_resources, verify_pipeline, summary_line): (book, locale, destination) for book, locale, destination, action, keep_locale_work in targets if action == "build"}
+        results.extend({"status": "skipped", "book": book, "locale": locale, "output": str(destination)} for book, locale, destination, action, _keep_locale_work in targets if action == "skipped")
         for future in as_completed(futures):
             book, locale, destination = futures[future]
             try:

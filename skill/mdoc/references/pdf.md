@@ -24,6 +24,8 @@ Standalone output defaults to `%TEMP%\mdoc\<name>.pdf` and overwrites atomically
 
 `pdf init` creates `.mdoc/workspace-draft.yaml`; it never edits workspace authority directly. Apply and confirm the draft through the normal workspace flow. Existing schema-version 1 workspaces remain valid without `pdf`, but PDF commands require it. Per-book `pdf` values override `pdf.defaults` recursively. Every selected locale must contain a valid `book.json` with `title` and `language`.
 
+`pdf.retention.keep_successful_book_work` sets the workspace default for retaining successful full-book work directories. A locale can override it with `books.<book>.locales.<locale>.pdf.keep_successful_book_work`; this is evaluated separately for every locale in `--all-locales` and `--all-books` builds. Explicit `--keep-work` or `--discard-work` takes precedence over both configuration levels.
+
 The default image profile is 180 DPI, maximum width 1048 pixels, minimum source size 20480 bytes, JPEG quality 75, 4:4:4 subsampling, white transparency flattening, and no upscaling. Only generated copies are changed. Generated PDF image objects request smooth viewer interpolation. qpdf recompresses Flate streams at level 9 and generates object streams; it does not optimize images.
 
 The default A4 margins are 67 points on the left and right and 36 points on the top and bottom.
@@ -32,7 +34,7 @@ Each Markdown page keeps the HonKit and Calibre document boundary. Within a page
 
 ## Results
 
-Default workspace PDFs are written below `.mdoc/artifacts/pdf/<book>/<locale>/`. Existing workspace output requires `--yes`; `--no-overwrite` skips it. Successful large intermediates are removed unless `--keep-work` is passed or `pdf.retention.keep_successful_book_work` is `true` for a full-book workspace build; explicit `--discard-work` overrides that workspace default. Failed work is retained unless `--discard-work`. Cleanup removes expired workspace work, old reports, and default standalone PDFs under `%TEMP%\mdoc`; it never removes workspace final PDFs or explicitly selected standalone output paths.
+Default workspace PDFs are written below `.mdoc/artifacts/pdf/<book>/<locale>/`. Existing workspace output requires `--yes`; `--no-overwrite` skips it. Successful large intermediates are removed unless `--keep-work` is passed or the effective workspace/locale `keep_successful_book_work` setting is `true` for a full-book workspace build; explicit `--discard-work` overrides configured retention. Failed work is retained unless `--discard-work`. Cleanup removes expired workspace work, old reports, and default standalone PDFs under `%TEMP%\mdoc`; it never removes workspace final PDFs or explicitly selected standalone output paths.
 
 Workspace build reports include durations for preparation, HonKit, image optimization, Calibre, outline repair, qpdf, structural checks, output replacement, cleanup, and the complete build.
 

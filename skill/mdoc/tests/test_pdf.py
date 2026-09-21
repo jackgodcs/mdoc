@@ -196,15 +196,15 @@ class PdfTests(unittest.TestCase):
         self.assertEqual(80, settings["margins_pt"]["top"])
         self.assertEqual(67, settings["margins_pt"]["left"])
 
-    def test_workspace_can_keep_successful_full_book_work_by_default(self) -> None:
+    def test_locale_can_override_successful_full_book_work_retention(self) -> None:
         calls = []
         workspace = SimpleNamespace(
             config={
                 "pdf": {
                     "defaults": {"concurrency": {"builds": 1}},
-                    "retention": {"keep_successful_book_work": True},
+                    "retention": {"keep_successful_book_work": False},
                 },
-                "books": {"guide": {"locales": {"zh": {}, "en": {}}}},
+                "books": {"guide": {"locales": {"zh": {"pdf": {"keep_successful_book_work": True}}, "en": {}}}},
             },
             control=self.root / ".mdoc",
         )
@@ -219,7 +219,7 @@ class PdfTests(unittest.TestCase):
             calls.clear()
 
             pdf.build(workspace, "guide", None, "book", None, None, True, False, 1, True, True, False, False, False, False, False, False)
-            self.assertEqual([("guide", "en", "book", True, False), ("guide", "zh", "book", True, False)], sorted(calls))
+            self.assertEqual([("guide", "en", "book", False, False), ("guide", "zh", "book", True, False)], sorted(calls))
             calls.clear()
 
             pdf.build(workspace, "guide", "zh", "book", None, None, False, False, 1, True, True, False, False, False, True, False, False)

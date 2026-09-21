@@ -24,7 +24,14 @@
             "type": "object", "minProperties": 1,
             "additionalProperties": {
               "type": "object", "additionalProperties": false, "required": ["root", "language"],
-              "properties": {"root": {"$ref": "#/$defs/relativePath"}, "language": {"type": "string", "minLength": 2}}
+              "properties": {
+                "root": {"$ref": "#/$defs/relativePath"},
+                "language": {"type": "string", "minLength": 2},
+                "pdf": {
+                  "type": "object", "additionalProperties": false,
+                  "properties": {"keep_successful_book_work": {"type": "boolean"}}
+                }
+              }
             }
           },
           "content_root": {"$ref": "#/$defs/relativePath"}, "assets_root": {"$ref": "#/$defs/relativePath"},
