@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Updated workspace revise to add newly introduced baseline fields to schema-version 1 drafts without overwriting project-specific values, and aligned the workspace template with the current PDF TOC and bookmark defaults.
+
 ## 1.5.5 - 2026-09-21
 
 - Added independent switches for mdoc hierarchy numbers in PDF TOC labels and bookmark labels, with five bookmark levels by default.

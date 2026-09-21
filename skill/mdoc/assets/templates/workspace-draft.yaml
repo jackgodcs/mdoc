@@ -56,8 +56,12 @@ pdf:
       recompress_flate: true
       compression_level: 9
       object_streams: generate
+    toc:
+      right_value: page
+      show_left_number: true
     bookmarks:
-      levels: 3
+      levels: 5
+      show_left_number: true
     concurrency:
       builds: 3
       images: auto

@@ -83,6 +83,28 @@ def _draft_template() -> dict:
     }
 
 
+def _merge_missing(value: dict, defaults: dict) -> dict:
+    merged = copy.deepcopy(value)
+    for key, default in defaults.items():
+        if key not in merged:
+            merged[key] = copy.deepcopy(default)
+        elif isinstance(merged[key], dict) and isinstance(default, dict):
+            merged[key] = _merge_missing(merged[key], default)
+    return merged
+
+
+def _revision_draft(value: dict) -> dict:
+    defaults = _draft_template()
+    defaults.pop("workspace")
+    defaults.pop("product")
+    defaults.pop("books")
+    defaults.pop("pdf")
+    revised = _merge_missing(value, defaults)
+    if "pdf" in revised:
+        revised["pdf"] = _merge_missing(revised["pdf"], PDF_DEFAULTS)
+    return revised
+
+
 def init(workspace: Path) -> dict:
     control = _control(workspace)
     draft = control / "workspace-draft.yaml"
@@ -250,9 +272,17 @@ def revise(workspace: Path) -> dict:
     if draft.exists() or candidate.exists():
         raise MdocError("MDOC-WORKSPACE-DRAFT-EXISTS", "工作区草稿或候选配置已经存在。")
     value = read_yaml(authority)
-    validate_portable(workspace.resolve(), value)
-    write_yaml_atomic(draft, value)
-    return {"status": "workspace_draft_created", "draft": str(draft), "authority_digest": file_digest(authority)}
+    if value.get("schema_version") != 1:
+        raise MdocError("MDOC-WORKSPACE-SCHEMA-UNSUPPORTED", "只能修订 schema_version 1 工作区。")
+    revised = _revision_draft(value)
+    validate_portable(workspace.resolve(), revised)
+    write_yaml_atomic(draft, revised)
+    return {
+        "status": "workspace_draft_created",
+        "draft": str(draft),
+        "authority_digest": file_digest(authority),
+        "baseline_sync": _diff(value, revised),
+    }
 
 
 def local_init(workspace: Path) -> dict:

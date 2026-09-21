@@ -17,6 +17,12 @@ mdoc task continue --workspace <manual-repository-root> --task <task-id>
 
 `task continue` is idempotent. It advances until the next required human gate, a Quality Gate finding, a publishing conflict, or `ready_for_review`.
 
+## Installed-Version Workspace Sync
+
+When the user asks to install, update, or synchronize mdoc for existing workspaces, treat portable workspace configuration as part of the update. For every workspace explicitly in scope, run the workspace revise command after the installed runtime is current. Revision fills newly introduced baseline fields into the draft without replacing existing project values. Review the reported baseline sync and the apply diff, then use workspace apply and workspace confirm. Stop before confirmation if the candidate removes fields, changes an existing project value, or exposes a documentation, template, schema, and runtime conflict that cannot be resolved from the implementation.
+
+Do not copy another workspace as authority. Use the installed schema, runtime defaults, and maintained templates; another workspace may be inspected only as a comparison. Keep machine-specific values in workspace.local.yaml and use the corresponding workspace local revise/apply/confirm transaction when those values are in scope.
+
 ## Authority Boundaries
 
 - Treat each independently governed manual root as one workspace; sibling workspaces may share a higher-level VCS checkout.

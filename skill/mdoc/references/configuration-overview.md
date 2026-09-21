@@ -44,6 +44,8 @@ mdoc workspace confirm --workspace <manual-repository-root>
 
 The local variant inserts `local` after `workspace`. `apply` writes a candidate JSON file under `.mdoc/cache/`; `confirm` rechecks the draft hash, authority hash, and normalized candidate hash before replacing the authority file.
 
+For an existing schema-version 1 workspace, workspace revise also synchronizes baseline fields introduced by the installed mdoc version into the draft. It recursively adds missing baseline values, including missing fields inside an existing pdf section, while preserving every value already present. Optional subsystems remain optional: revision does not add pdf to a workspace that has not enabled PDF configuration. Always inspect the baseline-sync report and candidate diff before confirmation when revising after an mdoc update.
+
 ## Task Files
 
 Task authority is `.mdoc/tasks/<task-id>/task.yaml` and `.mdoc/tasks/<task-id>/task-state.json`. The task draft is editable before `task define`; the defined task freezes a manifest so `task continue` can verify scope, baselines, staging, screenshots, Quality Gate input, and publishing transactions deterministically.

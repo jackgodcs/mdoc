@@ -214,6 +214,26 @@ class WorkspaceCliTests(unittest.TestCase):
         self.assertEqual("workspace_local_ready", json.loads(confirmed.stdout)["status"])
         self.assertEqual(r"C:\evidence\spec.md", self.read_yaml(self.repository / ".mdoc" / "workspace.local.yaml")["resources"]["spec"]["path"])
 
+    def test_workspace_revise_adds_new_baseline_fields_without_overwriting_custom_values(self) -> None:
+        for locale in ("zh", "en"):
+            (self.repository / "Guide" / locale / "book.json").write_text('{"title":"Guide","language":"' + locale + '"}\n', encoding="utf-8")
+        self.run_cli("workspace", "init", "--workspace", str(self.repository), "--json")
+        workspace = valid_workspace()
+        workspace["pdf"] = copy.deepcopy(pdf.DEFAULTS)
+        workspace["pdf"]["defaults"]["bookmarks"] = {"levels": 2}
+        workspace["pdf"]["defaults"].pop("toc")
+        self.write_draft(workspace)
+        self.run_cli("workspace", "apply", "--workspace", str(self.repository), "--json")
+        self.run_cli("workspace", "confirm", "--workspace", str(self.repository), "--json")
+
+        revised = self.run_cli("workspace", "revise", "--workspace", str(self.repository), "--json")
+        payload = json.loads(revised.stdout)
+        draft = self.read_yaml(self.repository / ".mdoc" / "workspace-draft.yaml")
+        self.assertEqual(["pdf"], payload["baseline_sync"]["changed_sections"])
+        self.assertEqual(2, draft["pdf"]["defaults"]["bookmarks"]["levels"])
+        self.assertTrue(draft["pdf"]["defaults"]["bookmarks"]["show_left_number"])
+        self.assertEqual({"right_value": "page", "show_left_number": True}, draft["pdf"]["defaults"]["toc"])
+
     def test_portable_paths_and_local_override_authority_are_strict(self) -> None:
         self.run_cli("workspace", "init", "--workspace", str(self.repository))
         invalid = valid_workspace()
