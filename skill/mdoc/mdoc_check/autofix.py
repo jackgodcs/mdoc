@@ -119,17 +119,38 @@ def _reported_brands(content: str, findings: list[dict]) -> tuple[str, list[dict
     return content, actions, skipped
 
 
-def _ranges(before: str, after: str, actions: list[dict]) -> list[dict]:
-    ranges = []
-    for tag, before_start, before_end, start, end in difflib.SequenceMatcher(None, before, after).get_opcodes():
+def _ranges(before: str, after: str, actions: list[dict], deadline: float) -> tuple[list[dict], bool]:
+    if before == after: return [], False
+    if time.monotonic() >= deadline: return [], True
+    before_lines = before.splitlines(keepends=True); after_lines = after.splitlines(keepends=True)
+    if len(before_lines) * len(after_lines) > 2_000_000: return [], True
+    before_starts = [0]; after_starts = [0]
+    for line in before_lines: before_starts.append(before_starts[-1] + len(line))
+    for line in after_lines: after_starts.append(after_starts[-1] + len(line))
+    positions = []
+    for item in actions:
+        line = min(max(1, int(item.get("line", 1))), max(1, len(after_starts) - 1))
+        positions.append((item, min(len(after), after_starts[line - 1] + max(0, int(item.get("column", 1)) - 1))))
+    ranges = []; degraded = False
+    for tag, before_line_start, before_line_end, line_start, line_end in difflib.SequenceMatcher(None, before_lines, after_lines).get_opcodes():
         if tag == "equal": continue
-        if start == end and after: start, end = max(0, start - 1), min(len(after), start + 1)
-        if start == end: continue
-        positions = [(item, sum(len(line) + 1 for line in after.splitlines()[:max(0, item["line"] - 1)]) + item["column"] - 1) for item in actions]
-        distance = min((abs(position - start) for _item, position in positions), default=0)
-        rules = sorted({item["rule"] for item, position in positions if abs(position - start) == distance}) or ["auto-fix"]
-        ranges.append({"from": start, "to": end, "before_from": before_start, "before_to": before_end, "rules": rules})
-    return ranges
+        if time.monotonic() >= deadline: return [], True
+        before_start, before_end = before_starts[before_line_start], before_starts[before_line_end]
+        start, end = after_starts[line_start], after_starts[line_end]
+        blocks = [(before_start, before_end, start, end)]
+        if before_end - before_start + end - start <= 8192:
+            blocks = []
+            for nested_tag, nested_before_start, nested_before_end, nested_start, nested_end in difflib.SequenceMatcher(None, before[before_start:before_end], after[start:end]).get_opcodes():
+                if nested_tag != "equal": blocks.append((before_start + nested_before_start, before_start + nested_before_end, start + nested_start, start + nested_end))
+        else:
+            degraded = True
+        for block_before_start, block_before_end, block_start, block_end in blocks:
+            if block_start == block_end and after: block_start, block_end = max(0, block_start - 1), min(len(after), block_start + 1)
+            if block_start == block_end: continue
+            distance = min((abs(position - block_start) for _item, position in positions), default=0)
+            rules = sorted({item["rule"] for item, position in positions if abs(position - block_start) == distance}) or ["auto-fix"]
+            ranges.append({"from": block_start, "to": block_end, "before_from": block_before_start, "before_to": block_before_end, "rules": rules})
+    return ranges, degraded or not ranges
 
 
 def _rule_help(rules: dict[str, int]) -> dict[str, dict]:
@@ -229,4 +250,8 @@ def run(root: Path, report: dict, display: str, path: Path, content: str, state:
     unfixable = sum((error["ruleNames"][0], error["lineNumber"], (error.get("errorRange") or [1])[0]) not in ignored_keys and error["ruleNames"][0] not in skipped_rules and (not error.get("fixInfo") or error["ruleNames"][0] not in markdown_rules) for error in final_errors) + extra
     unfixable += _local_unfixable(content, language, logical, effective["disabled_rules"], ignored_by_rule)
     rules = dict(sorted(counts.items()))
-    return {"content": content, "changed": content != original, "applied": sum(counts.values()), "rules": rules, "rule_help": _rule_help(rules), "unfixable": unfixable, "skipped_rules": sorted(skipped_rules), "ranges": _ranges(original, content, actions), "warnings": warnings, "trailing_newline": content.endswith("\n")}
+    try: ranges, degraded = _ranges(original, content, actions, started + config["timeout_seconds"])
+    except Exception:
+        ranges, degraded = [], True
+    if degraded: warnings.append("自动修复已完成，但文件较大或处理超时，仅显示简化的修改范围。" if ranges else "自动修复已完成，但文件较大或处理超时，未显示修改范围。")
+    return {"content": content, "changed": content != original, "applied": sum(counts.values()), "rules": rules, "rule_help": _rule_help(rules), "unfixable": unfixable, "skipped_rules": sorted(skipped_rules), "ranges": ranges, "warnings": warnings, "trailing_newline": content.endswith("\n")}

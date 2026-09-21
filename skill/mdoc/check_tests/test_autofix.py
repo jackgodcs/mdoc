@@ -3,13 +3,14 @@ from __future__ import annotations
 import json
 import subprocess
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 from ruamel.yaml import YAML
 
-from mdoc_check.autofix import _custom, configuration, run
+from mdoc_check.autofix import _custom, _ranges, configuration, run
 from mdoc_check.checkers import BRIDGE, NODE
 
 
@@ -59,6 +60,26 @@ class AutoFixTests(unittest.TestCase):
         self.assertEqual("行尾空格数量不符合规范", result["rule_help"]["MD009"]["title"])
         self.assertEqual("文件结尾缺少单个换行符", result["rule_help"]["MD047"]["title"])
         self.assertGreaterEqual(result["applied"], 3); self.assertTrue(result["ranges"]); self.assertTrue(all("before_from" in item and "before_to" in item for item in result["ranges"])); self.assertEqual(source, page.read_text(encoding="utf-8"))
+
+    def test_ranges_complete_quickly_for_large_repetitive_summary(self) -> None:
+        before = "".join(f"- [Section](Main/Section.md)  \n" for _ in range(1_100))
+        after = before.replace("  \n", "\n")
+        actions = [{"rule": "MD009", "line": line, "column": 29} for line in range(1, 1_101)]
+        started = time.monotonic(); ranges, degraded = _ranges(before, after, actions, started + 2)
+        self.assertLess(time.monotonic() - started, 2); self.assertTrue(ranges); self.assertTrue(degraded)
+
+    def test_ranges_expired_deadline_returns_without_highlights(self) -> None:
+        ranges, degraded = _ranges("before", "after", [], time.monotonic() - 1)
+        self.assertEqual([], ranges); self.assertTrue(degraded)
+        ranges, degraded = _ranges("before", "", [], time.monotonic() + 1)
+        self.assertEqual([], ranges); self.assertTrue(degraded)
+
+    def test_range_failure_keeps_fixed_content_and_adds_warning(self) -> None:
+        page = self.locale / "Main" / "Page.md"; source = "#Title\n"; page.write_text(source, encoding="utf-8")
+        state = {"size": page.stat().st_size, "mtime_ns": str(page.stat().st_mtime_ns)}
+        with patch("mdoc_check.autofix.vale", return_value=[]), patch("mdoc_check.autofix.cspell", return_value=[]), patch("mdoc_check.autofix._ranges", side_effect=RuntimeError("failed")):
+            result = run(self.root, self.report, "en/Main/Page.md", page, source, state, state, [])
+        self.assertIn("# Title", result["content"]); self.assertEqual([], result["ranges"]); self.assertIn("未显示修改范围", result["warnings"][-1])
 
     def test_bridge_applies_official_fixes_for_every_markdownlint_whitelist_rule(self) -> None:
         cases = {
