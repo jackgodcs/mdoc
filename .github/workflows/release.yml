@@ -116,5 +116,8 @@ jobs:
         with:
           tag_name: ${{ inputs.tag || github.ref_name }}
           prerelease: false
+          generate_release_notes: true
+          body: |
+            For detailed changes, see the [full changelog](https://github.com/jackgodcs/mdoc/blob/main/CHANGELOG.md).
           files: dist/mdoc-*-windows-x64.zip
           fail_on_unmatched_files: true
