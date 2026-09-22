@@ -45,6 +45,8 @@ Workspace behavior defaults to `pdf.defaults.cover.enabled: true` and `preserve_
 
 PDF builds do not use or validate `book.json`'s `structure.readme`. In the isolated HonKit build configuration, mdoc replaces that legacy value with the first actual `Summary.md` entry, so a removed `UserGuide.md` or other former readme file is not required and does not create an extra introduction page.
 
+When one Markdown target is referenced more than once in `Summary.md`, every TOC occurrence and bookmark keeps the number and label of its own Summary position while linking to the same PDF body page. The shared body page heading uses the target's first Summary occurrence.
+
 Page-number TOCs use up to three lightweight Calibre pagination passes against one HonKit build and one optimized image copy. Only the converged PDF proceeds through bookmark repair, interpolation, qpdf optimization, and full structural checks. A build that does not converge, or whose final TOC destinations no longer match the converged page values, fails without replacing an existing output.
 
 `pdf.retention.keep_successful_book_work` sets the workspace default for retaining successful full-book work directories. A locale can override it with `books.<book>.locales.<locale>.pdf.keep_successful_book_work`; this is evaluated separately for every locale in `--all-locales` and `--all-books` builds. Explicit `--keep-work` or `--discard-work` takes precedence over both configuration levels.

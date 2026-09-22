@@ -302,6 +302,49 @@ class PdfTests(unittest.TestCase):
         self.assertIn('<span class="page">7</span>', summary)
         self.assertIn('<span class="page">8</span>', summary)
 
+    def test_patch_html_numbers_repeated_targets_by_summary_occurrence(self) -> None:
+        intermediate = self.root / "ebook"
+        chapter = intermediate / "Main" / "Chapter.html"
+        chapter.parent.mkdir(parents=True)
+        chapter.write_text('<title>Chapter</title><h1 class="book-chapter">Chapter</h1>', encoding="utf-8")
+        (intermediate / "SUMMARY.html").write_text(
+            '<a href="Main/Chapter.html">First location</a><span class="page">1</span>'
+            '<a href="Main/Chapter.html">Second location</a><span class="page">2</span>',
+            encoding="utf-8",
+        )
+        entries = [
+            {"number": "8.1", "title": "First location", "path": "Main/Chapter.md", "anchor": ""},
+            {"number": "24.3.1", "title": "Second location", "path": "Main/Chapter.md", "anchor": ""},
+        ]
+        pdf._patch_html(intermediate, None, entries, pdf.DEFAULTS["defaults"]["toc"], [7, 9])
+        summary = (intermediate / "SUMMARY.html").read_text(encoding="utf-8")
+        self.assertIn('>8.1 First location</a><span class="page">7</span>', summary)
+        self.assertIn('>24.3.1 Second location</a><span class="page">9</span>', summary)
+        rendered = chapter.read_text(encoding="utf-8")
+        self.assertIn('<title>8.1 First location</title>', rendered)
+        self.assertIn('<h1 class="book-chapter">8.1 First location</h1>', rendered)
+
+    def test_patch_html_treats_parent_segments_as_the_same_repeated_target(self) -> None:
+        intermediate = self.root / "ebook"
+        chapter = intermediate / "Main" / "Chapter.html"
+        chapter.parent.mkdir(parents=True)
+        chapter.write_text('<title>Chapter</title><h1 class="book-chapter">Chapter</h1>', encoding="utf-8")
+        (intermediate / "SUMMARY.html").write_text(
+            '<a href="Main/Chapter.html">First location</a><span class="page">1</span>'
+            '<a href="Main/Chapter.html">Second location</a><span class="page">2</span>',
+            encoding="utf-8",
+        )
+        entries = [
+            {"number": "7.1", "title": "First location", "path": "Main/Chapter.md", "anchor": ""},
+            {"number": "20.3", "title": "Second location", "path": "Main/Area/../Chapter.md", "anchor": ""},
+        ]
+        report = pdf._patch_html(intermediate, None, entries, pdf.DEFAULTS["defaults"]["toc"])
+        self.assertEqual(2, report["explicit_items"])
+        summary = (intermediate / "SUMMARY.html").read_text(encoding="utf-8")
+        self.assertIn('>7.1 First location</a>', summary)
+        self.assertIn('>20.3 Second location</a>', summary)
+        self.assertIn('<title>7.1 First location</title>', chapter.read_text(encoding="utf-8"))
+
     def test_effective_settings_accept_frozen_workspace_configuration(self) -> None:
         config = freeze({"pdf": {"defaults": pdf.DEFAULTS["defaults"]}})
         book = freeze({"pdf": {"margins_pt": {"top": 80}}})

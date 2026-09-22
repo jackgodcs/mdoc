@@ -4,6 +4,7 @@ import copy
 import html
 import json
 import os
+import posixpath
 import re
 import shutil
 import subprocess
@@ -612,13 +613,14 @@ def _patch_html(intermediate: Path, pages: list[tuple[dict, str]] | None, entrie
     patched_pages = set()
     for entry, href in targets:
         page = intermediate / href
-        if page.is_file() and href.casefold() not in patched_pages:
+        normalized_href = posixpath.normpath(unquote(urlsplit(href).path).removeprefix("./")).casefold()
+        if page.is_file() and normalized_href not in patched_pages:
             text = page.read_text(encoding="utf-8")
             display = html.escape(f"{entry['number']} {entry['title']}")
             text = re.sub(r"<title>.*?</title>", f"<title>{display}</title>", text, count=1, flags=re.S)
             text = re.sub(r'(<h1 class="book-chapter[^>]*">).*?(</h1>)', lambda match: f"{match.group(1)}{display}{match.group(2)}", text, count=1, flags=re.S)
             page.write_text(text, encoding="utf-8", newline="\n")
-            patched_pages.add(href.casefold())
+            patched_pages.add(normalized_href)
         if page.is_file() and entry.get("anchor"):
             text = page.read_text(encoding="utf-8")
             display = html.escape(f"{entry['number']} {entry['title']}")
@@ -633,19 +635,23 @@ def _patch_html(intermediate: Path, pages: list[tuple[dict, str]] | None, entrie
                 anchor = re.escape(html.escape(entry["anchor"], quote=True))
                 text = re.sub(rf'(<h1 id="{anchor}">).*?(</h1>)', lambda match: f"{match.group(1)}{display}{match.group(2)}", text, count=1, flags=re.S)
             page.write_text(text, encoding="utf-8", newline="\n")
-        key = (unquote(urlsplit(href).path).removeprefix("./").casefold(), entry.get("anchor", ""))
-        href_entries[key] = entry
+        key = (normalized_href, entry.get("anchor", ""))
+        href_entries.setdefault(key, []).append(entry)
     summary = intermediate / "SUMMARY.html"
     text = summary.read_text(encoding="utf-8")
     item_pattern = re.compile(r'(<a href="([^"]+)">)(.*?)(</a>)(.*?<span class="page">)(.*?)(</span>)', re.S)
     item_count = 0
     explicit_count = 0
+    href_counts = {}
 
     def patch_item(match: re.Match) -> str:
         nonlocal item_count, explicit_count
         href = match.group(2); split = urlsplit(href)
-        key = (unquote(split.path).removeprefix("./").casefold(), unquote(split.fragment))
-        entry = href_entries.get(key)
+        key = (posixpath.normpath(unquote(split.path).removeprefix("./")).casefold(), unquote(split.fragment))
+        matches = href_entries.get(key, [])
+        index = href_counts.get(key, 0)
+        entry = matches[index] if index < len(matches) else None
+        href_counts[key] = index + 1
         label = match.group(3) if not entry else html.escape(f"{entry['number']} {entry['title']}" if toc["show_left_number"] else entry["title"])
         if entry: explicit_count += 1
         if right_values is not None:

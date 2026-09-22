@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Fixed PDF TOC numbering for Markdown targets referenced more than once in `Summary.md`; each TOC occurrence now keeps its own Summary number and label while the shared body page keeps the first occurrence's heading.
 - Stopped PDF generation and PDF checks from depending on `book.json`'s legacy `structure.readme`; isolated HonKit builds now use the first actual Summary entry as their temporary readme.
 - Updated workspace revise to add newly introduced baseline fields to schema-version 1 drafts without overwriting project-specific values, and aligned the workspace template with the current PDF TOC and bookmark defaults.
 - Added optional locale-specific PDF covers for full-book builds, with workspace and per-book behavior controls, strict local PNG/JPEG validation, controlled build-cache copies, Calibre aspect-ratio preservation, and cover details in build reports.
