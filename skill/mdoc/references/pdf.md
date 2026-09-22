@@ -26,6 +26,23 @@ Standalone output defaults to `%TEMP%\mdoc\<name>.pdf` and overwrites atomically
 
 `pdf.defaults.toc.right_value` controls the mandatory value on the right side of each TOC item: `page` writes the final one-based PDF page number and `hierarchy` writes the mdoc number calculated from `Summary.md`. `toc.show_left_number` independently controls the mdoc number before TOC labels. `bookmarks.show_left_number` independently controls that number before PDF bookmark labels. Both label-number switches default to `true`; bookmark depth defaults to five levels. Per-book `pdf.toc` and `pdf.bookmarks` values can override these defaults.
 
+Full-book builds can use a locale-specific cover declared in that locale's `book.json`:
+
+```json
+{
+  "pdf": {
+    "cover": {
+      "title": "Product user manual cover",
+      "path": "images/cover.png"
+    }
+  }
+}
+```
+
+`pdf.cover.title` is a report and diagnostic label only; it does not replace the top-level book title or draw text onto the image. `pdf.cover.path` is relative to the locale root and must resolve inside that root to a decodable PNG or JPEG. The image is copied into the controlled build work without applying ordinary content-image optimization, then passed to Calibre as the first physical PDF page. It is not a Summary item or bookmark, and TOC page values include its physical-page offset. Page, section, and standalone file builds ignore locale cover configuration.
+
+Workspace behavior defaults to `pdf.defaults.cover.enabled: true` and `preserve_aspect_ratio: true`. Enabled means that a configured cover is used; a locale with no `pdf.cover` still builds without a cover. An incomplete, unsafe, missing, unsupported, or corrupt configured cover fails a full-book build. A book can override `pdf.cover.enabled` or `pdf.cover.preserve_aspect_ratio`. `workspace revise` adds missing behavior defaults without changing existing values or locale `book.json` files.
+
 Page-number TOCs use up to three lightweight Calibre pagination passes against one HonKit build and one optimized image copy. Only the converged PDF proceeds through bookmark repair, interpolation, qpdf optimization, and full structural checks. A build that does not converge, or whose final TOC destinations no longer match the converged page values, fails without replacing an existing output.
 
 `pdf.retention.keep_successful_book_work` sets the workspace default for retaining successful full-book work directories. A locale can override it with `books.<book>.locales.<locale>.pdf.keep_successful_book_work`; this is evaluated separately for every locale in `--all-locales` and `--all-books` builds. Explicit `--keep-work` or `--discard-work` takes precedence over both configuration levels.

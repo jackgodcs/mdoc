@@ -140,7 +140,7 @@ class PdfTests(unittest.TestCase):
 
         with patch.object(pdf, "tool_paths", return_value=tools), patch.object(pdf, "_run", side_effect=run):
             report = pdf.build_file(source, output, None, None, None, False, False, True, False, False)
-        self.assertEqual("passed", report["status"]); self.assertGreater(output.stat().st_size, 3); self.assertFalse(Path(report["work"]).exists())
+        self.assertEqual("passed", report["status"]); self.assertEqual("scope_not_book", report["cover"]["reason"]); self.assertGreater(output.stat().st_size, 3); self.assertFalse(Path(report["work"]).exists())
         output.write_bytes(b"old")
         with patch.object(pdf, "tool_paths", return_value=tools), patch.object(pdf, "_run", side_effect=MdocError("TEST", "failed")):
             with self.assertRaises(MdocError): pdf.build_file(source, output, None, None, None, False, False, True, False, False)
@@ -186,7 +186,7 @@ class PdfTests(unittest.TestCase):
 
     def test_effective_settings_merge_book_override_without_losing_defaults(self) -> None:
         config = {"pdf": {"defaults": pdf.DEFAULTS["defaults"]}}
-        book = {"pdf": {"margins_pt": {"top": 80}, "image_optimization": {"jpeg_quality": 65}}}
+        book = {"pdf": {"margins_pt": {"top": 80}, "image_optimization": {"jpeg_quality": 65}, "cover": {"enabled": False}}}
         settings = pdf.effective_settings(config, book)
         self.assertEqual(80, settings["margins_pt"]["top"])
         self.assertEqual(67, settings["margins_pt"]["left"])
@@ -196,11 +196,65 @@ class PdfTests(unittest.TestCase):
         self.assertTrue(settings["toc"]["show_left_number"])
         self.assertEqual(5, settings["bookmarks"]["levels"])
         self.assertTrue(settings["bookmarks"]["show_left_number"])
+        self.assertEqual({"enabled": False, "preserve_aspect_ratio": True}, settings["cover"])
 
     def test_effective_settings_fill_new_pdf_defaults_for_old_workspace(self) -> None:
         settings = pdf.effective_settings({"pdf": {"defaults": {"bookmarks": {"levels": 2}}}}, {})
         self.assertEqual({"right_value": "page", "show_left_number": True}, settings["toc"])
         self.assertEqual({"levels": 2, "show_left_number": True}, settings["bookmarks"])
+        self.assertEqual({"enabled": True, "preserve_aspect_ratio": True}, settings["cover"])
+
+    def test_prepare_cover_copies_valid_book_cover_and_reports_metadata(self) -> None:
+        locale = self.root / "locale"; work = self.root / "work"; image = locale / "images" / "cover.png"
+        image.parent.mkdir(parents=True); work.mkdir(); Image.new("RGB", (1200, 1600), "white").save(image)
+        config = {"pdf": {"cover": {"title": "Guide cover", "path": "images/cover.png"}}}
+        report, copied = pdf._prepare_cover(locale, config, pdf.DEFAULTS["defaults"], work, "book")
+        self.assertTrue(report["applied"]); self.assertEqual("Guide cover", report["title"]); self.assertEqual("PNG", report["format"])
+        self.assertEqual((1200, 1600), (report["width"], report["height"])); self.assertEqual(image.read_bytes(), copied.read_bytes())
+        self.assertTrue(copied.is_relative_to(work / "cover"))
+
+    def test_prepare_cover_is_optional_and_ignored_outside_book_scope(self) -> None:
+        invalid = {"pdf": {"cover": {"title": "Broken", "path": "missing.png"}}}
+        report, copied = pdf._prepare_cover(self.root, invalid, pdf.DEFAULTS["defaults"], self.root / "work", "section")
+        self.assertEqual("scope_not_book", report["reason"]); self.assertIsNone(copied)
+        report, copied = pdf._prepare_cover(self.root, {}, pdf.DEFAULTS["defaults"], self.root / "work", "book")
+        self.assertEqual("not_configured", report["reason"]); self.assertIsNone(copied)
+        settings = {**pdf.DEFAULTS["defaults"], "cover": {"enabled": False, "preserve_aspect_ratio": True}}
+        report, copied = pdf._prepare_cover(self.root, invalid, settings, self.root / "work", "book")
+        self.assertEqual("disabled", report["reason"]); self.assertIsNone(copied)
+
+    def test_prepare_cover_rejects_incomplete_unsafe_missing_and_invalid_images(self) -> None:
+        cases = [
+            ({"title": "Cover"}, "MDOC-PDF-COVER-CONFIG-INVALID"),
+            ({"title": "Cover", "path": "../cover.png"}, "MDOC-PDF-COVER-PATH-UNSAFE"),
+            ({"title": "Cover", "path": "https://example.com/cover.png"}, "MDOC-PDF-COVER-PATH-UNSAFE"),
+            ({"title": "Cover", "path": "cover.png?download=1"}, "MDOC-PDF-COVER-PATH-UNSAFE"),
+            ({"title": "Cover", "path": "cover.png#preview"}, "MDOC-PDF-COVER-PATH-UNSAFE"),
+            ({"title": "Cover", "path": "missing.png"}, "MDOC-PDF-COVER-MISSING"),
+            ({"title": "Cover", "path": "cover.svg"}, "MDOC-PDF-COVER-FORMAT-UNSUPPORTED"),
+        ]
+        (self.root / "cover.svg").write_text("<svg/>", encoding="utf-8")
+        for cover, code in cases:
+            with self.subTest(cover=cover), self.assertRaises(MdocError) as caught:
+                pdf._prepare_cover(self.root, {"pdf": {"cover": cover}}, pdf.DEFAULTS["defaults"], self.root / "work", "book")
+            self.assertEqual(code, caught.exception.code)
+        (self.root / "broken.jpg").write_bytes(b"not-an-image")
+        with self.assertRaises(MdocError) as caught:
+            pdf._prepare_cover(self.root, {"pdf": {"cover": {"title": "Cover", "path": "broken.jpg"}}}, pdf.DEFAULTS["defaults"], self.root / "work", "book")
+        self.assertEqual("MDOC-PDF-COVER-INVALID", caught.exception.code)
+        Image.new("RGB", (10, 10)).save(self.root / "renamed.jpg", format="GIF")
+        with self.assertRaises(MdocError) as caught:
+            pdf._prepare_cover(self.root, {"pdf": {"cover": {"title": "Cover", "path": "renamed.jpg"}}}, pdf.DEFAULTS["defaults"], self.root / "work", "book")
+        self.assertEqual("MDOC-PDF-COVER-FORMAT-UNSUPPORTED", caught.exception.code)
+
+    def test_calibre_options_include_cover_only_when_materialized(self) -> None:
+        cover = self.root / "cover.png"
+        options = pdf._calibre_options({"title": "Guide", "language": "en", "pdf": {"fontFamily": "Arial"}}, pdf.DEFAULTS["defaults"], cover)
+        self.assertEqual(str(cover), options[options.index("--cover") + 1]); self.assertIn("--preserve-cover-aspect-ratio", options)
+        settings = {**pdf.DEFAULTS["defaults"], "cover": {"enabled": True, "preserve_aspect_ratio": False}}
+        options = pdf._calibre_options({"title": "Guide", "language": "en", "pdf": {"fontFamily": "Arial"}}, settings, cover)
+        self.assertNotIn("--preserve-cover-aspect-ratio", options)
+        self.assertNotIn("--cover", pdf._calibre_options({"title": "Guide", "language": "en", "pdf": {"fontFamily": "Arial"}}, settings))
 
     def test_patch_html_numbers_fragment_headings_and_supports_toc_switches(self) -> None:
         intermediate = self.root / "ebook"

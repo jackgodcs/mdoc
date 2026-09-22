@@ -52,6 +52,7 @@ DEFAULTS = {
         },
         "toc": {"right_value": "page", "show_left_number": True},
         "bookmarks": {"levels": 5, "show_left_number": True},
+        "cover": {"enabled": True, "preserve_aspect_ratio": True},
         "concurrency": {"builds": 3, "images": "auto"},
     },
     "retention": {"failed_work_days": 7, "batch_reports": 20, "keep_successful_book_work": False},
@@ -402,6 +403,49 @@ def _write_json(path: Path, value: dict) -> None:
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
 
 
+def _prepare_cover(locale_root: Path, config: dict, settings: dict, work: Path, mode: str) -> tuple[dict, Path | None]:
+    behavior = settings["cover"]
+    report = {"enabled": behavior["enabled"], "configured": False, "applied": False, "preserve_aspect_ratio": behavior["preserve_aspect_ratio"]}
+    if mode != "book":
+        return {**report, "reason": "scope_not_book"}, None
+    if not behavior["enabled"]:
+        return {**report, "reason": "disabled"}, None
+    cover = (config.get("pdf") or {}).get("cover")
+    if cover is None:
+        return {**report, "reason": "not_configured"}, None
+    report["configured"] = True
+    if not isinstance(cover, dict) or set(cover) != {"title", "path"} or not isinstance(cover.get("title"), str) or not cover["title"].strip() or not isinstance(cover.get("path"), str) or not cover["path"].strip():
+        raise MdocError("MDOC-PDF-COVER-CONFIG-INVALID", "book.json 的 pdf.cover 必须且只能包含非空的 title 和 path。")
+    raw_path = cover["path"].strip()
+    split = urlsplit(raw_path)
+    if split.scheme or split.netloc or split.query or split.fragment or Path(raw_path).is_absolute() or raw_path.startswith(("/", "\\")):
+        raise MdocError("MDOC-PDF-COVER-PATH-UNSAFE", "PDF 封面路径必须是当前语言目录内的相对路径。", {"path": raw_path})
+    source = (locale_root / raw_path).resolve()
+    try:
+        source.relative_to(locale_root.resolve())
+    except ValueError as exc:
+        raise MdocError("MDOC-PDF-COVER-PATH-UNSAFE", "PDF 封面路径越出当前语言目录。", {"path": raw_path}) from exc
+    if source.suffix.casefold() not in {".png", ".jpg", ".jpeg"}:
+        raise MdocError("MDOC-PDF-COVER-FORMAT-UNSUPPORTED", "PDF 封面仅支持 PNG 和 JPEG。", {"path": raw_path})
+    if not source.is_file():
+        raise MdocError("MDOC-PDF-COVER-MISSING", "PDF 封面文件不存在。", {"path": raw_path})
+    if Image is None:
+        raise MdocError("MDOC-PDF-IMAGE-RUNTIME-MISSING", "PDF 封面校验需要 Pillow。")
+    try:
+        with Image.open(source) as opened:
+            opened.verify()
+        with Image.open(source) as opened:
+            width, height, image_format = opened.width, opened.height, opened.format
+    except Exception as exc:
+        raise MdocError("MDOC-PDF-COVER-INVALID", "PDF 封面图片无法解码。", {"path": raw_path, "cause": str(exc)}) from exc
+    if image_format not in {"PNG", "JPEG"}:
+        raise MdocError("MDOC-PDF-COVER-FORMAT-UNSUPPORTED", "PDF 封面实际内容必须是 PNG 或 JPEG。", {"path": raw_path, "format": image_format})
+    destination = work / "cover" / f"cover{source.suffix.lower()}"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, destination)
+    return {**report, "applied": True, "title": cover["title"].strip(), "source": raw_path.replace("\\", "/"), "format": image_format, "width": width, "height": height}, destination
+
+
 def _materialize_scope(locale_root: Path, entries: list[dict], work: Path, findings: list[dict]) -> list[tuple[dict, str]]:
     selected = {item["path"].casefold() for item in entries}
     def page_name(index: int) -> str:
@@ -595,7 +639,7 @@ def _patch_html(intermediate: Path, pages: list[tuple[dict, str]] | None, entrie
     return {"items": item_count, "explicit_items": explicit_count, "implicit_items": item_count - explicit_count}
 
 
-def _calibre_options(config: dict, settings: dict) -> list[str]:
+def _calibre_options(config: dict, settings: dict, cover: Path | None = None) -> list[str]:
     source_pdf = config.get("pdf", {})
     font_family = source_pdf.get("fontFamily")
     if not isinstance(font_family, str) or not font_family.strip():
@@ -619,6 +663,10 @@ def _calibre_options(config: dict, settings: dict) -> list[str]:
         options.append("--embed-all-fonts")
     if config.get("author"):
         options.extend(["--authors", str(config["author"])])
+    if cover is not None:
+        options.extend(["--cover", str(cover)])
+        if settings["cover"]["preserve_aspect_ratio"]:
+            options.append("--preserve-cover-aspect-ratio")
     return options
 
 
@@ -879,6 +927,7 @@ def _build_one(workspace, book_id: str, locale_id: str, mode: str, target: str |
             config = _isolated_book_config(locale_root, pages[0][1], f"{json.loads((locale_root / 'book.json').read_text(encoding='utf-8-sig'))['title']} - {first['number']} {first['title']}")
             _materialize_scope_resources(locale_root, source, pages, findings, [value for value in config.get("styles", {}).values() if isinstance(value, str)])
             (source / "Summary.md").write_text("\n".join(f"{'    ' * max(0, entry['level'] - first['level'])}* [{entry['title']}]({name}{f'#{entry['anchor']}' if entry.get('anchor') else ''})" for entry, name in pages) + "\n", encoding="utf-8", newline="\n")
+        cover_report, cover_path = _prepare_cover(locale_root, config, settings, work, mode)
         _write_json(source / "book.json", config)
         intermediate.mkdir()
         timings = {"prepare": round(time.monotonic() - stage, 3), "honkit": _run([str(tools["node"]), str(tools["honkit"]), "build", str(source), str(intermediate), "--format", "ebook", "--log", "debug", "--timing"], work, logs / "honkit.log")}
@@ -900,7 +949,7 @@ def _build_one(workspace, book_id: str, locale_id: str, mode: str, target: str |
             right_values = None
             for iteration in range(1, 4):
                 current = raw if iteration == 1 else work / f"raw-{iteration}.pdf"
-                duration = _run([str(tools["calibre"]), str(intermediate / "SUMMARY.html"), str(current), *_calibre_options(config, settings)], work, logs / f"calibre-{iteration}.log")
+                duration = _run([str(tools["calibre"]), str(intermediate / "SUMMARY.html"), str(current), *_calibre_options(config, settings, cover_path)], work, logs / f"calibre-{iteration}.log")
                 from pypdf import PdfReader
                 targets = _toc_pages(PdfReader(str(current)), toc_report["items"])
                 if len(targets) != toc_report["items"]:
@@ -917,7 +966,7 @@ def _build_one(workspace, book_id: str, locale_id: str, mode: str, target: str |
                 raise MdocError("MDOC-PDF-TOC-PAGE-NUMBERS-NOT-STABLE", "目录页码在三轮分页后仍未收敛。", {"iterations": toc_iterations})
             timings["calibre"] = round(sum(item["duration"] for item in toc_iterations), 3)
         else:
-            timings["calibre"] = _run([str(tools["calibre"]), str(intermediate / "SUMMARY.html"), str(raw), *_calibre_options(config, settings)], work, logs / "calibre.log")
+            timings["calibre"] = _run([str(tools["calibre"]), str(intermediate / "SUMMARY.html"), str(raw), *_calibre_options(config, settings, cover_path)], work, logs / "calibre.log")
             right_values = None
             toc_iterations.append({"iteration": 1, "changed_targets": 0, "duration": timings["calibre"]})
         stage = time.monotonic(); outline = _repair_outline(raw, outlined, selected, settings["bookmarks"], toc_report["items"], toc_report["implicit_items"]); timings["outline"] = round(time.monotonic() - stage, 3)
@@ -954,7 +1003,7 @@ def _build_one(workspace, book_id: str, locale_id: str, mode: str, target: str |
         os.replace(temporary, output)
         timings["output"] = round(time.monotonic() - stage, 3)
         status = "passed_with_findings" if findings else "passed"
-        report = {"schema_version": 1, "status": status, "book": book_id, "locale": locale_id, "scope": mode, "target": target, "summary_line": summary_line, "output": str(output), "work": str(work), "entries": len(selected), "settings": settings, "toc": {"mode": settings["toc"]["right_value"], "items": toc_report["items"], "implicit_items": toc_report["implicit_items"], "iterations": len(toc_iterations), "changed_targets_per_iteration": [item["changed_targets"] for item in toc_iterations]}, "images": image_stats, "outline": outline, "check": structural, "findings": findings, "notices": notices, "timings": timings, "pipeline_verification": verification}
+        report = {"schema_version": 1, "status": status, "book": book_id, "locale": locale_id, "scope": mode, "target": target, "summary_line": summary_line, "output": str(output), "work": str(work), "entries": len(selected), "settings": settings, "cover": cover_report, "toc": {"mode": settings["toc"]["right_value"], "items": toc_report["items"], "implicit_items": toc_report["implicit_items"], "iterations": len(toc_iterations), "changed_targets_per_iteration": [item["changed_targets"] for item in toc_iterations]}, "images": image_stats, "outline": outline, "check": structural, "findings": findings, "notices": notices, "timings": timings, "pipeline_verification": verification}
         return report
     finally:
         cleanup = time.monotonic()
@@ -1037,7 +1086,7 @@ def build_file(path: Path, output: Path | None, pdf_config: Path | None, languag
         resource_findings = [item for item in findings if item["kind"] in {"missing_resource", "unsafe_resource", "resource_copy_failed"}]
         if strict_resources and resource_findings: raise MdocError("MDOC-PDF-RESOURCE-STRICT", "严格资源模式下存在 resource finding。", {"findings": resource_findings})
         temporary = destination.with_name(f".{destination.name}.{os.getpid()}.tmp"); shutil.copy2(candidate, temporary); os.replace(temporary, destination); status = "passed_with_findings" if findings else "passed"
-        return {"schema_version": 1, "status": status, "scope": "file", "file": str(source_file), "output": str(destination), "work": str(work), "title": title, "language": detected, "settings": settings, "images": image_stats, "outline": outline, "findings": findings, "notices": notices, "timings": timings, "pipeline_verification": verification}
+        return {"schema_version": 1, "status": status, "scope": "file", "file": str(source_file), "output": str(destination), "work": str(work), "title": title, "language": detected, "settings": settings, "cover": {"enabled": settings["cover"]["enabled"], "configured": False, "applied": False, "preserve_aspect_ratio": settings["cover"]["preserve_aspect_ratio"], "reason": "scope_not_book"}, "images": image_stats, "outline": outline, "findings": findings, "notices": notices, "timings": timings, "pipeline_verification": verification}
     finally:
         if discard_work or status.startswith("passed") and not keep_work: shutil.rmtree(work, ignore_errors=True)
 

@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Updated workspace revise to add newly introduced baseline fields to schema-version 1 drafts without overwriting project-specific values, and aligned the workspace template with the current PDF TOC and bookmark defaults.
+- Added optional locale-specific PDF covers for full-book builds, with workspace and per-book behavior controls, strict local PNG/JPEG validation, controlled build-cache copies, Calibre aspect-ratio preservation, and cover details in build reports.
 
 ## 1.5.5 - 2026-09-21
 

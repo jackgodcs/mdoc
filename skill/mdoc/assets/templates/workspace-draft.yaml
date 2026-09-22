@@ -62,6 +62,9 @@ pdf:
     bookmarks:
       levels: 5
       show_left_number: true
+    cover:
+      enabled: true
+      preserve_aspect_ratio: true
     concurrency:
       builds: 3
       images: auto

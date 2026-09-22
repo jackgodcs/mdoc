@@ -120,6 +120,7 @@ class WorkspaceCliTests(unittest.TestCase):
         self.assertEqual(75, draft["pdf"]["defaults"]["image_optimization"]["jpeg_quality"])
         self.assertEqual(1048, draft["pdf"]["defaults"]["image_optimization"]["max_width_px"])
         self.assertEqual(3, draft["pdf"]["defaults"]["concurrency"]["builds"])
+        self.assertEqual({"enabled": True, "preserve_aspect_ratio": True}, draft["pdf"]["defaults"]["cover"])
 
         self.write_draft(valid_workspace())
         self.run_cli("workspace", "apply", "--workspace", str(self.repository), "--json")
@@ -222,6 +223,7 @@ class WorkspaceCliTests(unittest.TestCase):
         workspace["pdf"] = copy.deepcopy(pdf.DEFAULTS)
         workspace["pdf"]["defaults"]["bookmarks"] = {"levels": 2}
         workspace["pdf"]["defaults"].pop("toc")
+        workspace["pdf"]["defaults"].pop("cover")
         self.write_draft(workspace)
         self.run_cli("workspace", "apply", "--workspace", str(self.repository), "--json")
         self.run_cli("workspace", "confirm", "--workspace", str(self.repository), "--json")
@@ -233,6 +235,7 @@ class WorkspaceCliTests(unittest.TestCase):
         self.assertEqual(2, draft["pdf"]["defaults"]["bookmarks"]["levels"])
         self.assertTrue(draft["pdf"]["defaults"]["bookmarks"]["show_left_number"])
         self.assertEqual({"right_value": "page", "show_left_number": True}, draft["pdf"]["defaults"]["toc"])
+        self.assertEqual({"enabled": True, "preserve_aspect_ratio": True}, draft["pdf"]["defaults"]["cover"])
 
     def test_portable_paths_and_local_override_authority_are_strict(self) -> None:
         self.run_cli("workspace", "init", "--workspace", str(self.repository))
