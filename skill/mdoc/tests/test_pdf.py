@@ -126,6 +126,17 @@ class PdfTests(unittest.TestCase):
         self.assertTrue((source / "images" / "used.png").is_file()); self.assertTrue((source / "styles" / "manual.css").is_file()); self.assertTrue((source / "fonts" / "manual.woff2").is_file())
         self.assertFalse((source / "images" / "unused.png").exists()); self.assertEqual([], findings)
 
+    def test_isolated_book_config_ignores_configured_readme(self) -> None:
+        locale = self.root / "locale"; locale.mkdir()
+        (locale / "book.json").write_text(
+            '{"title":"Guide","language":"en","structure":{"readme":"UserGuide.md"}}\n',
+            encoding="utf-8",
+        )
+        config = pdf._isolated_book_config(locale)
+        self.assertNotIn("readme", config.get("structure", {}))
+        config = pdf._isolated_book_config(locale, "Main/Overview.md")
+        self.assertEqual("Main/Overview.md", config["structure"]["readme"])
+
     def test_standalone_build_replaces_output_only_after_success(self) -> None:
         source = self.root / "Page.md"; source.write_text("# Page\n\nContent.\n", encoding="utf-8")
         output = self.root / "Page.pdf"; output.write_bytes(b"old")

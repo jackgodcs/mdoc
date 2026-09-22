@@ -43,6 +43,8 @@ Full-book builds can use a locale-specific cover declared in that locale's `book
 
 Workspace behavior defaults to `pdf.defaults.cover.enabled: true` and `preserve_aspect_ratio: true`. Enabled means that a configured cover is used; a locale with no `pdf.cover` still builds without a cover. An incomplete, unsafe, missing, unsupported, or corrupt configured cover fails a full-book build. A book can override `pdf.cover.enabled` or `pdf.cover.preserve_aspect_ratio`. `workspace revise` adds missing behavior defaults without changing existing values or locale `book.json` files.
 
+PDF builds do not use or validate `book.json`'s `structure.readme`. In the isolated HonKit build configuration, mdoc replaces that legacy value with the first actual `Summary.md` entry, so a removed `UserGuide.md` or other former readme file is not required and does not create an extra introduction page.
+
 Page-number TOCs use up to three lightweight Calibre pagination passes against one HonKit build and one optimized image copy. Only the converged PDF proceeds through bookmark repair, interpolation, qpdf optimization, and full structural checks. A build that does not converge, or whose final TOC destinations no longer match the converged page values, fails without replacing an existing output.
 
 `pdf.retention.keep_successful_book_work` sets the workspace default for retaining successful full-book work directories. A locale can override it with `books.<book>.locales.<locale>.pdf.keep_successful_book_work`; this is evaluated separately for every locale in `--all-locales` and `--all-books` builds. Explicit `--keep-work` or `--discard-work` takes precedence over both configuration levels.

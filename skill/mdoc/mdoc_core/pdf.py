@@ -418,8 +418,9 @@ def _isolated_book_config(locale_root: Path, readme: str | None = None, title: s
     config = json.loads((locale_root / "book.json").read_text(encoding="utf-8-sig"))
     if title is not None:
         config["title"] = title
+    config.setdefault("structure", {}).pop("readme", None)
     if readme is not None:
-        config.setdefault("structure", {})["readme"] = readme
+        config["structure"]["readme"] = readme
     config["plugins"] = []
     config.pop("pluginsConfig", None)
     return config
@@ -875,8 +876,6 @@ def check(workspace, path: Path, book_id: str | None = None, locale_id: str | No
         if mode != "book":
             if not target: raise MdocError("MDOC-PDF-TARGET-REQUIRED", "page 和 section 范围需要 --target。")
             entries = scoped_entries(select_entries(entries, target, mode, summary_line))
-        elif not any(entry["path"].casefold() == normalized_target(_isolated_book_config(locale_root).get("structure", {}).get("readme", "README.md"))[0].casefold() for entry in entries):
-            implicit_items = 1
         bookmarks = effective_settings(workspace.config, book)["bookmarks"]
     return _structural_check(path.resolve(), entries, bookmarks, implicit_items)
 
@@ -946,7 +945,7 @@ def _build_one(workspace, book_id: str, locale_id: str, mode: str, target: str |
         pages = None
         if mode == "book":
             _safe_hardlink_tree(locale_root, source, findings, {"book.json"})
-            config = _isolated_book_config(locale_root)
+            config = _isolated_book_config(locale_root, selected[0]["path"] if selected else None)
         else:
             source.mkdir()
             pages = _materialize_scope(locale_root, selected, source, findings)
