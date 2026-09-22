@@ -7,10 +7,12 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
+import threading
 import time
 import uuid
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import CancelledError, ThreadPoolExecutor, as_completed
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
@@ -349,11 +351,35 @@ def doctor(workspace) -> dict:
     return {"status": "passed" if not invalid else "failed", "toolchain": str(toolchain_root()), "required_versions": TOOL_VERSIONS, "tools": {name: {"path": str(tools[name]), "version": probes[name], "available": bool(probes[name]), "version_matches": bool(probes[name] and TOOL_VERSIONS[name] in probes[name])} for name in tools}, "invalid": invalid, "exit_code": 0 if not invalid else 3}
 
 
-def _run(command: list[str], cwd: Path, log: Path) -> float:
+def _cancelled(cancel: threading.Event | None) -> None:
+    if cancel and cancel.is_set():
+        raise MdocError("MDOC-PDF-BUILD-CANCELLED", "PDF 构建已因其他任务失败而取消。")
+
+
+def _terminate_process(process: subprocess.Popen) -> None:
+    if process.poll() is not None:
+        return
+    if os.name == "nt":
+        subprocess.run(["taskkill.exe", "/PID", str(process.pid), "/T", "/F"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+    else:
+        process.terminate()
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill(); process.wait()
+
+
+def _run(command: list[str], cwd: Path, log: Path, cancel: threading.Event | None = None) -> float:
     log.parent.mkdir(parents=True, exist_ok=True)
+    _cancelled(cancel)
     started = time.monotonic()
     with log.open("w", encoding="utf-8", errors="replace", newline="\n") as stream:
-        process = subprocess.run(command, cwd=cwd, stdout=stream, stderr=subprocess.STDOUT, text=True, check=False)
+        process = subprocess.Popen(command, cwd=cwd, stdout=stream, stderr=subprocess.STDOUT, text=True)
+        while process.poll() is None:
+            if cancel and cancel.wait(0.1):
+                _terminate_process(process)
+                _cancelled(cancel)
+            time.sleep(0.1)
     if process.returncode:
         raise MdocError("MDOC-PDF-BUILD-COMMAND-FAILED", f"PDF 构建命令失败：{Path(command[0]).name}", {"exit_code": process.returncode, "log": str(log)})
     return round(time.monotonic() - started, 3)
@@ -891,8 +917,9 @@ def effective_jobs(requested: int, force: bool) -> int:
     return max(1, min(requested, int(max(0, available - 2 * 1024**3) // (4 * 1024**3))))
 
 
-def _build_one(workspace, book_id: str, locale_id: str, mode: str, target: str | None, output: Path, keep_work: bool, discard_work: bool, strict_resources: bool, verify_pipeline: bool, summary_line: int | None = None) -> dict:
+def _build_one(workspace, book_id: str, locale_id: str, mode: str, target: str | None, output: Path, keep_work: bool, discard_work: bool, strict_resources: bool, verify_pipeline: bool, summary_line: int | None = None, cancel: threading.Event | None = None) -> dict:
     started = time.monotonic()
+    _cancelled(cancel)
     tools = tool_paths()
     missing = [name for name, path in tools.items() if not path.is_file()]
     if missing:
@@ -930,7 +957,8 @@ def _build_one(workspace, book_id: str, locale_id: str, mode: str, target: str |
         cover_report, cover_path = _prepare_cover(locale_root, config, settings, work, mode)
         _write_json(source / "book.json", config)
         intermediate.mkdir()
-        timings = {"prepare": round(time.monotonic() - stage, 3), "honkit": _run([str(tools["node"]), str(tools["honkit"]), "build", str(source), str(intermediate), "--format", "ebook", "--log", "debug", "--timing"], work, logs / "honkit.log")}
+        timings = {"prepare": round(time.monotonic() - stage, 3), "honkit": _run([str(tools["node"]), str(tools["honkit"]), "build", str(source), str(intermediate), "--format", "ebook", "--log", "debug", "--timing"], work, logs / "honkit.log", cancel)}
+        _cancelled(cancel)
         readme = config.get("structure", {}).get("readme", "README.md")
         toc_report = _patch_html(intermediate, pages, selected, settings["toc"], readme=readme)
         if toc_report["explicit_items"] != len(selected):
@@ -939,6 +967,7 @@ def _build_one(workspace, book_id: str, locale_id: str, mode: str, target: str |
             notices.append({"kind": "toc_hierarchy_number_repeated"})
         stage = time.monotonic()
         image_stats = optimize_generated_images(intermediate, settings["image_optimization"])
+        _cancelled(cancel)
         timings["images"] = round(time.monotonic() - stage, 3)
         findings.extend(image_stats["findings"])
         raw = work / "raw.pdf"
@@ -949,7 +978,7 @@ def _build_one(workspace, book_id: str, locale_id: str, mode: str, target: str |
             right_values = None
             for iteration in range(1, 4):
                 current = raw if iteration == 1 else work / f"raw-{iteration}.pdf"
-                duration = _run([str(tools["calibre"]), str(intermediate / "SUMMARY.html"), str(current), *_calibre_options(config, settings, cover_path)], work, logs / f"calibre-{iteration}.log")
+                duration = _run([str(tools["calibre"]), str(intermediate / "SUMMARY.html"), str(current), *_calibre_options(config, settings, cover_path)], work, logs / f"calibre-{iteration}.log", cancel)
                 from pypdf import PdfReader
                 targets = _toc_pages(PdfReader(str(current)), toc_report["items"])
                 if len(targets) != toc_report["items"]:
@@ -966,10 +995,11 @@ def _build_one(workspace, book_id: str, locale_id: str, mode: str, target: str |
                 raise MdocError("MDOC-PDF-TOC-PAGE-NUMBERS-NOT-STABLE", "目录页码在三轮分页后仍未收敛。", {"iterations": toc_iterations})
             timings["calibre"] = round(sum(item["duration"] for item in toc_iterations), 3)
         else:
-            timings["calibre"] = _run([str(tools["calibre"]), str(intermediate / "SUMMARY.html"), str(raw), *_calibre_options(config, settings, cover_path)], work, logs / "calibre.log")
+            timings["calibre"] = _run([str(tools["calibre"]), str(intermediate / "SUMMARY.html"), str(raw), *_calibre_options(config, settings, cover_path)], work, logs / "calibre.log", cancel)
             right_values = None
             toc_iterations.append({"iteration": 1, "changed_targets": 0, "duration": timings["calibre"]})
         stage = time.monotonic(); outline = _repair_outline(raw, outlined, selected, settings["bookmarks"], toc_report["items"], toc_report["implicit_items"]); timings["outline"] = round(time.monotonic() - stage, 3)
+        _cancelled(cancel)
         candidate = outlined
         if settings["optimization"]["enabled"]:
             command = [str(tools["qpdf"]), str(outlined), str(optimized)]
@@ -977,9 +1007,11 @@ def _build_one(workspace, book_id: str, locale_id: str, mode: str, target: str |
                 command.append("--recompress-flate")
             command.extend([f"--compression-level={settings['optimization']['compression_level']}", f"--object-streams={settings['optimization']['object_streams']}"])
             try:
-                timings["qpdf"] = _run(command, work, logs / "qpdf-optimize.log")
+                timings["qpdf"] = _run(command, work, logs / "qpdf-optimize.log", cancel)
                 candidate = optimized
             except MdocError as exc:
+                if exc.code == "MDOC-PDF-BUILD-CANCELLED":
+                    raise
                 findings.append({"kind": "qpdf_optimization_failed", "error": exc.message})
         stage = time.monotonic(); structural = _structural_check(candidate, selected, settings["bookmarks"], toc_report["implicit_items"]); timings["check"] = round(time.monotonic() - stage, 3)
         if right_values is not None:
@@ -997,6 +1029,7 @@ def _build_one(workspace, book_id: str, locale_id: str, mode: str, target: str |
         resource_findings = [item for item in findings if item["kind"] in {"missing_resource", "unsafe_resource", "resource_copy_failed"}]
         if strict_resources and resource_findings:
             raise MdocError("MDOC-PDF-RESOURCE-STRICT", "严格资源模式下存在资源 finding。", {"findings": resource_findings})
+        _cancelled(cancel)
         stage = time.monotonic(); output.parent.mkdir(parents=True, exist_ok=True)
         temporary = output.with_name(f".{output.name}.{os.getpid()}.tmp")
         shutil.copy2(candidate, temporary)
@@ -1042,17 +1075,37 @@ def build(workspace, book_id: str | None, locale_id: str | None, mode: str, targ
     configured = jobs or workspace.config["pdf"]["defaults"]["concurrency"]["builds"]
     actual = effective_jobs(configured, force_jobs)
     results = []
+    cancel = threading.Event()
     with ThreadPoolExecutor(max_workers=actual) as executor:
-        futures = {executor.submit(_build_one, workspace, book, locale, mode, target, destination, keep_locale_work, discard_work, strict_resources, verify_pipeline, summary_line): (book, locale, destination) for book, locale, destination, action, keep_locale_work in targets if action == "build"}
+        futures = {executor.submit(_build_one, workspace, book, locale, mode, target, destination, keep_locale_work, discard_work, strict_resources, verify_pipeline, summary_line, cancel): (book, locale, destination) for book, locale, destination, action, keep_locale_work in targets if action == "build"}
         results.extend({"status": "skipped", "book": book, "locale": locale, "output": str(destination)} for book, locale, destination, action, _keep_locale_work in targets if action == "skipped")
         for future in as_completed(futures):
             book, locale, destination = futures[future]
             try:
                 results.append(future.result())
+            except CancelledError:
+                results.append({"status": "cancelled", "book": book, "locale": locale, "output": str(destination)})
             except MdocError as exc:
-                results.append({"status": "failed", "book": book, "locale": locale, "output": str(destination), "error": exc.payload()["error"]})
+                status = "cancelled" if exc.code == "MDOC-PDF-BUILD-CANCELLED" else "failed"
+                results.append({"status": status, "book": book, "locale": locale, "output": str(destination), "error": exc.payload()["error"]})
+                if status == "failed" and not cancel.is_set():
+                    print(f"[mdoc] PDF build failed: {book}/{locale}\n{exc.code}: {exc.message}", file=sys.stderr, flush=True)
+                    cancel.set()
+                    for pending in futures:
+                        if pending is not future:
+                            pending.cancel()
+            except Exception as exc:
+                error = MdocError("MDOC-INTERNAL-ERROR", "mdoc 遇到内部错误。", {"cause": str(exc)})
+                results.append({"status": "failed", "book": book, "locale": locale, "output": str(destination), "error": error.payload()["error"]})
+                if not cancel.is_set():
+                    print(f"[mdoc] PDF build failed: {book}/{locale}\n{error.code}: {error.message}", file=sys.stderr, flush=True)
+                    cancel.set()
+                    for pending in futures:
+                        if pending is not future:
+                            pending.cancel()
     statuses = {item["status"] for item in results}
-    return {"status": "failed" if "failed" in statuses else "passed_with_findings" if "passed_with_findings" in statuses else "passed" if "passed" in statuses else "skipped", "configured_jobs": configured, "actual_jobs": actual, "results": results}
+    status = "failed" if "failed" in statuses else "passed_with_findings" if "passed_with_findings" in statuses else "passed" if "passed" in statuses else "skipped"
+    return {"status": status, "configured_jobs": configured, "actual_jobs": actual, "results": results, "exit_code": 2 if status == "failed" else 0}
 
 
 def build_file(path: Path, output: Path | None, pdf_config: Path | None, language: str | None, font_family: str | None, no_overwrite: bool, keep_work: bool, discard_work: bool, strict_resources: bool, verify_pipeline: bool) -> dict:

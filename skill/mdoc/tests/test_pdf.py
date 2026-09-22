@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import io
+import sys
 import tempfile
+import threading
+import time
 import unittest
 import shutil
 from pathlib import Path
@@ -307,7 +311,7 @@ class PdfTests(unittest.TestCase):
             control=self.root / ".mdoc",
         )
 
-        def build_one(_workspace, book, locale, mode, _target, output, keep_work, discard_work, _strict_resources, _verify_pipeline, _summary_line=None):
+        def build_one(_workspace, book, locale, mode, _target, output, keep_work, discard_work, _strict_resources, _verify_pipeline, _summary_line=None, _cancel=None):
             calls.append((book, locale, mode, keep_work, discard_work))
             return {"status": "passed", "book": book, "locale": locale, "output": str(output)}
 
@@ -326,6 +330,38 @@ class PdfTests(unittest.TestCase):
 
             pdf.build(workspace, "guide", "zh", "section", "Main/Topic.md", None, False, False, 1, True, True, False, False, False, False, False, False)
             self.assertEqual([("guide", "zh", "section", False, False)], calls)
+
+    def test_batch_build_fails_fast_and_cancels_other_locales(self) -> None:
+        workspace = SimpleNamespace(
+            config={
+                "pdf": {"defaults": {"concurrency": {"builds": 2}}, "retention": {"keep_successful_book_work": False}},
+                "books": {"guide": {"locales": {"zh": {}, "en": {}, "ja": {}}}},
+            },
+            control=self.root / ".mdoc",
+        )
+
+        def build_one(_workspace, _book, locale, _mode, _target, _output, _keep_work, _discard_work, _strict_resources, _verify_pipeline, _summary_line, cancel):
+            if locale == "zh":
+                raise MdocError("MDOC-PDF-CHECK-FAILED", "broken")
+            cancel.wait(2)
+            pdf._cancelled(cancel)
+
+        stderr = io.StringIO()
+        with patch.object(pdf, "_build_one", side_effect=build_one), patch("sys.stderr", stderr):
+            report = pdf.build(workspace, "guide", None, "book", None, None, True, False, 2, True, True, False, False, False, False, False, False)
+
+        self.assertEqual("failed", report["status"]); self.assertEqual(2, report["exit_code"])
+        self.assertEqual(1, sum(item["status"] == "failed" for item in report["results"]))
+        self.assertEqual(2, sum(item["status"] == "cancelled" for item in report["results"]))
+        self.assertIn("PDF build failed: guide/zh", stderr.getvalue())
+        self.assertIn("MDOC-PDF-CHECK-FAILED: broken", stderr.getvalue())
+
+    def test_run_terminates_process_when_batch_is_cancelled(self) -> None:
+        cancel = threading.Event(); threading.Timer(0.2, cancel.set).start(); started = time.monotonic()
+        with self.assertRaises(MdocError) as caught:
+            pdf._run([sys.executable, "-c", "import time; time.sleep(30)"], self.root, self.root / "cancel.log", cancel)
+        self.assertEqual("MDOC-PDF-BUILD-CANCELLED", caught.exception.code)
+        self.assertLess(time.monotonic() - started, 5)
 
     def test_output_names_are_stable_and_memory_guard_never_returns_zero(self) -> None:
         self.assertEqual("guide-en.pdf", pdf._output_name("guide", "en", "book", None))
