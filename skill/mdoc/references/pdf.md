@@ -49,7 +49,7 @@ When one Markdown target is referenced more than once in `Summary.md`, every TOC
 
 Page-number TOCs use up to three lightweight Calibre pagination passes against one HonKit build and one optimized image copy. Only the converged PDF proceeds through bookmark repair, interpolation, qpdf optimization, and full structural checks. A build that does not converge, or whose final TOC destinations no longer match the converged page values, fails without replacing an existing output.
 
-`pdf.retention.keep_successful_book_work` sets the workspace default for retaining successful full-book work directories. A locale can override it with `books.<book>.locales.<locale>.pdf.keep_successful_book_work`; this is evaluated separately for every locale in `--all-locales` and `--all-books` builds. Explicit `--keep-work` or `--discard-work` takes precedence over both configuration levels.
+`pdf.retention.keep_successful_book_work` sets the workspace default for retaining successful full-book work directories and defaults to `false`, so successful builds delete their intermediate work by default. A locale can override it with `books.<book>.locales.<locale>.pdf.keep_successful_book_work`; this is evaluated separately for every locale in `--all-locales` and `--all-books` builds. Explicit `--keep-work` or `--discard-work` takes precedence over both configuration levels.
 
 The default image profile is 180 DPI, maximum width 1048 pixels, minimum source size 20480 bytes, JPEG quality 75, 4:4:4 subsampling, white transparency flattening, and no upscaling. Only generated copies are changed. Generated PDF image objects request smooth viewer interpolation. qpdf recompresses Flate streams at level 9 and generates object streams; it does not optimize images.
 

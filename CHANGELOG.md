@@ -2,8 +2,13 @@
 
 ## Unreleased
 
+## 1.5.6 - 2026-09-22
+
+- Documented that successful PDF builds delete their intermediate work by default; explicit configuration and `--keep-work` can still retain it when needed.
 - Fixed PDF TOC numbering for Markdown targets referenced more than once in `Summary.md`; each TOC occurrence now keeps its own Summary number and label while the shared body page keeps the first occurrence's heading.
 - Stopped PDF generation and PDF checks from depending on `book.json`'s legacy `structure.readme`; isolated HonKit builds now use the first actual Summary entry as their temporary readme.
+- Made batch PDF builds stop promptly after the first failure and cancel remaining locale builds.
+- Added blocking checks for local resource paths containing non-English characters or unsafe encoded/path forms.
 - Updated workspace revise to add newly introduced baseline fields to schema-version 1 drafts without overwriting project-specific values, and aligned the workspace template with the current PDF TOC and bookmark defaults.
 - Added optional locale-specific PDF covers for full-book builds, with workspace and per-book behavior controls, strict local PNG/JPEG validation, controlled build-cache copies, Calibre aspect-ratio preservation, and cover details in build reports.
 

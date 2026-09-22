@@ -1,4 +1,4 @@
-mdoc 1.5.5 Windows package
+mdoc 1.5.6 Windows package
 
 1. Double-click install-mdoc.cmd.
 2. The Toolchain is one complete bundle for core commands, screenshots, PDF Check, and PDF Build.
