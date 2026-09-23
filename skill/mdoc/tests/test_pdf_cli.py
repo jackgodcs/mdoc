@@ -8,6 +8,10 @@ from skill.mdoc.tests.support import cli
 
 
 class PdfCliTests(unittest.TestCase):
+    def test_open_output_is_public_build_option(self) -> None:
+        result = cli("pdf", "build", "--file", "Missing.md", "--open-output", "--json", expected=2)
+        self.assertEqual("MDOC-PDF-FILE-INVALID", result["error"]["code"])
+
     def test_file_mode_does_not_require_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             missing = Path(directory) / "Missing.md"

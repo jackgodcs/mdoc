@@ -1,6 +1,6 @@
 # mdoc
 
-`mdoc` 是面向 Windows 10/11 x64 的多语言 Markdown 产品手册工作流工具。产品版本是 `1.5.7`；工作区和任务协议使用 `schema_version: 1`。
+`mdoc` 是面向 Windows 10/11 x64 的多语言 Markdown 产品手册工作流工具。产品版本是 `1.5.8`；工作区和任务协议使用 `schema_version: 1`。
 
 新版 mdoc 是一次干净重构：不识别、不迁移、不兼容旧工作区、旧配置、旧任务或旧状态文件。所有流程状态都由同一个 Python CLI 写入，正式手册内容只由发布事务修改；代理和人工编写只能先进入任务的受控 `staging/`。
 
@@ -8,9 +8,9 @@ Copyright 2026 cshuan. Licensed under Apache-2.0. 该许可证只覆盖 mdoc 源
 
 ## 安装
 
-从 GitHub Stable Release 下载 `mdoc-1.5.7-windows-x64.zip`，完整解压后双击 `install-mdoc.cmd`。安装器默认安装到当前用户的 Codex skills 目录，并为 mdoc 创建独立运行环境；它不会修改外部 Python 的全局包。升级时，安装器会先核对依赖契约并实时探测检查与 PDF 能力；已有 Runtime/Toolchain 完整匹配时直接复用，不要求 Toolchain ZIP，也不会请求联网。
+从 GitHub Stable Release 下载 `mdoc-1.5.8-windows-x64.zip`，完整解压后双击 `install-mdoc.cmd`。安装器默认安装到当前用户的 Codex skills 目录，并为 mdoc 创建独立运行环境；它不会修改外部 Python 的全局包。升级时，安装器会先核对依赖契约并实时探测检查与 PDF 能力；已有 Runtime/Toolchain 完整匹配时直接复用，不要求 Toolchain ZIP，也不会请求联网。
 
-安装后可双击 `%USERPROFILE%\.codex\skills\mdoc\Open-mdoc-Image-Editor.cmd` 独立编辑图片，也可以将一张图片拖到该 CMD 上。独立编辑器不需要 mdoc workspace 或 task，不修改截图任务状态；成品默认保持导入图片格式，也可另存为 PNG，“保存工程”额外输出同名 `.mdoc-image-edit.json` 和 `.mdoc-image-edit-assets`。
+安装后可运行 `mdoc image edit` 独立编辑图片；每个已同步工作区也会生成 `.mdoc/launchers/open_image_editor.cmd`，可双击或拖入一张图片。独立编辑器不需要 task，不修改截图任务状态；成品默认保持导入图片格式，也可另存为 PNG，“保存工程”额外输出同名 `.mdoc-image-edit.json` 和 `.mdoc-image-edit-assets`。
 
 首次安装或探测到 Runtime/Toolchain 不完整、不匹配时，安装器才会要求修复来源。网络不稳定或离线安装可下载 [mdoc Toolchain 2026.09.15](https://github.com/jackgodcs/mdoc-toolchain/releases/download/v2026.09.15/mdoc-toolchain-2026.09.15-windows-x64.zip)，将其保留原文件名或重命名为 `mdoc-toolchain.zip`，并放在已解压的 mdoc 安装包根目录、与 `install-mdoc.cmd` 同级。安装器会校验 SHA-256 后修复，不会自动联网。需要主动完整重建时，可运行 `install-mdoc.ps1 -ForceRuntimeRepair` 并同时提供 `-Toolkit <zip>` 或显式指定 `-AllowNetworkDownload`。
 

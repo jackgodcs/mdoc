@@ -102,11 +102,22 @@ def records_from_report(workspace: Path, report: dict) -> list[dict]:
     return [_record(workspace, report, display, grouped[display]) for display in sorted(grouped)]
 
 
-def store_full(report: dict, workspace: Path) -> dict:
+def store_full(report: dict, workspace: Path, replace_latest: bool = False) -> dict:
     from .maintenance import activity, cleanup
 
     cleanup(workspace, automatic=True)
     directory = context_directory(workspace, report)
+    if replace_latest:
+        generations = directory / "generations"
+        latest = None
+        try:
+            latest = json.loads((directory / "latest.json").read_text(encoding="utf-8")).get("generation")
+        except (OSError, json.JSONDecodeError):
+            pass
+        if generations.is_dir():
+            for old in generations.iterdir():
+                if old.is_dir() and old.name != latest:
+                    shutil.rmtree(old, ignore_errors=True)
     generation = directory / "generations" / uuid.uuid4().hex
     global_findings = []
     for item in report.get("findings", []):

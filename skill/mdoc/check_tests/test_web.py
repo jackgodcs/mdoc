@@ -488,20 +488,8 @@ class WebTests(unittest.TestCase):
         self.assertEqual(1, len(reports))
         self.assertNotIn("old/latest.json", [item["id"] for item in reports])
 
-    def test_storing_report_creates_one_click_launcher(self) -> None:
-        launcher = self.workspace / ".mdoc" / "launchers" / "open_check_report.cmd"
-        self.assertTrue(launcher.is_file())
-        text = launcher.read_text(encoding="utf-8")
-        self.assertIn("check report", text)
-        self.assertIn('set "MDOC_WORKSPACE=%~dp0..\\.."', text)
-        self.assertNotIn(str(self.workspace.resolve()), text)
-        self.assertIn("chcp 65001", text)
-        self.assertIn(f"title mdoc 检查报告 - {self.workspace.name}", text)
-        self.assertIn("if errorlevel 1", text)
-        self.assertIn("pause", text)
-        feedback = launcher.with_name("open_book_feedback_modify.cmd")
-        self.assertTrue(feedback.is_file())
-        self.assertIn("feedback open", feedback.read_text(encoding="utf-8"))
+    def test_storing_report_does_not_refresh_workspace_launchers(self) -> None:
+        self.assertFalse((self.workspace / ".mdoc" / "launchers").exists())
 
     def test_feedback_strict_search_and_format_preserving_save(self) -> None:
         page = self.workspace / "Guide" / "en" / "Main" / "Page.md"

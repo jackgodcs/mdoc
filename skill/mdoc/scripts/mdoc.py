@@ -17,6 +17,8 @@ if str(SKILL_DIR) not in sys.path:
 from mdoc_core import VERSION, pdf, screenshots, workspace as workspace_lifecycle
 from mdoc_core.config import load_task, load_workspace
 from mdoc_core.errors import MdocError
+from mdoc_core.launchers import refresh as refresh_launchers
+from mdoc_core.locking import operation_lock
 from mdoc_core.state import load_state
 from mdoc_core.task_definition import create as create_task_draft, define as define_task
 from mdoc_core.task import act as task_action
@@ -27,6 +29,7 @@ def add_check_arguments(item):
     item.add_argument("--scope", choices=("page", "section", "book", "workspace", "task")); item.add_argument("--task")
     item.add_argument("--contributor-manifest", type=Path); item.add_argument("--skip-check", action="store_true"); item.add_argument("--target")
     item.add_argument("--level", choices=("basic", "full"), default="basic"); item.add_argument("--internal-only", action="store_true"); item.add_argument("--files-from", type=Path)
+    item.add_argument("--replace-latest", action="store_true"); item.add_argument("--open-report", action="store_true")
 
 
 def configure_utf8_console() -> None:
@@ -43,6 +46,9 @@ HUMAN_STATUS = {
     "workspace_local_draft_created": "本机配置草稿已创建。",
     "waiting_for_workspace_local_confirmation": "本机候选配置已生成，等待确认。",
     "workspace_local_ready": "本机配置已确认。",
+    "workspace_synced": "工作区配置已同步。",
+    "workspace_launchers_refreshed": "工作区 launcher 已刷新。",
+    "image_editor_opened": "图片编辑器已打开。",
     "task_draft_created": "任务草稿已创建。",
     "waiting_for_definition_confirmation": "任务定义已生成，等待确认。",
     "waiting_for_authoring": "等待在受控 staging 中完成编写。",
@@ -82,6 +88,24 @@ def context(args):
     return load_workspace(args.workspace or Path.cwd())
 
 
+def _launch_installed(*arguments: str) -> None:
+    command = Path(os.environ.get("LOCALAPPDATA", "")) / "mdoc" / "bin" / "mdoc.cmd"
+    if command.is_file():
+        subprocess.Popen([os.environ.get("ComSpec", "cmd.exe"), "/d", "/s", "/c", str(command), *arguments], creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
+
+
+def _conflicts(operation: str, target: dict):
+    def check(current_operation: str | None, current: dict) -> bool:
+        if operation == "workspace_sync" or current_operation == "workspace_sync":
+            return True
+        if operation.startswith("check") and str(current_operation).startswith("check"):
+            return operation == "check_workspace" or current_operation == "check_workspace" or target.get("book") == current.get("book") and target.get("locale") == current.get("locale")
+        if operation.startswith("pdf") and str(current_operation).startswith("pdf"):
+            return operation == "pdf_workspace" or current_operation == "pdf_workspace" or target.get("book") == current.get("book") and (operation == "pdf_book" or current_operation == "pdf_book" or target.get("locale") == current.get("locale"))
+        return False
+    return check
+
+
 def parser():
     root = argparse.ArgumentParser(prog="mdoc")
     root.add_argument("--version", action="version", version=f"mdoc {VERSION}")
@@ -93,6 +117,8 @@ def parser():
     apply = ws.add_parser("apply"); apply.add_argument("--workspace", type=Path, required=True)
     confirm = ws.add_parser("confirm"); confirm.add_argument("--workspace", type=Path, required=True)
     revise = ws.add_parser("revise"); revise.add_argument("--workspace", type=Path, required=True)
+    sync = ws.add_parser("sync"); sync.add_argument("--workspace", type=Path, required=True)
+    launchers = ws.add_parser("launchers"); launcher_actions = launchers.add_subparsers(dest="workspace_launcher_action", required=True); refresh = launcher_actions.add_parser("refresh"); refresh.add_argument("--workspace", type=Path, required=True)
     local = ws.add_parser("local"); local_actions = local.add_subparsers(dest="workspace_local_action", required=True)
     for name in ("init", "apply", "confirm", "revise"):
         item = local_actions.add_parser(name); item.add_argument("--workspace", type=Path, required=True)
@@ -117,11 +143,12 @@ def parser():
     check_clean = check_actions.add_parser("clean"); check_clean.add_argument("--workspace", type=Path, required=True)
     check_actions.add_parser("doctor")
     feedback = sub.add_parser("feedback"); feedback_actions = feedback.add_subparsers(dest="feedback_action", required=True); feedback_open = feedback_actions.add_parser("open"); feedback_open.add_argument("--workspace", type=Path, required=True); feedback_open.add_argument("--port", type=int, default=0); feedback_open.add_argument("--no-open", action="store_true")
+    image = sub.add_parser("image"); image_actions = image.add_subparsers(dest="image_action", required=True); image_edit = image_actions.add_parser("edit"); image_edit.add_argument("--file", type=Path); image_edit.add_argument("--managed-candidate", action="store_true", help=argparse.SUPPRESS)
     uninstall = sub.add_parser("uninstall"); uninstall.add_argument("--confirm", action="store_true")
     pdf_group = sub.add_parser("pdf"); pdf_actions = pdf_group.add_subparsers(dest="pdf_action", required=True)
     pdf_init = pdf_actions.add_parser("init"); pdf_init.add_argument("--workspace", type=Path, required=True)
     pdf_doctor = pdf_actions.add_parser("doctor"); pdf_doctor.add_argument("--workspace", type=Path)
-    pdf_build = pdf_actions.add_parser("build"); pdf_build.add_argument("--workspace", type=Path); pdf_build.add_argument("--file", type=Path); pdf_build.add_argument("--book"); pdf_build.add_argument("--locale"); pdf_build.add_argument("--scope", choices=("page", "section", "book"), default="book"); pdf_build.add_argument("--target"); pdf_build.add_argument("--summary-line", type=int); pdf_build.add_argument("--all-locales", action="store_true"); pdf_build.add_argument("--all-books", action="store_true"); pdf_build.add_argument("--output", type=Path); pdf_build.add_argument("--pdf-config", type=Path); pdf_build.add_argument("--language", choices=("zh-hans", "en", "ja")); pdf_build.add_argument("--font-family"); pdf_build.add_argument("--jobs", type=int); pdf_build.add_argument("--force-jobs", action="store_true"); pdf_build.add_argument("--yes", action="store_true"); pdf_build.add_argument("--no-overwrite", action="store_true"); work_options = pdf_build.add_mutually_exclusive_group(); work_options.add_argument("--keep-work", action="store_true"); work_options.add_argument("--discard-work", action="store_true"); pdf_build.add_argument("--strict-resources", action="store_true"); pdf_build.add_argument("--verify-pipeline", action="store_true")
+    pdf_build = pdf_actions.add_parser("build"); pdf_build.add_argument("--workspace", type=Path); pdf_build.add_argument("--file", type=Path); pdf_build.add_argument("--book"); pdf_build.add_argument("--locale"); pdf_build.add_argument("--scope", choices=("page", "section", "book"), default="book"); pdf_build.add_argument("--target"); pdf_build.add_argument("--summary-line", type=int); pdf_build.add_argument("--all-locales", action="store_true"); pdf_build.add_argument("--all-books", action="store_true"); pdf_build.add_argument("--output", type=Path); pdf_build.add_argument("--pdf-config", type=Path); pdf_build.add_argument("--language", choices=("zh-hans", "en", "ja")); pdf_build.add_argument("--font-family"); pdf_build.add_argument("--jobs", type=int); pdf_build.add_argument("--force-jobs", action="store_true"); pdf_build.add_argument("--yes", action="store_true"); pdf_build.add_argument("--no-overwrite", action="store_true"); work_options = pdf_build.add_mutually_exclusive_group(); work_options.add_argument("--keep-work", action="store_true"); work_options.add_argument("--discard-work", action="store_true"); pdf_build.add_argument("--strict-resources", action="store_true"); pdf_build.add_argument("--verify-pipeline", action="store_true"); pdf_build.add_argument("--open-output", action="store_true")
     pdf_check = pdf_actions.add_parser("check"); pdf_check.add_argument("--workspace", type=Path); pdf_check.add_argument("--pdf", type=Path, required=True); pdf_check.add_argument("--book"); pdf_check.add_argument("--locale"); pdf_check.add_argument("--scope", choices=("page", "section", "book"), default="book"); pdf_check.add_argument("--target"); pdf_check.add_argument("--summary-line", type=int)
     pdf_clean = pdf_actions.add_parser("clean"); pdf_clean.add_argument("--workspace", type=Path)
     return root
@@ -134,17 +161,22 @@ def main():
         arguments = ["--json", *[item for item in arguments if item != "--json"]]
     args = parser().parse_args(arguments)
     try:
-        workspace_path = getattr(args, "workspace", None)
-        if workspace_path and (workspace_path.resolve() / ".mdoc" / "workspace.yaml").is_file():
-            from mdoc_check.web import create_launcher
-            create_launcher(workspace_path.resolve())
         if args.command == "workspace":
             if args.workspace_action == "local":
                 actions = {"init": workspace_lifecycle.local_init, "apply": workspace_lifecycle.local_apply, "confirm": workspace_lifecycle.local_confirm, "revise": workspace_lifecycle.local_revise}
                 result = actions[args.workspace_local_action](args.workspace)
+            elif args.workspace_action == "launchers":
+                result = refresh_launchers(args.workspace)
+            elif args.workspace_action == "sync":
+                with operation_lock(args.workspace, "workspace_sync", {}, _conflicts("workspace_sync", {})):
+                    result = workspace_lifecycle.sync(args.workspace)
+                if not os.environ.get("MDOC_LAUNCHER_ACTIVE"):
+                    result["launchers"] = refresh_launchers(args.workspace)
             else:
                 actions = {"init": workspace_lifecycle.init, "apply": workspace_lifecycle.apply, "confirm": workspace_lifecycle.confirm, "revise": workspace_lifecycle.revise}
                 result = actions[args.workspace_action](args.workspace)
+                if args.workspace_action == "confirm" and not os.environ.get("MDOC_LAUNCHER_ACTIVE"):
+                    result["launchers"] = refresh_launchers(args.workspace)
         elif args.command == "task":
             if args.task_action == "create":
                 result = create_task_draft(args.workspace, args.task, args.book, args.intent)
@@ -163,10 +195,28 @@ def main():
                 )
         elif args.command == "check":
             from mdoc_check.cli import execute as execute_check
-            result = execute_check(args)
+            target = {"book": getattr(args, "book", None), "locale": getattr(args, "locale", None)}
+            operation = "check_workspace" if args.check_action == "run" and getattr(args, "scope", None) == "workspace" else "check_book_locale"
+            if args.check_action == "run" and args.scope in {"workspace", "book", "section", "page"}:
+                with operation_lock(args.workspace, operation, target, _conflicts(operation, target)):
+                    result = execute_check(args)
+            else:
+                result = execute_check(args)
+            if args.check_action == "run" and args.open_report and result.get("report", {}).get("path"):
+                _launch_installed("check", "report", "--workspace", str(args.workspace.resolve()))
         elif args.command == "feedback":
-            from mdoc_check.web import create_launcher, serve
-            create_launcher(args.workspace.resolve()); serve(args.workspace.resolve(), "127.0.0.1", args.port, not args.no_open, "feedback"); result = {"status": "feedback_closed"}
+            from mdoc_check.web import serve
+            serve(args.workspace.resolve(), "127.0.0.1", args.port, not args.no_open, "feedback"); result = {"status": "feedback_closed"}
+        elif args.command == "image":
+            if args.managed_candidate and args.file is None:
+                raise MdocError("MDOC-IMAGE-MANAGED-CANDIDATE-REQUIRES-FILE", "--managed-candidate 必须同时指定 --file。")
+            pythonw = Path(os.environ.get("LOCALAPPDATA", "")) / "mdoc" / "runtime" / "Scripts" / "pythonw.exe"
+            if not pythonw.is_file(): pythonw = Path(sys.executable)
+            editor = SKILL_DIR / "scripts" / "standalone_image_editor.py"
+            command = [str(pythonw), "-B", str(editor)]
+            if args.file: command.append(str(args.file.resolve()))
+            if args.managed_candidate: command.append("--managed-candidate")
+            subprocess.Popen(command, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)); result = {"status": "image_editor_opened", "file": str(args.file.resolve()) if args.file else None}
         elif args.command == "uninstall":
             runtime_root = Path(os.environ.get("LOCALAPPDATA", "")) / "mdoc"
             uninstaller = runtime_root / "uninstall" / "uninstall-mdoc.ps1"
@@ -205,7 +255,13 @@ def main():
                         raise MdocError("MDOC-PDF-OUTPUT-BATCH-INVALID", "批量构建不能指定单一 --output。")
                     if args.yes and args.no_overwrite:
                         raise MdocError("MDOC-PDF-OVERWRITE-OPTION-CONFLICT", "--yes 与 --no-overwrite 不能同时使用。")
-                    result = pdf.build(pdf_workspace, args.book, args.locale, args.scope, args.target, args.output.resolve() if args.output else None, args.all_locales, args.all_books, args.jobs, args.force_jobs, args.yes, args.no_overwrite, not args.json and sys.stdin.isatty(), args.keep_work, args.discard_work, args.strict_resources, args.verify_pipeline, args.summary_line)
+                    target = {"book": args.book, "locale": args.locale}
+                    operation = "pdf_workspace" if args.all_books else "pdf_book" if args.all_locales else "pdf_book_locale"
+                    with operation_lock(pdf_workspace.repository, operation, target, _conflicts(operation, target)):
+                        result = pdf.build(pdf_workspace, args.book, args.locale, args.scope, args.target, args.output.resolve() if args.output else None, args.all_locales, args.all_books, args.jobs, args.force_jobs, args.yes, args.no_overwrite, not args.json and sys.stdin.isatty(), args.keep_work, args.discard_work, args.strict_resources, args.verify_pipeline, args.summary_line)
+                    if args.open_output and result.get("exit_code", 0) == 0:
+                        folder = pdf_workspace.control / "artifacts" / "pdf" / args.book if args.book else pdf_workspace.control / "artifacts" / "pdf"
+                        if os.name == "nt": os.startfile(str(folder))
         emit(result, args.json)
         return result.get("exit_code", 0)
     except MdocError as exc:

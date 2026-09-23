@@ -542,11 +542,7 @@ def doctor() -> dict:
 def store(report: dict, workspace: Path | None = None) -> dict:
     if workspace is not None:
         from .reports import store_full
-        from .web import create_launcher
-
-        result = store_full(report, workspace)
-        create_launcher(workspace)
-        return result
+        return store_full(report, workspace)
     root = Path(os.environ.get("LOCALAPPDATA", tempfile.gettempdir())) / "mdoc" / "reports"
     workspace_id = "doctor"
     context = report.get("context", report["kind"])

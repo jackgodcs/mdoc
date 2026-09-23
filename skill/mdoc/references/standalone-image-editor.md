@@ -1,6 +1,6 @@
 # Standalone Image Editor
 
-Launch `Open-mdoc-Image-Editor.cmd` from the installed mdoc skill, double-click it to choose an image, or drag one supported image onto the CMD. The tool accepts PNG, JPEG, BMP, GIF first frames, TIFF, and WebP as inputs and exports PNG.
+Run `mdoc image edit`, or use the workspace `.mdoc/launchers/open_image_editor.cmd`; double-click it to choose an image, or drag one supported image onto the CMD. The tool accepts PNG, JPEG, BMP, GIF first frames, TIFF, and WebP as inputs and exports PNG.
 
 The standalone editor reuses the screenshot editor's canvas, text and image layers, templates, zoom, pan, resize, color sampling, undo, redo, and existing shortcuts. It never loads an mdoc workspace or task and must not synchronize screenshots, accept captures, publish files, or change task state.
 

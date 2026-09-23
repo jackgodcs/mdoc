@@ -23,6 +23,8 @@ def parser() -> argparse.ArgumentParser:
     check.add_argument("--level", choices=("basic", "full"), default="basic")
     check.add_argument("--internal-only", action="store_true")
     check.add_argument("--files-from", type=Path)
+    check.add_argument("--replace-latest", action="store_true")
+    check.add_argument("--open-report", action="store_true")
     check.add_argument("--json", action="store_true")
     diagnosis = actions.add_parser("doctor")
     diagnosis.add_argument("--json", action="store_true")
@@ -39,8 +41,8 @@ def parser() -> argparse.ArgumentParser:
 
 def execute(args) -> dict:
     if args.check_action == "report":
-        from .web import create_launcher, serve
-        workspace = args.workspace.resolve(); create_launcher(workspace); serve(workspace, "127.0.0.1", args.port, not args.no_open, "check")
+        from .web import serve
+        workspace = args.workspace.resolve(); serve(workspace, "127.0.0.1", args.port, not args.no_open, "check")
         return {"status": "check_report_closed"}
     if args.check_action == "clean":
         from .maintenance import cleanup
@@ -59,7 +61,8 @@ def execute(args) -> dict:
     if not args.scope: raise ValueError("--scope is required without --files-from.")
     with activity(report_root(workspace) / ".check.active.json", "check"):
         full = run(workspace, args.book, args.locale, args.scope, args.target, args.level, args.internal_only, progress, args.task, args.contributor_manifest, args.skip_check)
-        stored = store(full, workspace)
+        from .reports import store_full
+        stored = store_full(full, workspace, getattr(args, "replace_latest", False))
     persisted = json.loads(Path(stored["path"]).read_text(encoding="utf-8"))
     return {"schema_version": 1, "kind": "mdoc_check_result", "status": persisted["status"], "context": persisted.get("context"), "revision": persisted.get("revision"), "updated_files": persisted.get("files", {}).get("count", 0), "failed_files": 0, "counts": persisted.get("counts", {}), "report": {"path": stored.get("path")}, "exit_code": 4 if persisted["status"] == "incomplete" else 3 if persisted["status"] == "blocked" else 0}
 
@@ -71,10 +74,9 @@ def main() -> int:
             reconfigure(encoding="utf-8", errors="replace")
     args = parser().parse_args()
     if args.action == "report":
-        from .web import create_launcher, serve
+        from .web import serve
 
         workspace = args.workspace.resolve()
-        create_launcher(workspace)
         serve(workspace, "127.0.0.1", args.port, not args.no_open, args.page)
         return 0
     if args.action == "clean":

@@ -118,9 +118,9 @@ class ImageCandidates:
     def open_editor(self, key: str) -> dict:
         item = self.candidates.get(key)
         if not item: raise ValueError("图片候选已失效。")
-        launcher = Path.home() / ".codex" / "skills" / "mdoc" / "Open-mdoc-Image-Editor.cmd"
-        if not launcher.is_file(): raise ValueError("未找到 mdoc 图片编辑器。")
-        subprocess.Popen([os.environ.get("ComSpec", "cmd.exe"), "/d", "/s", "/c", str(launcher), str(item["path"]), "--managed-candidate"], creationflags=getattr(subprocess,"CREATE_NO_WINDOW",0)); return {"status":"opened"}
+        launcher = Path(os.environ.get("LOCALAPPDATA", "")) / "mdoc" / "bin" / "mdoc.cmd"
+        if not launcher.is_file(): raise ValueError("未找到 mdoc 图片编辑器，请重新安装 mdoc。")
+        subprocess.Popen([os.environ.get("ComSpec", "cmd.exe"), "/d", "/s", "/c", str(launcher), "image", "edit", "--file", str(item["path"]), "--managed-candidate"], creationflags=getattr(subprocess,"CREATE_NO_WINDOW",0)); return {"status":"opened"}
 
     def info(self, key: str) -> dict:
         item = self.candidates.get(key)

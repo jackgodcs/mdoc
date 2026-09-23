@@ -62,4 +62,4 @@ When a coordinator shares one manual workspace with multiple contributors, split
 
 Keep user-facing Markdown concise and in the target manual language. Default CLI human output is Simplified Chinese; stable machine output is available only with `--json`.
 
-The installed skill also includes `Open-mdoc-Image-Editor.cmd`, a standalone image editor that reuses the screenshot editing canvas without loading or changing any workspace, task, acceptance, or publishing state. Read `references/standalone-image-editor.md` when using or changing it.
+The installed CLI provides `mdoc image edit`, and initialized workspaces receive `.mdoc/launchers/open_image_editor.cmd`. The standalone image editor reuses the screenshot editing canvas without loading or changing any workspace, task, acceptance, or publishing state. Read `references/standalone-image-editor.md` when using or changing it.

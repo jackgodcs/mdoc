@@ -240,6 +240,50 @@ class WorkspaceCliTests(unittest.TestCase):
         self.assertEqual({"enabled": True, "preserve_aspect_ratio": True}, draft["pdf"]["defaults"]["cover"])
         self.assertEqual({"enabled": True, "position": "right"}, draft["pdf"]["defaults"]["page_numbers"])
 
+    def test_workspace_sync_adds_only_missing_fields_and_refreshes_launchers(self) -> None:
+        self.run_cli("workspace", "init", "--workspace", str(self.repository), "--json")
+        workspace = valid_workspace()
+        workspace["retention"] = {"custom": 7}
+        self.write_draft(workspace)
+        self.run_cli("workspace", "apply", "--workspace", str(self.repository), "--json")
+        self.run_cli("workspace", "confirm", "--workspace", str(self.repository), "--json")
+        authority_path = self.repository / ".mdoc" / "workspace.yaml"
+        authority = self.read_yaml(authority_path)
+        authority.pop("writing")
+        authority["screenshots"]["auto_open_assistant"] = False
+        with authority_path.open("w", encoding="utf-8", newline="\n") as stream:
+            YAML_WRITER.dump(authority, stream)
+
+        result = json.loads(self.run_cli("workspace", "sync", "--workspace", str(self.repository), "--json").stdout)
+
+        synced = self.read_yaml(authority_path)
+        self.assertEqual({}, synced["writing"])
+        self.assertEqual({"custom": 7}, synced["retention"])
+        self.assertFalse(synced["screenshots"]["auto_open_assistant"])
+        self.assertTrue((self.repository / ".mdoc" / "launchers" / "refresh_launchers.cmd").is_file())
+        manifest = json.loads((self.repository / ".mdoc" / "launchers" / "launcher-manifest.json").read_text(encoding="utf-8"))
+        names = {item["name"] for item in manifest["launchers"]}
+        self.assertIn("check_guide_en.cmd", names)
+        self.assertIn("build_pdf_guide_en.cmd", names)
+        self.assertTrue(any(item["path"] == "$.writing" for item in result["added_fields"]))
+        report = json.loads(Path(result["report"]).read_text(encoding="utf-8"))
+        self.assertTrue(any(item["path"] == "$.screenshots.auto_open_assistant" for item in report["portable"]["preserved_custom_values"]))
+
+    def test_launcher_refresh_does_not_require_valid_book_json(self) -> None:
+        self.run_cli("workspace", "init", "--workspace", str(self.repository), "--json")
+        self.write_draft(valid_workspace())
+        self.run_cli("workspace", "apply", "--workspace", str(self.repository), "--json")
+        self.run_cli("workspace", "confirm", "--workspace", str(self.repository), "--json")
+        authority_path = self.repository / ".mdoc" / "workspace.yaml"
+        authority = self.read_yaml(authority_path); authority["pdf"] = copy.deepcopy(pdf.DEFAULTS)
+        with authority_path.open("w", encoding="utf-8", newline="\n") as stream:
+            YAML_WRITER.dump(authority, stream)
+
+        result = json.loads(self.run_cli("workspace", "launchers", "refresh", "--workspace", str(self.repository), "--json").stdout)
+
+        self.assertEqual("workspace_launchers_refreshed", result["status"])
+        self.assertTrue((self.repository / ".mdoc" / "launchers" / "build_pdf_guide_en.cmd").is_file())
+
     def test_workspace_rejects_invalid_page_number_position(self) -> None:
         for locale in ("zh", "en"):
             (self.repository / "Guide" / locale / "book.json").write_text('{"title":"Guide","language":"' + locale + '"}\n', encoding="utf-8")

@@ -53,17 +53,9 @@ def _reuse_server(workspace: Path, open_browser: bool, page: str = "check") -> s
 
 
 def create_launcher(workspace: Path) -> Path:
-    directory = workspace / ".mdoc" / "launchers"; directory.mkdir(parents=True, exist_ok=True)
-    launchers = {
-        "open_check_report.cmd": "check",
-        "open_book_feedback_modify.cmd": "feedback",
-    }
-    for name, page in launchers.items():
-        launcher = directory / name
-        action = "check report" if page == "check" else "feedback open"
-        lines = ["@echo off", "chcp 65001 >nul", "setlocal", "set \"MDOC_WORKSPACE=%~dp0..\\..\"", "set \"MDOC_CMD=%LOCALAPPDATA%\\mdoc\\bin\\mdoc.cmd\"", f"title mdoc {'检查报告' if page == 'check' else '手册反馈修订'} - {workspace.resolve().name}", "if not exist \"%MDOC_CMD%\" (", "  echo 未找到已安装的 mdoc，请先安装或更新 mdoc。", "  pause", "  exit /b 2", ")", f'call "%MDOC_CMD%" {action} --workspace "%MDOC_WORKSPACE%"', "if errorlevel 1 (", "  echo.", "  echo mdoc 本地服务启动失败，请查看上方错误信息。", "  pause", ")"]
-        launcher.write_text("\r\n".join(lines) + "\r\n", encoding="utf-8")
-    return directory / "open_check_report.cmd"
+    from mdoc_core.launchers import refresh
+    refresh(workspace)
+    return workspace / ".mdoc" / "launchers" / "open_check_report.cmd"
 
 
 def _report_path(workspace: Path, report_id: str) -> Path:

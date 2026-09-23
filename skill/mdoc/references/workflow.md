@@ -12,6 +12,8 @@ mdoc runs one explicit state machine through the CLI. Normal work starts from a 
 
 Machine-local values use the matching `workspace local init/apply/confirm/revise` commands. Local configuration cannot change books, task scope, Quality Gate rules, or publishing authority.
 
+After installing a newer mdoc, `mdoc workspace sync --workspace <root>` adds only missing current baseline fields and preserves existing values. Successful confirmation and synchronization refresh the derived launchers; `mdoc workspace launchers refresh --workspace <root>` rebuilds them explicitly.
+
 ## Task Flow
 
 1. `mdoc task create` creates `.mdoc/tasks/<task-id>/task-draft.yaml` after validating task id, book id, and intent.

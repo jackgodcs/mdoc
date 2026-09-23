@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 1.5.8 - 2026-09-23
+
+- Added `mdoc workspace sync` to add missing current baseline fields without overwriting user values, with a detailed latest synchronization report.
+- Added managed workspace launchers for configuration synchronization, launcher refresh, image editing, per-language checks, workspace checks, per-language PDF builds, and all-locale book PDF builds.
+- Added `mdoc image edit` and routed feedback image editing through the installed CLI; removed the legacy installed and package-level image editor CMD files.
+- Added `--replace-latest` and `--open-report` for checks, `--open-output` for PDF builds, and immediate target-range locks for overlapping synchronization, check, and PDF operations.
+
 ## 1.5.7 - 2026-09-23
 
 - Reused an already installed Runtime and Toolchain during mdoc upgrades when the persisted dependency contract and live core/PDF capability probes both match the package.

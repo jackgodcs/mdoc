@@ -125,6 +125,47 @@ def _diff(before: dict | None, after: dict) -> dict:
     return {"kind": "revise", "changed_sections": [key for key in keys if before.get(key) != after.get(key)]}
 
 
+def _field_diff(before, after, prefix: str = "$") -> dict:
+    result = {"added_fields": [], "preserved_custom_values": [], "invalid_fields": [], "conflicts": []}
+    if isinstance(before, dict) and isinstance(after, dict):
+        for key in sorted(after):
+            path = f"{prefix}.{key}"
+            if key not in before:
+                result["added_fields"].append({"path": path, "candidate_value": after[key]})
+            elif isinstance(before[key], dict) and isinstance(after[key], dict):
+                nested = _field_diff(before[key], after[key], path)
+                for kind in result:
+                    result[kind].extend(nested[kind])
+            elif before[key] != after[key]:
+                result["conflicts"].append({"path": path, "current_value": before[key], "candidate_value": after[key]})
+        for key in sorted(before):
+            if key not in after:
+                result["conflicts"].append({"path": f"{prefix}.{key}", "current_value": before[key], "candidate_value": None})
+    elif before != after:
+        result["conflicts"].append({"path": prefix, "current_value": before, "candidate_value": after})
+    return result
+
+
+def _preserved_custom_values(value, defaults, prefix: str = "$") -> list[dict]:
+    result = []
+    if isinstance(value, dict) and isinstance(defaults, dict):
+        for key, default in defaults.items():
+            if key not in value:
+                continue
+            path = f"{prefix}.{key}"
+            if isinstance(value[key], dict) and isinstance(default, dict):
+                result.extend(_preserved_custom_values(value[key], default, path))
+            elif value[key] != default:
+                result.append({"path": path, "current_value": value[key], "baseline_value": default})
+    return result
+
+
+def _write_sync_report(workspace: Path, report: dict) -> Path:
+    path = _control(workspace) / "reports" / "workspace-sync" / "latest.json"
+    write_json_atomic(path, report)
+    return path
+
+
 def _active_task_references(control: Path, authority: dict) -> list[dict]:
     tasks = control / "tasks"
     if not tasks.is_dir():
@@ -353,3 +394,50 @@ def local_revise(workspace: Path) -> dict:
     value = _validate_local(read_yaml(authority))
     write_yaml_atomic(draft, value)
     return {"status": "workspace_local_draft_created", "draft": str(draft), "authority_digest": file_digest(authority)}
+
+
+def sync(workspace: Path) -> dict:
+    workspace = workspace.resolve()
+    control = _control(workspace)
+    authority_path = control / "workspace.yaml"
+    draft_path = control / "workspace-draft.yaml"
+    candidate_path = control / "cache" / CANDIDATE_NAME
+    local_draft = control / "workspace.local-draft.yaml"
+    local_candidate = control / "cache" / LOCAL_CANDIDATE_NAME
+    occupied = [str(path) for path in (draft_path, candidate_path, local_draft, local_candidate) if path.exists()]
+    if occupied:
+        raise MdocError("MDOC-WORKSPACE-SYNC-PENDING-TRANSACTION", "工作区存在未完成的配置事务，请先处理后再同步。", {"files": occupied, "repair": "确认或删除已有 draft/candidate 后重试。"})
+    authority = read_yaml(authority_path)
+    if authority.get("schema_version") != 1:
+        raise MdocError("MDOC-WORKSPACE-SCHEMA-UNSUPPORTED", "只能同步 schema_version 1 工作区。")
+    revised = _revision_draft(authority)
+    portable_diff = _field_diff(authority, revised)
+    defaults = _draft_template(); defaults.pop("workspace"); defaults.pop("product"); defaults.pop("books"); defaults.pop("pdf")
+    portable_diff["preserved_custom_values"] = _preserved_custom_values(authority, defaults)
+    if "pdf" in authority:
+        portable_diff["preserved_custom_values"].extend(_preserved_custom_values(authority["pdf"], PDF_DEFAULTS, "$.pdf"))
+    local_path = control / "workspace.local.yaml"
+    local_value = read_yaml(local_path) if local_path.is_file() else None
+    local_revised = _merge_missing(local_value, {"schema_version": 1, "applications": {}, "resources": {}, "runtimes": {}}) if local_value is not None else None
+    local_diff = _field_diff(local_value, local_revised) if local_value is not None else {"added_fields": [], "preserved_custom_values": [], "invalid_fields": [], "conflicts": []}
+    report = {"schema_version": 1, "status": "failed", "workspace": str(workspace), "created_at": int(time.time()), "portable": portable_diff, "local": local_diff}
+    try:
+        validate_portable(workspace, revised)
+        if local_revised is not None:
+            _validate_local(local_revised)
+    except MdocError as exc:
+        report["error"] = exc.payload()["error"]
+        _write_sync_report(workspace, report)
+        raise
+    conflicts = portable_diff["conflicts"] + local_diff["conflicts"]
+    if conflicts:
+        report["error"] = {"code": "MDOC-WORKSPACE-SYNC-CONFLICT", "message": "同步候选修改或删除了已有字段。", "details": {"conflicts": conflicts, "repair": "修复配置兼容性后重新同步。"}}
+        path = _write_sync_report(workspace, report)
+        raise MdocError("MDOC-WORKSPACE-SYNC-CONFLICT", "同步候选修改或删除了已有字段。", {"conflicts": conflicts, "report": str(path), "repair": "修复配置兼容性后重新同步。"})
+    if revised != authority:
+        write_yaml_atomic(authority_path, revised)
+    if local_revised is not None and local_revised != local_value:
+        write_yaml_atomic(local_path, local_revised)
+    report["status"] = "workspace_synced"
+    path = _write_sync_report(workspace, report)
+    return {"status": "workspace_synced", "workspace": str(workspace), "added_fields": portable_diff["added_fields"] + local_diff["added_fields"], "report": str(path)}

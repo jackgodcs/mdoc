@@ -116,9 +116,9 @@ class FeedbackTests(unittest.TestCase):
         try:
             reference = image_references(self.workspace, "guide", "en", "Main/Page.md")[0]["reference"]
             candidate = manager.create("00000000-0000-4000-8000-000000000005", "guide", "en", "Main/Page.md", reference)
-            with patch("mdoc_check.feedback_images.Path.home", return_value=self.workspace), patch("mdoc_check.feedback_images.subprocess.Popen") as opened:
-                launcher = self.workspace / ".codex" / "skills" / "mdoc" / "Open-mdoc-Image-Editor.cmd"; launcher.parent.mkdir(parents=True); launcher.write_text("@echo off\n", encoding="utf-8")
-                self.assertEqual("opened", manager.open_editor(candidate["key"])["status"]); self.assertEqual("--managed-candidate", opened.call_args.args[0][-1])
+            with patch.dict("os.environ", {"LOCALAPPDATA": str(self.workspace)}), patch("mdoc_check.feedback_images.subprocess.Popen") as opened:
+                launcher = self.workspace / "mdoc" / "bin" / "mdoc.cmd"; launcher.parent.mkdir(parents=True); launcher.write_text("@echo off\n", encoding="utf-8")
+                self.assertEqual("opened", manager.open_editor(candidate["key"])["status"]); self.assertEqual(["image", "edit", "--file", str(Path(candidate["candidate"])), "--managed-candidate"], opened.call_args.args[0][-5:])
         finally: manager.close()
 
     def test_jpeg_candidate_refresh_keeps_jpeg_and_removes_legacy_sibling_png(self):

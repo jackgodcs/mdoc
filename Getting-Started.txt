@@ -1,4 +1,4 @@
-mdoc 1.5.7 Windows package
+mdoc 1.5.8 Windows package
 
 1. Double-click install-mdoc.cmd.
 2. Upgrades reuse a complete matching Runtime/Toolchain without requiring a Toolchain ZIP.
@@ -6,7 +6,7 @@ mdoc 1.5.7 Windows package
 4. Open a new terminal and run: mdoc --version
 5. For offline repair or first installation, place mdoc-toolchain-2026.09.15-windows-x64.zip or mdoc-toolchain.zip beside install-mdoc.cmd.
 6. PDF generation is optional for ordinary manual changes and publication.
-7. Double-click Open-mdoc-Image-Editor.cmd to edit an image without a workspace.
+7. Run mdoc image edit, or use a workspace .mdoc\\launchers\\open_image_editor.cmd.
 8. Uninstall with UnInstall-mdoc.cmd or: mdoc uninstall
 
 Project: https://github.com/jackgodcs/mdoc

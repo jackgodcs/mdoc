@@ -16,7 +16,7 @@ VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 DIST = ROOT / "dist"
 ASSET = DIST / f"mdoc-{VERSION}-windows-x64.zip"
 STAGED_ASSET = DIST / f".{ASSET.name}.building"
-FILES = [ROOT / name for name in ("LICENSE", "NOTICE", "VERSION", "README.md", "SECURITY.md", "THIRD-PARTY-NOTICES.md", "Open-mdoc-Image-Editor.cmd")]
+FILES = [ROOT / name for name in ("LICENSE", "NOTICE", "VERSION", "README.md", "SECURITY.md", "THIRD-PARTY-NOTICES.md")]
 
 
 def sha256(path: Path) -> str:
