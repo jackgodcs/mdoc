@@ -4,6 +4,7 @@
 
 ## 1.5.8 - 2026-09-23
 
+- Named default full-book PDF artifacts from each locale's normalized `book.json` title and workspace locale ID while preserving explicit output names and existing scoped-build naming.
 - Added `mdoc workspace sync` to add missing current baseline fields without overwriting user values, with a detailed latest synchronization report.
 - Added managed workspace launchers for configuration synchronization, launcher refresh, image editing, per-language checks, workspace checks, per-language PDF builds, and all-locale book PDF builds.
 - Added `mdoc image edit` and routed feedback image editing through the installed CLI; removed the legacy installed and package-level image editor CMD files.

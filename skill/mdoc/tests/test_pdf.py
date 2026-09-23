@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import json
 import sys
 import tempfile
 import threading
@@ -373,13 +374,18 @@ class PdfTests(unittest.TestCase):
 
     def test_locale_can_override_successful_full_book_work_retention(self) -> None:
         calls = []
+        repository = self.root / "repository"
+        for locale in ("zh", "en"):
+            locale_root = repository / locale; locale_root.mkdir(parents=True)
+            (locale_root / "book.json").write_text(json.dumps({"title": "Guide", "language": locale}), encoding="utf-8")
         workspace = SimpleNamespace(
+            repository=repository,
             config={
                 "pdf": {
                     "defaults": {"concurrency": {"builds": 1}},
                     "retention": {"keep_successful_book_work": False},
                 },
-                "books": {"guide": {"locales": {"zh": {"pdf": {"keep_successful_book_work": True}}, "en": {}}}},
+                "books": {"guide": {"root": ".", "locales": {"zh": {"root": "zh", "pdf": {"keep_successful_book_work": True}}, "en": {"root": "en"}}}},
             },
             control=self.root / ".mdoc",
         )
@@ -405,10 +411,15 @@ class PdfTests(unittest.TestCase):
             self.assertEqual([("guide", "zh", "section", False, False)], calls)
 
     def test_batch_build_fails_fast_and_cancels_other_locales(self) -> None:
+        repository = self.root / "repository"
+        for locale in ("zh", "en", "ja"):
+            locale_root = repository / locale; locale_root.mkdir(parents=True)
+            (locale_root / "book.json").write_text(json.dumps({"title": "Guide", "language": locale}), encoding="utf-8")
         workspace = SimpleNamespace(
+            repository=repository,
             config={
                 "pdf": {"defaults": {"concurrency": {"builds": 2}}, "retention": {"keep_successful_book_work": False}},
-                "books": {"guide": {"locales": {"zh": {}, "en": {}, "ja": {}}}},
+                "books": {"guide": {"root": ".", "locales": {locale: {"root": locale} for locale in ("zh", "en", "ja")}}},
             },
             control=self.root / ".mdoc",
         )
@@ -454,6 +465,43 @@ class PdfTests(unittest.TestCase):
             self.assertEqual(3, pdf.effective_jobs(3, True))
         finally:
             pdf._available_memory = original
+
+    def test_full_book_default_output_uses_normalized_book_title_and_workspace_locale(self) -> None:
+        repository = self.root / "repository"
+        for locale, title in (("zh", ' LiDAR360MLS  User:Guide '), ("ja", '<>:"/\\|?*')):
+            locale_root = repository / locale
+            locale_root.mkdir(parents=True)
+            (locale_root / "book.json").write_text(json.dumps({"title": title, "language": locale}), encoding="utf-8")
+        workspace = SimpleNamespace(
+            repository=repository,
+            control=self.root / ".mdoc",
+            config={
+                "pdf": {"defaults": {"concurrency": {"builds": 1}}, "retention": {"keep_successful_book_work": False}},
+                "books": {"guide": {"root": ".", "locales": {"zh": {"root": "zh"}, "ja": {"root": "ja"}}}},
+            },
+        )
+
+        def build_one(_workspace, book, locale, _mode, _target, output, *_args):
+            return {"status": "passed", "book": book, "locale": locale, "output": str(output)}
+
+        with patch.object(pdf, "_build_one", side_effect=build_one):
+            report = pdf.build(workspace, "guide", None, "book", None, None, True, False, 1, True, True, False, False, False, False, False, False)
+
+        outputs = {item["locale"]: Path(item["output"]).name for item in report["results"]}
+        self.assertEqual("LiDAR360MLS_User_Guide_zh.pdf", outputs["zh"])
+        self.assertEqual("guide-ja.pdf", outputs["ja"])
+
+    def test_full_book_explicit_output_keeps_user_selected_name(self) -> None:
+        repository = self.root / "repository"; locale_root = repository / "zh"; locale_root.mkdir(parents=True)
+        (locale_root / "book.json").write_text('{"title":"LiDAR360MLS User Guide","language":"zh"}', encoding="utf-8")
+        workspace = SimpleNamespace(
+            repository=repository, control=self.root / ".mdoc",
+            config={"pdf": {"defaults": {"concurrency": {"builds": 1}}, "retention": {"keep_successful_book_work": False}}, "books": {"guide": {"root": ".", "locales": {"zh": {"root": "zh"}}}}},
+        )
+        selected = self.root / "custom.pdf"
+        with patch.object(pdf, "_build_one", side_effect=lambda _workspace, book, locale, _mode, _target, output, *_args: {"status": "passed", "book": book, "locale": locale, "output": str(output)}):
+            report = pdf.build(workspace, "guide", "zh", "book", None, selected, False, False, 1, True, True, False, False, False, False, False, False)
+        self.assertEqual(selected, Path(report["results"][0]["output"]))
 
     def test_doctor_rejects_an_available_tool_with_the_wrong_version(self) -> None:
         original_paths = pdf.tool_paths

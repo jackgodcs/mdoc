@@ -892,9 +892,10 @@ def check(workspace, path: Path, book_id: str | None = None, locale_id: str | No
     return _structural_check(path.resolve(), entries, bookmarks, implicit_items)
 
 
-def _output_name(book_id: str, locale_id: str, mode: str, target: str | None) -> str:
+def _output_name(book_id: str, locale_id: str, mode: str, target: str | None, title: str | None = None) -> str:
     if mode == "book":
-        return f"{book_id}-{locale_id}.pdf"
+        stem = re.sub(r"_+", "_", re.sub(r'[<>:"/\\|?*]', "_", re.sub(r"\s+", "_", title.strip()))).strip("_") if title else ""
+        return f"{stem}_{locale_id}.pdf" if stem else f"{book_id}-{locale_id}.pdf"
     import hashlib
 
     path = normalized_target(target or "")[0]
@@ -1074,7 +1075,8 @@ def build(workspace, book_id: str | None, locale_id: str | None, mode: str, targ
                 raise MdocError("MDOC-PDF-LOCALE-REQUIRED", f"请为书册指定有效的 --locale：{current_book}")
             locale = workspace.config["books"][current_book]["locales"][current_locale]
             keep_locale_work = keep_work or mode == "book" and not discard_work and (locale.get("pdf") or {}).get("keep_successful_book_work", workspace.config["pdf"]["retention"].get("keep_successful_book_work", False))
-            destination = output if output and len(book_ids) == 1 and len(locales) == 1 else workspace.control / "artifacts" / "pdf" / current_book / current_locale / _output_name(current_book, current_locale, mode, target)
+            title = json.loads((workspace.repository / workspace.config["books"][current_book]["root"] / locale["root"] / "book.json").read_text(encoding="utf-8-sig"))["title"] if mode == "book" else None
+            destination = output if output and len(book_ids) == 1 and len(locales) == 1 else workspace.control / "artifacts" / "pdf" / current_book / current_locale / _output_name(current_book, current_locale, mode, target, title)
             if destination.exists():
                 if no_overwrite:
                     targets.append((current_book, current_locale, destination, "skipped", keep_locale_work))
