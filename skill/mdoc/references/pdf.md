@@ -26,6 +26,8 @@ Standalone output defaults to `%TEMP%\mdoc\<name>.pdf` and overwrites atomically
 
 `pdf.defaults.toc.right_value` controls the mandatory value on the right side of each TOC item: `page` writes the final one-based PDF page number and `hierarchy` writes the mdoc number calculated from `Summary.md`. `toc.show_left_number` independently controls the mdoc number before TOC labels. `bookmarks.show_left_number` independently controls that number before PDF bookmark labels. Both label-number switches default to `true`; bookmark depth defaults to five levels. Per-book `pdf.toc` and `pdf.bookmarks` values can override these defaults.
 
+`pdf.defaults.page_numbers.enabled` defaults to `true` and adds a plain Arabic physical page number to each non-cover page of a full-book build. `page_numbers.position` accepts `left`, `center`, or `right` and defaults to `right`; alignment is relative to the content area between the configured margins. A book can override `pdf.page_numbers`. When a cover is actually applied, it remains unnumbered but counts as physical page 1, so the following page displays 2 and matches page-number TOC values. Without an applied cover, the first page displays 1. Page and section scopes and standalone file builds do not add page numbers. Workspace settings control this behavior; legacy `book.json` `pageNumbers`, `headerTemplate`, and `footerTemplate` values do not control mdoc full-book output.
+
 Full-book builds can use a locale-specific cover declared in that locale's `book.json`:
 
 ```json

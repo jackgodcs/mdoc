@@ -212,12 +212,14 @@ class PdfTests(unittest.TestCase):
         self.assertEqual(5, settings["bookmarks"]["levels"])
         self.assertTrue(settings["bookmarks"]["show_left_number"])
         self.assertEqual({"enabled": False, "preserve_aspect_ratio": True}, settings["cover"])
+        self.assertEqual({"enabled": True, "position": "right"}, settings["page_numbers"])
 
     def test_effective_settings_fill_new_pdf_defaults_for_old_workspace(self) -> None:
         settings = pdf.effective_settings({"pdf": {"defaults": {"bookmarks": {"levels": 2}}}}, {})
         self.assertEqual({"right_value": "page", "show_left_number": True}, settings["toc"])
         self.assertEqual({"levels": 2, "show_left_number": True}, settings["bookmarks"])
         self.assertEqual({"enabled": True, "preserve_aspect_ratio": True}, settings["cover"])
+        self.assertEqual({"enabled": True, "position": "right"}, settings["page_numbers"])
 
     def test_prepare_cover_copies_valid_book_cover_and_reports_metadata(self) -> None:
         locale = self.root / "locale"; work = self.root / "work"; image = locale / "images" / "cover.png"
@@ -270,6 +272,23 @@ class PdfTests(unittest.TestCase):
         options = pdf._calibre_options({"title": "Guide", "language": "en", "pdf": {"fontFamily": "Arial"}}, settings, cover)
         self.assertNotIn("--preserve-cover-aspect-ratio", options)
         self.assertNotIn("--cover", pdf._calibre_options({"title": "Guide", "language": "en", "pdf": {"fontFamily": "Arial"}}, settings))
+
+    def test_calibre_options_add_configured_page_numbers_only_for_full_book(self) -> None:
+        config = {"title": "Guide", "language": "en", "pdf": {"fontFamily": "Arial", "pageNumbers": False, "footerTemplate": "legacy"}}
+        for position in ("left", "center", "right"):
+            settings = {**pdf.DEFAULTS["defaults"], "page_numbers": {"enabled": True, "position": position}}
+            options = pdf._calibre_options(config, settings, page_numbers=True)
+            offset = "left:50%;transform:translateX(-50%)" if position == "center" else f'{position}:67pt'
+            self.assertEqual(f'<span style="position:absolute;{offset}">_PAGENUM_</span>', options[options.index("--pdf-footer-template") + 1])
+            self.assertEqual("n", options[options.index("--pdf-page-number-map") + 1])
+            self.assertNotIn("legacy", options)
+            self.assertNotIn("--pdf-page-numbers", options)
+        cover = self.root / "cover.png"
+        options = pdf._calibre_options(config, pdf.DEFAULTS["defaults"], cover, True)
+        self.assertEqual("n+1", options[options.index("--pdf-page-number-map") + 1])
+        self.assertNotIn("--pdf-footer-template", pdf._calibre_options(config, pdf.DEFAULTS["defaults"], cover))
+        disabled = {**pdf.DEFAULTS["defaults"], "page_numbers": {"enabled": False, "position": "right"}}
+        self.assertNotIn("--pdf-footer-template", pdf._calibre_options(config, disabled, page_numbers=True))
 
     def test_patch_html_numbers_fragment_headings_and_supports_toc_switches(self) -> None:
         intermediate = self.root / "ebook"

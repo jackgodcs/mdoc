@@ -65,6 +65,9 @@ pdf:
     cover:
       enabled: true
       preserve_aspect_ratio: true
+    page_numbers:
+      enabled: true
+      position: right
     concurrency:
       builds: 3
       images: auto

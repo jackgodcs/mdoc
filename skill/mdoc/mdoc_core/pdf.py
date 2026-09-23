@@ -56,6 +56,7 @@ DEFAULTS = {
         "toc": {"right_value": "page", "show_left_number": True},
         "bookmarks": {"levels": 5, "show_left_number": True},
         "cover": {"enabled": True, "preserve_aspect_ratio": True},
+        "page_numbers": {"enabled": True, "position": "right"},
         "concurrency": {"builds": 3, "images": "auto"},
     },
     "retention": {"failed_work_days": 7, "batch_reports": 20, "keep_successful_book_work": False},
@@ -672,7 +673,7 @@ def _patch_html(intermediate: Path, pages: list[tuple[dict, str]] | None, entrie
     return {"items": item_count, "explicit_items": explicit_count, "implicit_items": item_count - explicit_count}
 
 
-def _calibre_options(config: dict, settings: dict, cover: Path | None = None) -> list[str]:
+def _calibre_options(config: dict, settings: dict, cover: Path | None = None, page_numbers: bool = False) -> list[str]:
     source_pdf = config.get("pdf", {})
     font_family = source_pdf.get("fontFamily")
     if not isinstance(font_family, str) or not font_family.strip():
@@ -690,8 +691,10 @@ def _calibre_options(config: dict, settings: dict, cover: Path | None = None) ->
         "--pdf-default-font-size", str(source_pdf.get("fontSize", 12)), "--pdf-mono-font-size", str(source_pdf.get("fontSize", 12)),
         "--paper-size", str(settings["paper_size"]), "--pdf-sans-family", font_family,
     ]
-    if source_pdf.get("pageNumbers"):
-        options.append("--pdf-page-numbers")
+    if page_numbers and settings["page_numbers"]["enabled"]:
+        position = settings["page_numbers"]["position"]
+        offset = "left:50%;transform:translateX(-50%)" if position == "center" else f'{position}:{settings["margins_pt"][position]}pt'
+        options.extend(["--pdf-footer-template", f'<span style="position:absolute;{offset}">_PAGENUM_</span>', "--pdf-page-number-map", "n+1" if cover is not None else "n"])
     if source_pdf.get("embedFonts", True):
         options.append("--embed-all-fonts")
     if config.get("author"):
@@ -983,7 +986,7 @@ def _build_one(workspace, book_id: str, locale_id: str, mode: str, target: str |
             right_values = None
             for iteration in range(1, 4):
                 current = raw if iteration == 1 else work / f"raw-{iteration}.pdf"
-                duration = _run([str(tools["calibre"]), str(intermediate / "SUMMARY.html"), str(current), *_calibre_options(config, settings, cover_path)], work, logs / f"calibre-{iteration}.log", cancel)
+                duration = _run([str(tools["calibre"]), str(intermediate / "SUMMARY.html"), str(current), *_calibre_options(config, settings, cover_path, mode == "book")], work, logs / f"calibre-{iteration}.log", cancel)
                 from pypdf import PdfReader
                 targets = _toc_pages(PdfReader(str(current)), toc_report["items"])
                 if len(targets) != toc_report["items"]:
@@ -1000,7 +1003,7 @@ def _build_one(workspace, book_id: str, locale_id: str, mode: str, target: str |
                 raise MdocError("MDOC-PDF-TOC-PAGE-NUMBERS-NOT-STABLE", "目录页码在三轮分页后仍未收敛。", {"iterations": toc_iterations})
             timings["calibre"] = round(sum(item["duration"] for item in toc_iterations), 3)
         else:
-            timings["calibre"] = _run([str(tools["calibre"]), str(intermediate / "SUMMARY.html"), str(raw), *_calibre_options(config, settings, cover_path)], work, logs / "calibre.log", cancel)
+            timings["calibre"] = _run([str(tools["calibre"]), str(intermediate / "SUMMARY.html"), str(raw), *_calibre_options(config, settings, cover_path, mode == "book")], work, logs / "calibre.log", cancel)
             right_values = None
             toc_iterations.append({"iteration": 1, "changed_targets": 0, "duration": timings["calibre"]})
         stage = time.monotonic(); outline = _repair_outline(raw, outlined, selected, settings["bookmarks"], toc_report["items"], toc_report["implicit_items"]); timings["outline"] = round(time.monotonic() - stage, 3)

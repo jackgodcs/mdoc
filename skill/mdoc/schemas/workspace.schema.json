@@ -121,6 +121,7 @@
         "optimization": {"required": ["enabled", "recompress_flate", "compression_level", "object_streams"]},
         "bookmarks": {"required": ["levels"]},
         "cover": {"required": ["enabled", "preserve_aspect_ratio"]},
+        "page_numbers": {"required": ["enabled", "position"]},
         "concurrency": {"required": ["builds", "images"]}
       }
     },
@@ -172,6 +173,13 @@
           "properties": {
             "enabled": {"type": "boolean"},
             "preserve_aspect_ratio": {"type": "boolean"}
+          }
+        },
+        "page_numbers": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "position": {"enum": ["left", "center", "right"]}
           }
         },
         "concurrency": {

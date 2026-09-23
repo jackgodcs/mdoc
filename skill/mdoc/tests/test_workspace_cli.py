@@ -121,6 +121,7 @@ class WorkspaceCliTests(unittest.TestCase):
         self.assertEqual(1048, draft["pdf"]["defaults"]["image_optimization"]["max_width_px"])
         self.assertEqual(3, draft["pdf"]["defaults"]["concurrency"]["builds"])
         self.assertEqual({"enabled": True, "preserve_aspect_ratio": True}, draft["pdf"]["defaults"]["cover"])
+        self.assertEqual({"enabled": True, "position": "right"}, draft["pdf"]["defaults"]["page_numbers"])
 
         self.write_draft(valid_workspace())
         self.run_cli("workspace", "apply", "--workspace", str(self.repository), "--json")
@@ -224,6 +225,7 @@ class WorkspaceCliTests(unittest.TestCase):
         workspace["pdf"]["defaults"]["bookmarks"] = {"levels": 2}
         workspace["pdf"]["defaults"].pop("toc")
         workspace["pdf"]["defaults"].pop("cover")
+        workspace["pdf"]["defaults"].pop("page_numbers")
         self.write_draft(workspace)
         self.run_cli("workspace", "apply", "--workspace", str(self.repository), "--json")
         self.run_cli("workspace", "confirm", "--workspace", str(self.repository), "--json")
@@ -236,6 +238,18 @@ class WorkspaceCliTests(unittest.TestCase):
         self.assertTrue(draft["pdf"]["defaults"]["bookmarks"]["show_left_number"])
         self.assertEqual({"right_value": "page", "show_left_number": True}, draft["pdf"]["defaults"]["toc"])
         self.assertEqual({"enabled": True, "preserve_aspect_ratio": True}, draft["pdf"]["defaults"]["cover"])
+        self.assertEqual({"enabled": True, "position": "right"}, draft["pdf"]["defaults"]["page_numbers"])
+
+    def test_workspace_rejects_invalid_page_number_position(self) -> None:
+        for locale in ("zh", "en"):
+            (self.repository / "Guide" / locale / "book.json").write_text('{"title":"Guide","language":"' + locale + '"}\n', encoding="utf-8")
+        self.run_cli("workspace", "init", "--workspace", str(self.repository), "--json")
+        workspace = valid_workspace()
+        workspace["pdf"] = copy.deepcopy(pdf.DEFAULTS)
+        workspace["pdf"]["defaults"]["page_numbers"]["position"] = "bottom"
+        self.write_draft(workspace)
+        error = self.run_cli("workspace", "apply", "--workspace", str(self.repository), "--json", expected=2)
+        self.assertEqual("MDOC-CONFIG-SCHEMA-INVALID", json.loads(error.stdout)["error"]["code"])
 
     def test_portable_paths_and_local_override_authority_are_strict(self) -> None:
         self.run_cli("workspace", "init", "--workspace", str(self.repository))
