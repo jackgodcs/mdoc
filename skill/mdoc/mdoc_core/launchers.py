@@ -44,11 +44,17 @@ def _cmd(title: str, details: list[str], command: str, *, delayed_refresh: bool 
         "@echo off", HEADER, "chcp 65001 >nul", "setlocal",
         r'set "MDOC_WORKSPACE=%~dp0..\.."',
         r'set "MDOC_CMD=%LOCALAPPDATA%\mdoc\bin\mdoc.cmd"',
-        'set "MDOC_LAUNCHER_ACTIVE=1"', f"title {title}",
-        'if not exist "%MDOC_CMD%" (', "  echo [MDOC-INSTALL-MISSING] 未找到已安装的 mdoc。",
-        "  echo 请先安装或更新 mdoc 后重试。", "  pause", "  exit /b 2", ")",
+        'set "MDOC_LAUNCHER_ACTIVE=1"', f"title {title}", "echo ============================================================",
+        f"echo {title}", "echo 开始时间: %date% %time%",
     ]
     lines.extend(f"echo {item}" for item in details)
+    lines.extend([
+        "echo ============================================================",
+        'if not exist "%MDOC_CMD%" (', "  echo [MDOC-INSTALL-MISSING] 未找到已安装的 mdoc。",
+        "  echo 请先安装或更新 mdoc 后重试。", "  pause", "  exit /b 2", ")",
+        "echo [启动] 正在执行任务，长时间运行时请勿关闭窗口。",
+        "echo.",
+    ])
     if delayed_refresh:
         lines.extend([
             'start "mdoc launcher refresh" cmd.exe /d /s /c "ping 127.0.0.1 -n 2 ^>nul ^& call ^"%MDOC_CMD%^" workspace launchers refresh --workspace ^"%MDOC_WORKSPACE%^" ^& echo. ^& pause"',
@@ -58,8 +64,11 @@ def _cmd(title: str, details: list[str], command: str, *, delayed_refresh: bool 
         lines.extend([command, 'set "MDOC_EXIT=%ERRORLEVEL%"'])
         if refresh_after_success:
             lines.append('if "%MDOC_EXIT%"=="0" start "mdoc launcher refresh" cmd.exe /d /s /c "ping 127.0.0.1 -n 2 ^>nul ^& call ^"%MDOC_CMD%^" workspace launchers refresh --workspace ^"%MDOC_WORKSPACE%^" ^& echo. ^& pause"')
-        lines.extend(["echo.",
-            'if not "%MDOC_EXIT%"=="0" echo 命令执行失败，请根据上方错误编号和修复建议处理后重试。',
+        lines.extend(["echo.", "echo ============================================================",
+            'if "%MDOC_EXIT%"=="0" echo [完成] 命令执行成功。',
+            'if not "%MDOC_EXIT%"=="0" echo [失败] 命令执行失败，退出码: %MDOC_EXIT%。',
+            'if not "%MDOC_EXIT%"=="0" echo 请根据上方错误编号和修复建议处理后重试。',
+            "echo 结束时间: %date% %time%", "echo ============================================================",
             "pause", "exit /b %MDOC_EXIT%",
         ])
     return "\r\n".join(lines) + "\r\n"

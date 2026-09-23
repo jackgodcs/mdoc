@@ -258,7 +258,7 @@ def main():
                     target = {"book": args.book, "locale": args.locale}
                     operation = "pdf_workspace" if args.all_books else "pdf_book" if args.all_locales else "pdf_book_locale"
                     with operation_lock(pdf_workspace.repository, operation, target, _conflicts(operation, target)):
-                        result = pdf.build(pdf_workspace, args.book, args.locale, args.scope, args.target, args.output.resolve() if args.output else None, args.all_locales, args.all_books, args.jobs, args.force_jobs, args.yes, args.no_overwrite, not args.json and sys.stdin.isatty(), args.keep_work, args.discard_work, args.strict_resources, args.verify_pipeline, args.summary_line)
+                        result = pdf.build(pdf_workspace, args.book, args.locale, args.scope, args.target, args.output.resolve() if args.output else None, args.all_locales, args.all_books, args.jobs, args.force_jobs, args.yes, args.no_overwrite, not args.json and sys.stdin.isatty(), args.keep_work, args.discard_work, args.strict_resources, args.verify_pipeline, args.summary_line, None if args.json else lambda message: print(message, file=sys.stderr, flush=True))
                     if args.open_output and result.get("exit_code", 0) == 0:
                         folder = pdf_workspace.control / "artifacts" / "pdf" / args.book if args.book else pdf_workspace.control / "artifacts" / "pdf"
                         if os.name == "nt": os.startfile(str(folder))

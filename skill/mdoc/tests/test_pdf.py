@@ -162,6 +162,20 @@ class PdfTests(unittest.TestCase):
             with self.assertRaises(MdocError): pdf.build_file(source, output, None, None, None, False, False, True, False, False)
         self.assertEqual(b"old", output.read_bytes())
 
+    def test_workspace_build_reports_pdf_stages(self) -> None:
+        workspace = SimpleNamespace(
+            repository=self.root,
+            control=self.root / ".mdoc",
+            config={"pdf": {"defaults": {"concurrency": {"builds": 1}}, "retention": {"keep_successful_book_work": False}}, "books": {"guide": {"root": "Guide", "locales": {"en": {"root": "en"}}}}},
+        )
+        locale = self.root / "Guide" / "en"; locale.mkdir(parents=True)
+        (locale / "book.json").write_text('{"title":"Guide"}\n', encoding="utf-8")
+        messages = []; progress = messages.append
+        with patch.object(pdf, "_build_one", return_value={"status": "passed", "book": "guide", "locale": "en", "output": "Guide.pdf"}) as build_one:
+            result = pdf.build(workspace, "guide", "en", "book", None, None, False, False, 1, True, True, False, False, False, False, False, False, progress=progress)
+        self.assertEqual("passed", result["status"])
+        self.assertIs(progress, build_one.call_args.args[-1])
+
     def test_html_image_optimization_creates_jpeg_and_rewrites_references(self) -> None:
         html = self.root / "chapter.html"
         css = self.root / "style.css"
@@ -390,7 +404,7 @@ class PdfTests(unittest.TestCase):
             control=self.root / ".mdoc",
         )
 
-        def build_one(_workspace, book, locale, mode, _target, output, keep_work, discard_work, _strict_resources, _verify_pipeline, _summary_line=None, _cancel=None):
+        def build_one(_workspace, book, locale, mode, _target, output, keep_work, discard_work, _strict_resources, _verify_pipeline, _summary_line=None, _cancel=None, _progress=None):
             calls.append((book, locale, mode, keep_work, discard_work))
             return {"status": "passed", "book": book, "locale": locale, "output": str(output)}
 
@@ -424,7 +438,7 @@ class PdfTests(unittest.TestCase):
             control=self.root / ".mdoc",
         )
 
-        def build_one(_workspace, _book, locale, _mode, _target, _output, _keep_work, _discard_work, _strict_resources, _verify_pipeline, _summary_line, cancel):
+        def build_one(_workspace, _book, locale, _mode, _target, _output, _keep_work, _discard_work, _strict_resources, _verify_pipeline, _summary_line, cancel, _progress=None):
             if locale == "zh":
                 raise MdocError("MDOC-PDF-CHECK-FAILED", "broken")
             cancel.wait(2)

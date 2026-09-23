@@ -929,8 +929,10 @@ def effective_jobs(requested: int, force: bool) -> int:
     return max(1, min(requested, int(max(0, available - 2 * 1024**3) // (4 * 1024**3))))
 
 
-def _build_one(workspace, book_id: str, locale_id: str, mode: str, target: str | None, output: Path, keep_work: bool, discard_work: bool, strict_resources: bool, verify_pipeline: bool, summary_line: int | None = None, cancel: threading.Event | None = None) -> dict:
+def _build_one(workspace, book_id: str, locale_id: str, mode: str, target: str | None, output: Path, keep_work: bool, discard_work: bool, strict_resources: bool, verify_pipeline: bool, summary_line: int | None = None, cancel: threading.Event | None = None, progress=None) -> dict:
     started = time.monotonic()
+    report_progress = (lambda message: progress(f"[{book_id}/{locale_id}] {message}")) if progress else lambda _message: None
+    report_progress("[1/8] 正在校验配置和 PDF Toolchain。")
     _cancelled(cancel)
     tools = tool_paths()
     missing = [name for name, path in tools.items() if not path.is_file()]
@@ -954,6 +956,7 @@ def _build_one(workspace, book_id: str, locale_id: str, mode: str, target: str |
     findings = []
     status = "failed"; report = None
     try:
+        report_progress("[2/8] 正在准备隔离构建目录和手册资源。")
         stage = time.monotonic()
         pages = None
         if mode == "book":
@@ -969,6 +972,7 @@ def _build_one(workspace, book_id: str, locale_id: str, mode: str, target: str |
         cover_report, cover_path = _prepare_cover(locale_root, config, settings, work, mode)
         _write_json(source / "book.json", config)
         intermediate.mkdir()
+        report_progress("[3/8] HonKit 正在生成 HTML。")
         timings = {"prepare": round(time.monotonic() - stage, 3), "honkit": _run([str(tools["node"]), str(tools["honkit"]), "build", str(source), str(intermediate), "--format", "ebook", "--log", "debug", "--timing"], work, logs / "honkit.log", cancel)}
         _cancelled(cancel)
         readme = config.get("structure", {}).get("readme", "README.md")
@@ -977,6 +981,7 @@ def _build_one(workspace, book_id: str, locale_id: str, mode: str, target: str |
             raise MdocError("MDOC-PDF-TOC-TARGETS-INVALID", "HTML 目录与 Summary 条目无法一一匹配。", {"expected": len(selected), "actual": toc_report["explicit_items"]})
         if settings["toc"]["right_value"] == "hierarchy" and settings["toc"]["show_left_number"]:
             notices.append({"kind": "toc_hierarchy_number_repeated"})
+        report_progress("[4/8] 正在优化图片资源。")
         stage = time.monotonic()
         image_stats = optimize_generated_images(intermediate, settings["image_optimization"])
         _cancelled(cancel)
@@ -986,9 +991,11 @@ def _build_one(workspace, book_id: str, locale_id: str, mode: str, target: str |
         outlined = work / "outlined.pdf"
         optimized = work / "optimized.pdf"
         toc_iterations = []
+        report_progress("[5/8] Calibre 正在生成原始 PDF，此阶段可能耗时较长。")
         if settings["toc"]["right_value"] == "page":
             right_values = None
             for iteration in range(1, 4):
+                report_progress(f"[5/8] Calibre 分页计算：第 {iteration} 轮，最多 3 轮。")
                 current = raw if iteration == 1 else work / f"raw-{iteration}.pdf"
                 duration = _run([str(tools["calibre"]), str(intermediate / "SUMMARY.html"), str(current), *_calibre_options(config, settings, cover_path, mode == "book")], work, logs / f"calibre-{iteration}.log", cancel)
                 from pypdf import PdfReader
@@ -1010,8 +1017,10 @@ def _build_one(workspace, book_id: str, locale_id: str, mode: str, target: str |
             timings["calibre"] = _run([str(tools["calibre"]), str(intermediate / "SUMMARY.html"), str(raw), *_calibre_options(config, settings, cover_path, mode == "book")], work, logs / "calibre.log", cancel)
             right_values = None
             toc_iterations.append({"iteration": 1, "changed_targets": 0, "duration": timings["calibre"]})
+        report_progress("[6/8] 正在修复 PDF 目录和书签。")
         stage = time.monotonic(); outline = _repair_outline(raw, outlined, selected, settings["bookmarks"], toc_report["items"], toc_report["implicit_items"]); timings["outline"] = round(time.monotonic() - stage, 3)
         _cancelled(cancel)
+        report_progress("[7/8] 正在优化并检查 PDF 结构。")
         candidate = outlined
         if settings["optimization"]["enabled"]:
             command = [str(tools["qpdf"]), str(outlined), str(optimized)]
@@ -1042,6 +1051,7 @@ def _build_one(workspace, book_id: str, locale_id: str, mode: str, target: str |
         if strict_resources and resource_findings:
             raise MdocError("MDOC-PDF-RESOURCE-STRICT", "严格资源模式下存在资源 finding。", {"findings": resource_findings})
         _cancelled(cancel)
+        report_progress("[8/8] 正在写入最终 PDF 和构建报告。")
         stage = time.monotonic(); output.parent.mkdir(parents=True, exist_ok=True)
         temporary = output.with_name(f".{output.name}.{os.getpid()}.tmp")
         shutil.copy2(candidate, temporary)
@@ -1049,6 +1059,7 @@ def _build_one(workspace, book_id: str, locale_id: str, mode: str, target: str |
         timings["output"] = round(time.monotonic() - stage, 3)
         status = "passed_with_findings" if findings else "passed"
         report = {"schema_version": 1, "status": status, "book": book_id, "locale": locale_id, "scope": mode, "target": target, "summary_line": summary_line, "output": str(output), "work": str(work), "entries": len(selected), "settings": settings, "cover": cover_report, "toc": {"mode": settings["toc"]["right_value"], "items": toc_report["items"], "implicit_items": toc_report["implicit_items"], "iterations": len(toc_iterations), "changed_targets_per_iteration": [item["changed_targets"] for item in toc_iterations]}, "images": image_stats, "outline": outline, "check": structural, "findings": findings, "notices": notices, "timings": timings, "pipeline_verification": verification}
+        report_progress(f"构建完成，耗时 {time.monotonic() - started:.1f} 秒。输出: {output}")
         return report
     finally:
         cleanup = time.monotonic()
@@ -1061,7 +1072,7 @@ def _build_one(workspace, book_id: str, locale_id: str, mode: str, target: str |
             _write_json(output.with_suffix(".build.json"), report)
 
 
-def build(workspace, book_id: str | None, locale_id: str | None, mode: str, target: str | None, output: Path | None, all_locales: bool, all_books: bool, jobs: int | None, force_jobs: bool, overwrite: bool, no_overwrite: bool, interactive: bool, keep_work: bool, discard_work: bool, strict_resources: bool, verify_pipeline: bool, summary_line: int | None = None) -> dict:
+def build(workspace, book_id: str | None, locale_id: str | None, mode: str, target: str | None, output: Path | None, all_locales: bool, all_books: bool, jobs: int | None, force_jobs: bool, overwrite: bool, no_overwrite: bool, interactive: bool, keep_work: bool, discard_work: bool, strict_resources: bool, verify_pipeline: bool, summary_line: int | None = None, progress=None) -> dict:
     if "pdf" not in workspace.config:
         raise MdocError("MDOC-PDF-NOT-CONFIGURED", "工作区尚未配置 PDF，请先执行 mdoc pdf init。")
     book_ids = list(workspace.config["books"]) if all_books else [book_id]
@@ -1090,7 +1101,7 @@ def build(workspace, book_id: str | None, locale_id: str | None, mode: str, targ
     results = []
     cancel = threading.Event()
     with ThreadPoolExecutor(max_workers=actual) as executor:
-        futures = {executor.submit(_build_one, workspace, book, locale, mode, target, destination, keep_locale_work, discard_work, strict_resources, verify_pipeline, summary_line, cancel): (book, locale, destination) for book, locale, destination, action, keep_locale_work in targets if action == "build"}
+        futures = {executor.submit(_build_one, workspace, book, locale, mode, target, destination, keep_locale_work, discard_work, strict_resources, verify_pipeline, summary_line, cancel, progress): (book, locale, destination) for book, locale, destination, action, keep_locale_work in targets if action == "build"}
         results.extend({"status": "skipped", "book": book, "locale": locale, "output": str(destination)} for book, locale, destination, action, _keep_locale_work in targets if action == "skipped")
         for future in as_completed(futures):
             book, locale, destination = futures[future]

@@ -282,7 +282,13 @@ class WorkspaceCliTests(unittest.TestCase):
         result = json.loads(self.run_cli("workspace", "launchers", "refresh", "--workspace", str(self.repository), "--json").stdout)
 
         self.assertEqual("workspace_launchers_refreshed", result["status"])
-        self.assertTrue((self.repository / ".mdoc" / "launchers" / "build_pdf_guide_en.cmd").is_file())
+        launcher = self.repository / ".mdoc" / "launchers" / "build_pdf_guide_en.cmd"
+        self.assertTrue(launcher.is_file())
+        text = launcher.read_text(encoding="utf-8")
+        self.assertIn("echo 开始时间: %date% %time%", text)
+        self.assertIn("[启动] 正在执行任务", text)
+        self.assertIn("[完成] 命令执行成功", text)
+        self.assertIn("[失败] 命令执行失败，退出码: %MDOC_EXIT%", text)
 
     def test_workspace_rejects_invalid_page_number_position(self) -> None:
         for locale in ("zh", "en"):
