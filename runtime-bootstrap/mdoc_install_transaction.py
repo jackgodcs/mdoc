@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import shutil
+import subprocess
 import sys
 import time
 import zipfile
@@ -54,6 +55,11 @@ def sha256(path: Path) -> str:
         for block in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def dependency_contract_sha256(requirements: dict) -> str:
+    contract = {key: value for key, value in requirements.items() if key != "product_version"}
+    return hashlib.sha256(json.dumps(contract, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
 
 
 def safe_extract(package: Path, destination: Path) -> dict:
@@ -114,36 +120,74 @@ def plan_path(root: Path) -> Path:
     return root / "state" / "plans" / "update-current.json"
 
 
-def runtime_rebuild_decision(manifest: dict, root: Path) -> tuple[bool, list[str]]:
+def probe_runtime(package_root: Path, root: Path, state: dict) -> list[str]:
+    python = Path(str(state.get("runtime_python") or root / "runtime/Scripts/python.exe"))
+    if not python.is_file():
+        return ["runtime_python_missing"]
+    script = package_root / "skill/mdoc/scripts/mdoc.py"
+    environment = {**os.environ, "MDOC_TOOLCHAIN_ROOT": str(root / "toolchain")}
+    reasons = []
+    probes = (
+        ("check", [str(script), "--json", "check", "doctor"]),
+        ("pdf", ["-c", "import json,sys;sys.path.insert(0,sys.argv[1]);from mdoc_core.pdf import doctor;print(json.dumps(doctor(None)))", str(package_root / "skill/mdoc")]),
+    )
+    for name, arguments in probes:
+        try:
+            result = subprocess.run([str(python), *arguments], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120, env=environment)
+            report = json.loads(result.stdout) if result.returncode == 0 else {}
+        except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+            report = {}
+        if report.get("status") != "passed":
+            reasons.append(f"{name}_capability_probe_failed")
+    return reasons
+
+
+def runtime_rebuild_decision(manifest: dict, root: Path, installation: Path, package_root: Path, probe=probe_runtime, force: bool = False) -> tuple[bool, list[str], bool]:
     contract = manifest.get("runtime_contract") or {}
     state_path = root / "state" / "installed-runtime.json"
     if not state_path.is_file():
-        return True, ["installed_runtime_state_missing"]
+        return True, ["installed_runtime_state_missing"], False
     try:
         state = json.loads(state_path.read_text(encoding="utf-8-sig"))
     except (OSError, json.JSONDecodeError):
-        return True, ["installed_runtime_state_untrusted"]
+        return True, ["installed_runtime_state_untrusted"], False
+    if state.get("schema_version") != 1 or state.get("status") != "ready":
+        return True, ["installed_runtime_state_untrusted"], False
     checks = (
         ("toolchain_version", "toolchain_version", "toolchain_version_changed"),
         ("python", "python_contract", "python_contract_changed"),
         ("profile", "profile", "profile_changed"),
-        ("requirements_sha256", "requirements_sha256", "requirements_changed"),
     )
     reasons = [reason for package_key, state_key, reason in checks if contract.get(package_key) != state.get(state_key)]
+    migrated = False
+    installed_contract = state.get("dependency_contract_sha256")
+    if not installed_contract:
+        legacy = installation / "runtime-support/runtime/requirements-v1.json"
+        try:
+            installed_contract = dependency_contract_sha256(json.loads(legacy.read_text(encoding="utf-8-sig")))
+            migrated = True
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            reasons.append("installed_dependency_contract_missing")
+    if installed_contract and contract.get("dependency_contract_sha256") != installed_contract:
+        reasons.append("dependency_contract_changed")
     if state.get("capability_probe") != "ready":
         reasons.append("capability_probe_failed")
     if state.get("python_source") in {None, "ineligible-temporary", "unknown-private"}:
         reasons.append("python_source_ineligible")
     if contract.get("runtime_rebuild_required") is True:
         reasons.append("package_requires_runtime_rebuild")
-    return bool(reasons), reasons
+    if force:
+        reasons.append("runtime_repair_forced")
+    if not reasons:
+        reasons.extend(probe(package_root, root, state))
+    return bool(reasons), reasons, migrated
 
 
-def create_plan(package: Path, installation: Path, root: Path, operation: str) -> dict:
+def create_plan(package: Path, installation: Path, root: Path, operation: str, probe=probe_runtime, force: bool = False, runtime_action: str = "reused") -> dict:
     staging = root / ".repair" / "plan-package"
     manifest = safe_extract(package, staging)
-    runtime_rebuild, reasons = runtime_rebuild_decision(manifest, root)
-    data = {"schema_version": 1, "status": "planned", "operation": operation, "package": str(package.resolve()), "package_sha256": sha256(package), "installation": str(installation.resolve()), "version": manifest["version"], "runtime_rebuild": runtime_rebuild, "runtime_rebuild_reasons": reasons}
+    runtime_rebuild, reasons, migrated = runtime_rebuild_decision(manifest, root, installation, staging, probe, force)
+    data = {"schema_version": 1, "status": "planned", "operation": operation, "package": str(package.resolve()), "package_sha256": sha256(package), "installation": str(installation.resolve()), "version": manifest["version"], "runtime_rebuild": runtime_rebuild, "runtime_rebuild_reasons": reasons, "legacy_dependency_contract_migrated": migrated, "runtime_action": runtime_action}
     target = plan_path(root); target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     shutil.rmtree(staging, ignore_errors=True)
@@ -167,6 +211,8 @@ def apply_plan(root: Path, confirm: bool) -> dict:
     active = root / ".repair" / "active-run.json"
     active.write_text(json.dumps({"run": str(run), "pid": os.getpid()}), encoding="utf-8")
     backup = run / "installation.old"
+    state_path = root / "state/installed-runtime.json"
+    state_backup = run / "installed-runtime.json"
     try:
         manifest = safe_extract(package, run / "package")
         source = run / "package" / "skill" / "mdoc"
@@ -182,14 +228,25 @@ def apply_plan(root: Path, confirm: bool) -> dict:
         repair = run / "package" / "repair-mdoc-runtime.ps1"
         if repair.is_file(): shutil.copy2(repair, support / repair.name)
         if installation.exists(): shutil.move(str(installation), backup)
+        if state_path.is_file(): shutil.copy2(state_path, state_backup)
         installation.parent.mkdir(parents=True, exist_ok=True)
         try:
             shutil.move(str(new), installation)
         except Exception:
             if backup.exists() and not installation.exists(): shutil.move(str(backup), installation)
             raise
+        try:
+            state = json.loads(state_path.read_text(encoding="utf-8-sig"))
+            contract = manifest["runtime_contract"]
+            state.update({"schema_version": 1, "status": "ready", "requirements_sha256": contract["requirements_sha256"], "dependency_contract_sha256": contract["dependency_contract_sha256"], "capability_probe": "ready", "capability_probe_at": int(time.time())})
+            state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        except Exception:
+            if installation.exists(): shutil.rmtree(installation)
+            if backup.exists(): shutil.move(str(backup), installation)
+            if state_backup.is_file(): shutil.copy2(state_backup, state_path)
+            raise
         shutil.rmtree(backup, ignore_errors=True)
-        result = {"schema_version": 1, "status": "updated" if plan["operation"] == "update" else "installed", "version": manifest["version"], "installation": str(installation)}
+        result = {"schema_version": 1, "status": "updated" if plan["operation"] == "update" else "installed", "version": manifest["version"], "installation": str(installation), "runtime_action": plan.get("runtime_action", "reused"), "toolchain_version": state.get("toolchain_version"), "dependency_contract_sha256": state.get("dependency_contract_sha256"), "capability_probe": "passed"}
         record = root / "state" / "records" / "latest-update.json"; record.parent.mkdir(parents=True, exist_ok=True)
         record.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         target.unlink(missing_ok=True)
@@ -214,11 +271,11 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--operation", choices=("install", "update", "cancel"), required=True)
     parser.add_argument("--package", type=Path); parser.add_argument("--installation", type=Path); parser.add_argument("--runtime-root", type=Path, required=True)
-    parser.add_argument("--plan", action="store_true"); parser.add_argument("--apply", action="store_true"); parser.add_argument("--confirm", action="store_true")
+    parser.add_argument("--plan", action="store_true"); parser.add_argument("--apply", action="store_true"); parser.add_argument("--confirm", action="store_true"); parser.add_argument("--force-runtime-repair", action="store_true"); parser.add_argument("--skip-capability-probe", action="store_true"); parser.add_argument("--runtime-action", choices=("reused", "rebuilt", "force_rebuilt"), default="reused")
     args = parser.parse_args(argv)
     try:
         if args.operation == "cancel": result = cancel(args.runtime_root, args.confirm)
-        elif args.plan: result = create_plan(args.package, args.installation, args.runtime_root, args.operation)
+        elif args.plan: result = create_plan(args.package, args.installation, args.runtime_root, args.operation, probe=(lambda *_: []) if args.skip_capability_probe else probe_runtime, force=args.force_runtime_repair, runtime_action=args.runtime_action)
         elif args.apply: result = apply_plan(args.runtime_root, args.confirm)
         else: raise TransactionError("MDOC-TRANSACTION-MODE-REQUIRED")
         print(json.dumps(result, ensure_ascii=False)); return 0

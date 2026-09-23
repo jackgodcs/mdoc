@@ -59,6 +59,9 @@ def main() -> int:
     collected = collect()
     requirements = ROOT / "runtime" / "requirements-v1.json"
     bootstrap = json.loads((ROOT / "bootstrap" / "toolchain-bootstrap.json").read_text(encoding="utf-8"))
+    dependency_contract = json.loads(requirements.read_text(encoding="utf-8"))
+    dependency_contract.pop("product_version", None)
+    dependency_contract_hash = hashlib.sha256(json.dumps(dependency_contract, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
     package_manifest = {
         "schema_version": 1,
         "product": "mdoc",
@@ -71,6 +74,7 @@ def main() -> int:
             "python": ">=3.12.0,<3.13.0",
             "profile": "Full",
             "requirements_sha256": hashlib.sha256(requirements.read_bytes()).hexdigest(),
+            "dependency_contract_sha256": dependency_contract_hash,
             "runtime_rebuild_required": False,
         },
         "files": [

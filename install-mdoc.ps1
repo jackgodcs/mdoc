@@ -7,7 +7,8 @@ param(
   [string]$RuntimeRoot = (Join-Path $env:LOCALAPPDATA 'mdoc'),
   [string]$Proxy,
   [switch]$AllowNetworkDownload,
-  [switch]$SkipRuntimeRepair
+  [switch]$SkipRuntimeRepair,
+  [switch]$ForceRuntimeRepair
 )
 $ErrorActionPreference = 'Stop'
 $packageRoot = $PSScriptRoot
@@ -100,6 +101,11 @@ if (-not (Test-Path -LiteralPath (Join-Path $packageRoot 'PACKAGE-MANIFEST.json'
   }
   $buildPython = $Python
   if (-not $buildPython) {
+    foreach ($candidate in @((Join-Path $RuntimeRoot 'runtime\Scripts\python.exe'), (Join-Path $HOME '.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe'))) {
+      if (Test-Path -LiteralPath $candidate -PathType Leaf) { $buildPython = $candidate; break }
+    }
+  }
+  if (-not $buildPython) {
     $pyLauncher = Get-Command py.exe -ErrorAction SilentlyContinue
     if ($pyLauncher) {
       $resolved = & $pyLauncher.Source -3.12 -c 'import sys; print(sys.executable)' 2>$null
@@ -108,7 +114,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $packageRoot 'PACKAGE-MANIFEST.json'
   }
   if (-not $buildPython) {
     $pythonCommand = Get-Command python.exe -ErrorAction SilentlyContinue
-    if ($pythonCommand) { $buildPython = $pythonCommand.Source }
+    if ($pythonCommand -and $pythonCommand.Version -ne [version]'0.0.0.0') { $buildPython = $pythonCommand.Source }
   }
   if (-not $buildPython) { throw 'MDOC-INSTALL-SOURCE-PYTHON-MISSING: Installing from source requires Python.' }
   & $buildPython $buildScript
@@ -135,42 +141,55 @@ try {
   }
   $source = Join-Path $packageRoot 'skill\mdoc'
   if (-not (Test-Path -LiteralPath (Join-Path $source 'SKILL.md'))) { throw 'MDOC-INSTALL-PACKAGE-INVALID: skill/mdoc/SKILL.md is missing.' }
-  if (-not $Toolkit) {
-    $bootstrapPath = Join-Path $packageRoot 'bootstrap\toolchain-bootstrap.json'
-    $bootstrap = Get-Content -LiteralPath $bootstrapPath -Encoding UTF8 -Raw | ConvertFrom-Json
-    $Toolkit = Find-MdocLocalToolkit $packageRoot $bootstrap
-    if (-not $Toolkit -and [IO.Path]::GetFullPath($packageRoot) -ne $originalPackageRoot) {
-      $Toolkit = Find-MdocLocalToolkit $originalPackageRoot $bootstrap
-    }
-    if ($Toolkit) { Write-Host "Using local mdoc Toolchain bundle: $Toolkit" }
-  }
-  $parent = Split-Path -Parent $Destination
-  New-Item -ItemType Directory -Path $parent -Force | Out-Null
-  $staging = $Destination + '.installing'
-  if (Test-Path -LiteralPath $staging) { Remove-Item -LiteralPath $staging -Recurse -Force }
-  Copy-Item -LiteralPath $source -Destination $staging -Recurse
-  $support = Join-Path $staging 'runtime-support'
-  New-Item -ItemType Directory -Path $support -Force | Out-Null
-  Copy-Item -LiteralPath (Join-Path $packageRoot 'repair-mdoc-runtime.ps1') -Destination $support
-  Copy-Item -LiteralPath (Join-Path $packageRoot 'bootstrap') -Destination $support -Recurse
-  Copy-Item -LiteralPath (Join-Path $packageRoot 'runtime') -Destination $support -Recurse
-  if (-not $SkipRuntimeRepair) {
-    $repair = Join-Path $packageRoot 'repair-mdoc-runtime.ps1'
-    & $repair -Python $Python -Toolkit $Toolkit -Installation $Destination -RuntimeRoot $RuntimeRoot -Proxy $Proxy -AllowNetworkDownload:$AllowNetworkDownload | Write-Host
-    if ($LASTEXITCODE -ne 0) { throw "MDOC-INSTALL-RUNTIME-REPAIR-FAILED: $LASTEXITCODE" }
-  }
   $transaction = Join-Path $packageRoot 'runtime-bootstrap\mdoc_install_transaction.py'
   if (-not (Test-Path -LiteralPath $transaction -PathType Leaf)) { throw 'MDOC-INSTALL-TRANSACTION-MISSING: The shared installation transaction is missing.' }
   $pythonCommand = if ($Python) { $Python } else {
     $candidate = Join-Path $RuntimeRoot 'runtime\Scripts\python.exe'
-    if (Test-Path -LiteralPath $candidate -PathType Leaf) { $candidate } else { (Get-Command python.exe -ErrorAction Stop).Source }
+    $codexPython = Join-Path $HOME '.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe'
+    if (Test-Path -LiteralPath $candidate -PathType Leaf) { $candidate } elseif (Test-Path -LiteralPath $codexPython -PathType Leaf) { $codexPython } else { $command = Get-Command python.exe -ErrorAction SilentlyContinue; if ($command -and $command.Version -ne [version]'0.0.0.0') { $command.Source } else { $null } }
   }
-  & $pythonCommand $transaction --operation install --package $packageRoot --installation $Destination --runtime-root $RuntimeRoot --plan
+  if (-not $pythonCommand -and -not $SkipRuntimeRepair) {
+    if (-not $Toolkit) {
+      $bootstrap = Get-Content -LiteralPath (Join-Path $packageRoot 'bootstrap\toolchain-bootstrap.json') -Encoding UTF8 -Raw | ConvertFrom-Json
+      $Toolkit = Find-MdocLocalToolkit $packageRoot $bootstrap
+      if (-not $Toolkit -and [IO.Path]::GetFullPath($packageRoot) -ne $originalPackageRoot) { $Toolkit = Find-MdocLocalToolkit $originalPackageRoot $bootstrap }
+    }
+    if (-not $Toolkit -and -not $AllowNetworkDownload) { [Console]::Error.WriteLine('MDOC-INSTALL-RUNTIME-REPAIR-REQUIRED: No reusable runtime is available.'); exit 42 }
+    if ($Toolkit) { Write-Host "Using local mdoc Toolchain bundle: $Toolkit" }
+    $repair = Join-Path $packageRoot 'repair-mdoc-runtime.ps1'
+    & $repair -Python $Python -Toolkit $Toolkit -Installation $Destination -RuntimeRoot $RuntimeRoot -Proxy $Proxy -AllowNetworkDownload:$AllowNetworkDownload | Write-Host
+    if ($LASTEXITCODE -ne 0) { throw "MDOC-INSTALL-RUNTIME-REPAIR-FAILED: $LASTEXITCODE" }
+    $pythonCommand = Join-Path $RuntimeRoot 'runtime\Scripts\python.exe'
+  }
+  $planArguments = @($transaction, '--operation', 'install', '--package', $packageRoot, '--installation', $Destination, '--runtime-root', $RuntimeRoot, '--plan')
+  if ($ForceRuntimeRepair) { $planArguments += '--force-runtime-repair' }
+  if ($SkipRuntimeRepair) { $planArguments += '--skip-capability-probe' }
+  $planText = & $pythonCommand @planArguments
   if ($LASTEXITCODE -ne 0) { throw "MDOC-INSTALL-PLAN-FAILED: $LASTEXITCODE" }
+  $plan = $planText | ConvertFrom-Json
+  if ($plan.runtime_rebuild -and -not $SkipRuntimeRepair) {
+    if (-not $Toolkit) {
+      $bootstrap = Get-Content -LiteralPath (Join-Path $packageRoot 'bootstrap\toolchain-bootstrap.json') -Encoding UTF8 -Raw | ConvertFrom-Json
+      $Toolkit = Find-MdocLocalToolkit $packageRoot $bootstrap
+      if (-not $Toolkit -and [IO.Path]::GetFullPath($packageRoot) -ne $originalPackageRoot) { $Toolkit = Find-MdocLocalToolkit $originalPackageRoot $bootstrap }
+    }
+    if (-not $Toolkit -and -not $AllowNetworkDownload) { Write-Host ("Runtime repair required: " + ($plan.runtime_rebuild_reasons -join ', ')); exit 42 }
+    if ($Toolkit) { Write-Host "Using local mdoc Toolchain bundle: $Toolkit" }
+    $repair = Join-Path $packageRoot 'repair-mdoc-runtime.ps1'
+    & $repair -Python $Python -Toolkit $Toolkit -Installation $Destination -RuntimeRoot $RuntimeRoot -Proxy $Proxy -AllowNetworkDownload:$AllowNetworkDownload | Write-Host
+    if ($LASTEXITCODE -ne 0) { throw "MDOC-INSTALL-RUNTIME-REPAIR-FAILED: $LASTEXITCODE" }
+    $pythonCommand = Join-Path $RuntimeRoot 'runtime\Scripts\python.exe'
+    $runtimeAction = if ($ForceRuntimeRepair) { 'force_rebuilt' } else { 'rebuilt' }
+    & $pythonCommand $transaction --operation install --package $packageRoot --installation $Destination --runtime-root $RuntimeRoot --plan --runtime-action $runtimeAction | Write-Host
+    if ($LASTEXITCODE -ne 0) { throw "MDOC-INSTALL-PLAN-FAILED: $LASTEXITCODE" }
+  } elseif ($plan.runtime_rebuild) {
+    throw ("MDOC-INSTALL-RUNTIME-REPAIR-REQUIRED: " + ($plan.runtime_rebuild_reasons -join ', '))
+  } else {
+    Write-Host 'Detected a matching and complete mdoc Runtime/Toolchain; reusing it.'
+  }
   & $pythonCommand $transaction --operation install --runtime-root $RuntimeRoot --apply --confirm
   if ($LASTEXITCODE -ne 0) { throw "MDOC-INSTALL-APPLY-FAILED: $LASTEXITCODE" }
   Register-MdocUninstall $manifest
-  if (Test-Path -LiteralPath $staging) { Remove-Item -LiteralPath $staging -Recurse -Force }
   Write-Host "mdoc $($manifest.version) installed to $Destination"
 } finally {
   if ($sourcePackageStaging -and (Test-Path -LiteralPath $sourcePackageStaging)) { Remove-Item -LiteralPath $sourcePackageStaging -Recurse -Force }

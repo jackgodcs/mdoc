@@ -15,6 +15,8 @@ $packageRoot = $PSScriptRoot
 $bootstrapPath = Join-Path $packageRoot 'bootstrap\toolchain-bootstrap.json'
 if (-not (Test-Path -LiteralPath $bootstrapPath -PathType Leaf)) { throw 'MDOC-RUNTIME-BOOTSTRAP-MISSING: Toolchain Bootstrap is missing.' }
 $bootstrap = Get-Content -LiteralPath $bootstrapPath -Raw | ConvertFrom-Json
+$packageManifestPath = Join-Path $packageRoot 'PACKAGE-MANIFEST.json'
+$packageManifest = if (Test-Path -LiteralPath $packageManifestPath -PathType Leaf) { Get-Content -LiteralPath $packageManifestPath -Encoding UTF8 -Raw | ConvertFrom-Json } else { $null }
 
 function Get-Sha256([string]$Path) {
   $algorithm = [Security.Cryptography.SHA256]::Create()
@@ -253,7 +255,8 @@ try {
   $stateRoot = Join-Path $RuntimeRoot 'state'; New-Item -ItemType Directory -Path $stateRoot -Force | Out-Null
   $pythonSource = if ($ownership -eq 'managed-by-mdoc') { 'mdoc-managed' } elseif ([string]$selected.executable -like '*\.cache\codex-runtimes\*') { 'codex-runtime' } else { 'system-or-user' }
   $requirementsHash = Get-Sha256 (Join-Path $packageRoot 'runtime\requirements-v1.json')
-  $state = [ordered]@{schema_version=1; status='ready'; profile='Full'; catalog_version=$catalog.catalog_version; toolchain_version=$catalog.catalog_version; python_contract='>=3.12.0,<3.13.0'; requirements_sha256=$requirementsHash; capability_probe='ready'; python_source=$pythonSource; python_base=$selected.executable; python_ownership=$ownership; python_installer=if($ownership -eq 'managed-by-mdoc'){(Join-Path $RuntimeRoot 'installers\python-3.12.10-amd64.exe')}else{$null}; runtime_python=(Join-Path $current 'Scripts\python.exe'); toolchain_root=$toolchainCurrent; path_entry=$bin; start_menu=$startMenu; capabilities=@('core','pdf-check','screenshot-assistant','pdf-build')}
+  $dependencyContractHash = if ($packageManifest) { [string]$packageManifest.runtime_contract.dependency_contract_sha256 } else { $null }
+  $state = [ordered]@{schema_version=1; status='ready'; profile='Full'; catalog_version=$catalog.catalog_version; toolchain_version=$catalog.catalog_version; python_contract='>=3.12.0,<3.13.0'; requirements_sha256=$requirementsHash; dependency_contract_sha256=$dependencyContractHash; capability_probe='ready'; capability_probe_at=[DateTimeOffset]::UtcNow.ToUnixTimeSeconds(); python_source=$pythonSource; python_base=$selected.executable; python_ownership=$ownership; python_installer=if($ownership -eq 'managed-by-mdoc'){(Join-Path $RuntimeRoot 'installers\python-3.12.10-amd64.exe')}else{$null}; runtime_python=(Join-Path $current 'Scripts\python.exe'); toolchain_root=$toolchainCurrent; path_entry=$bin; start_menu=$startMenu; capabilities=@('core','pdf-check','screenshot-assistant','pdf-build')}
   $state | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $stateRoot 'installed-runtime.json') -Encoding utf8
   $state | ConvertTo-Json -Depth 5
 } finally {

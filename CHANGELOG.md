@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 1.5.7 - 2026-09-23
+
+- Reused an already installed Runtime and Toolchain during mdoc upgrades when the persisted dependency contract and live core/PDF capability probes both match the package.
+- Deferred local Toolchain ZIP discovery and all network prompts until runtime repair is actually required; upgrades remain offline and non-interactive by default.
+- Added `-ForceRuntimeRepair` for explicit full Runtime/Toolchain rebuilding, dependency-contract migration for older installation state, transactional skill/state updates, and runtime action audit records.
+
 ## 1.5.6 - 2026-09-22
 
 - Documented that successful PDF builds delete their intermediate work by default; explicit configuration and `--keep-work` can still retain it when needed.

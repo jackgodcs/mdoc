@@ -63,6 +63,7 @@ class ReleaseBuildTests(unittest.TestCase):
         self.assertNotIn(b"--task", installed_editor_launcher)
         self.assertEqual("2026.09.15", manifest["runtime_contract"]["toolchain_version"])
         self.assertEqual(">=3.12.0,<3.13.0", manifest["runtime_contract"]["python"])
+        self.assertEqual(64, len(manifest["runtime_contract"]["dependency_contract_sha256"]))
 
     @unittest.skipUnless(sys.platform == "win32", "Windows PowerShell installer test")
     def test_windows_powershell_installer_validates_chinese_manifest_filename(self):
@@ -85,10 +86,13 @@ class ReleaseBuildTests(unittest.TestCase):
             state = runtime_root / "state" / "installed-runtime.json"
             state.parent.mkdir(parents=True)
             state.write_text(json.dumps({
+                "schema_version": 1,
+                "status": "ready",
                 "toolchain_version": manifest["runtime_contract"]["toolchain_version"],
                 "python_contract": manifest["runtime_contract"]["python"],
                 "profile": manifest["runtime_contract"]["profile"],
                 "requirements_sha256": requirements_hash,
+                "dependency_contract_sha256": manifest["runtime_contract"]["dependency_contract_sha256"],
                 "capability_probe": "ready",
                 "python_source": "system-or-user",
             }), encoding="utf-8")
@@ -115,7 +119,7 @@ class ReleaseBuildTests(unittest.TestCase):
             self.assertTrue((runtime_root / "state/uninstall.json").is_file())
 
     @unittest.skipUnless(sys.platform == "win32", "Windows PowerShell local toolkit discovery test")
-    def test_windows_powershell_installer_uses_local_toolkit_beside_package(self):
+    def test_windows_powershell_installer_ignores_local_toolkit_when_runtime_is_reusable(self):
         command = [sys.executable, str(ROOT / "scripts" / "build_release.py")]
         subprocess.run(command, check=True, capture_output=True, text=True)
         asset = ASSET
@@ -135,10 +139,13 @@ class ReleaseBuildTests(unittest.TestCase):
             state = runtime_root / "state" / "installed-runtime.json"
             state.parent.mkdir(parents=True)
             state.write_text(json.dumps({
+                "schema_version": 1,
+                "status": "ready",
                 "toolchain_version": manifest["runtime_contract"]["toolchain_version"],
                 "python_contract": manifest["runtime_contract"]["python"],
                 "profile": manifest["runtime_contract"]["profile"],
                 "requirements_sha256": requirements_hash,
+                "dependency_contract_sha256": manifest["runtime_contract"]["dependency_contract_sha256"],
                 "capability_probe": "ready",
                 "python_source": "system-or-user",
             }), encoding="utf-8")
@@ -161,7 +168,22 @@ class ReleaseBuildTests(unittest.TestCase):
                 str(runtime_root),
             ], capture_output=True, text=True, encoding="utf-8", errors="replace", env=environment)
             self.assertEqual(0, result.returncode, result.stdout + result.stderr)
-            self.assertIn("Using local mdoc Toolchain bundle:", result.stdout)
+            self.assertNotIn("Using local mdoc Toolchain bundle:", result.stdout)
+            self.assertIn("reusing it", result.stdout)
+
+    @unittest.skipUnless(sys.platform == "win32", "Windows PowerShell repair source test")
+    def test_windows_powershell_installer_requests_repair_without_modifying_installation(self):
+        subprocess.run([sys.executable, str(ROOT / "scripts" / "build_release.py")], check=True, capture_output=True, text=True)
+        powershell = Path(os.environ.get("WINDIR", r"C:\Windows")) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); package_root = root / "package"; runtime_root = root / "runtime"; installation = root / "installation"
+            with zipfile.ZipFile(ASSET) as package: package.extractall(package_root)
+            environment = os.environ.copy(); environment["APPDATA"] = str(root / "appdata"); environment["MDOC_TEST_UNINSTALL_REGISTRY"] = "Software\\mdoc-tests\\" + root.name
+            result = subprocess.run([str(powershell), "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(package_root / "install-mdoc.ps1"), "-Python", sys.executable, "-Destination", str(installation), "-RuntimeRoot", str(runtime_root)], capture_output=True, text=True, encoding="utf-8", errors="replace", env=environment)
+            self.assertEqual(42, result.returncode, result.stdout + result.stderr)
+            self.assertIn("Runtime repair required:", result.stdout)
+            self.assertFalse(installation.exists())
+            self.assertFalse((runtime_root / "state/uninstall.json").exists())
 
     @unittest.skipUnless(sys.platform == "win32", "Windows PowerShell runtime probe test")
     def test_windows_powershell_runtime_probe_skips_failed_python_candidate(self):

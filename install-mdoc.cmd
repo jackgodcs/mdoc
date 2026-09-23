@@ -9,6 +9,12 @@ echo.
 set NETWORK_ARG=
 set TOOLKIT_ARG=
 if not "%~1"=="" goto direct_install
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0install-mdoc.ps1"
+set EXIT_CODE=%ERRORLEVEL%
+if "%EXIT_CODE%"=="0" goto completed
+if not "%EXIT_CODE%"=="42" goto failed
+echo.
+echo The installed Runtime/Toolchain cannot be reused. Choose a verified repair source.
 if exist "%~dp0mdoc-toolchain.zip" goto local_toolkit
 if exist "%~dp0mdoc-toolchain-2026.09.15-windows-x64.zip" goto local_toolkit
 :select_source
@@ -34,16 +40,17 @@ echo.
 :install
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0install-mdoc.ps1" %TOOLKIT_ARG% %NETWORK_ARG% %*
 set EXIT_CODE=%ERRORLEVEL%
+if "%EXIT_CODE%"=="0" goto completed
+:failed
 echo.
-if not "%EXIT_CODE%"=="0" (
-  echo Installation did not complete. Exit code: %EXIT_CODE%
-  echo.
-  echo Offline installation:
-  echo 1. Download the Toolchain ZIP from:
-  echo    https://github.com/jackgodcs/mdoc-toolchain/releases/download/v2026.09.15/mdoc-toolchain-2026.09.15-windows-x64.zip
-  echo 2. Put it beside this installer, or run from this package directory:
-  echo    install-mdoc.cmd -Toolkit "%USERPROFILE%\Downloads\mdoc-toolchain-2026.09.15-windows-x64.zip"
-)
+echo Installation did not complete. Exit code: %EXIT_CODE%
+echo.
+echo Offline installation:
+echo 1. Download the Toolchain ZIP from:
+echo    https://github.com/jackgodcs/mdoc-toolchain/releases/download/v2026.09.15/mdoc-toolchain-2026.09.15-windows-x64.zip
+echo 2. Put it beside this installer, or run from this package directory:
+echo    install-mdoc.cmd -Toolkit "%USERPROFILE%\Downloads\mdoc-toolchain-2026.09.15-windows-x64.zip"
+:completed
 pause
 exit /b %EXIT_CODE%
 

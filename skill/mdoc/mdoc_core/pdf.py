@@ -317,6 +317,9 @@ def validate_book_configs(workspace: Path, config: dict) -> None:
 
 
 def toolchain_root() -> Path:
+    configured = os.environ.get("MDOC_TOOLCHAIN_ROOT")
+    if configured:
+        return Path(configured)
     local = os.environ.get("LOCALAPPDATA")
     if not local:
         raise MdocError("MDOC-PDF-TOOLCHAIN-MISSING", "无法定位 mdoc Toolchain 安装目录。")
