@@ -14,7 +14,7 @@ from .model import finding
 
 
 ALLOWED_SEGMENT = re.compile(r"^[A-Za-z0-9._-]+$")
-ALLOWED_RESOURCE_PATH = re.compile(r"^[A-Za-z0-9/._~-]+$")
+HAN_RESOURCE_PATH = re.compile(r"[\u3007\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\U00020000-\U000323af]")
 LOCAL_ABSOLUTE = re.compile(r"(?:file://|(?<![A-Za-z])[A-Za-z]:[\\/])", re.IGNORECASE)
 HEADING = re.compile(r"^(#{1,6})\s+\S", re.MULTILINE)
 ENGLISH_PUNCTUATION = re.compile(r"[，。；：！？、“”‘’（）]")
@@ -228,7 +228,7 @@ def inspect(locale_root: Path, locale: str, language: str, logical_paths: list[s
                 findings.append(finding("path.ascii-only", "error", display, f"Managed path segment must use only ASCII letters, digits, '.', '-' or '_': {segment}", 1, 1))
                 break
         for reference in page_parsed["references"]:
-            target = reference["target"]
+            target = reference["target"].strip()
             if LOCAL_ABSOLUTE.search(target):
                 findings.append(finding("path.no-local-absolute", "error", display, f"Local resource reference must not use an absolute path: {target}", reference["line"], 1, mandatory=True))
                 continue
@@ -243,8 +243,8 @@ def inspect(locale_root: Path, locale: str, language: str, logical_paths: list[s
                 decoded_path = unquote(parsed_target.path, errors="strict")
             except UnicodeDecodeError:
                 decoded_path = parsed_target.path
-            if not re.search(r"%(?![0-9A-Fa-f]{2})", parsed_target.path) and not decoded_path.lower().endswith((".md", ".markdown")) and not ALLOWED_RESOURCE_PATH.fullmatch(decoded_path.replace("\\", "/")):
-                findings.append(finding("path.resource-ascii-only", "error", display, f"Local resource path must use only ASCII letters, digits, '/', '.', '-', '_' or '~': {target}", reference["line"], 1, mandatory=True))
+            if not re.search(r"%(?![0-9A-Fa-f]{2})", parsed_target.path) and not decoded_path.lower().endswith((".md", ".markdown")) and HAN_RESOURCE_PATH.search(decoded_path):
+                findings.append(finding("path.resource-ascii-only", "error", display, f"Local resource path must not contain Han characters: {target}", reference["line"], 1, mandatory=True))
             relative_text = decoded_path.replace("\\", "/")
             if "\\" in parsed_target.path:
                 findings.append(finding("path.forward-slash", "error", display, f"Local reference must use '/': {target}", reference["line"], 1))

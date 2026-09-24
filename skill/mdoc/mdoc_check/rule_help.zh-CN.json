@@ -208,9 +208,9 @@
     "suggestion": "将被引用资源放入书册目录，并将资源引用改为相对路径。"
   },
   "path.resource-ascii-only": {
-    "title": "本地资源引用路径包含非英文安全字符",
-    "description": "Markdown 或 HTML 引用的本地非 Markdown 资源路径只能使用 ASCII 英文字母、数字、正斜杠、点、短横线、下划线和波浪号。空格、中文及其他非 ASCII 字符会导致跨平台访问或发布不稳定。",
-    "suggestion": "将资源文件和相关目录改为符合规则的英文安全名称，并同步更新所有引用；此规则不提供自动重命名。"
+    "title": "本地资源引用路径包含汉字",
+    "description": "Markdown 或 HTML 引用的本地非 Markdown 资源路径不能包含 Unicode Han 汉字。日文汉字也属于 Han 字符并会被报告；空格、假名、韩文和重音字母等其他字符不受此规则限制。",
+    "suggestion": "将资源文件和相关目录中的汉字改为不含汉字的名称，并同步更新所有引用；此规则不提供自动重命名。"
   },
   "path.forward-slash": {
     "title": "引用路径使用了反斜杠",

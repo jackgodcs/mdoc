@@ -34,6 +34,12 @@ class DomainTests(unittest.TestCase):
         findings, _ = inspect(self.root, "en", "en", ["Main/Page.md"], "Main", "images", "Summary.md", False)
         self.assertTrue(any(item["rule"] == "path.case-exact" for item in findings))
 
+    def test_link_target_exists_ignores_destination_outer_whitespace(self) -> None:
+        (self.root / "Main" / "ClassifyGroundPoints.md").write_text("# Target\n", encoding="utf-8")
+        (self.root / "Main" / "Page.md").write_text("# Page\n\n* [Classify Ground Points](ClassifyGroundPoints.md )\n", encoding="utf-8")
+        findings, _ = inspect(self.root, "ja", "ja", ["Main/Page.md", "Main/ClassifyGroundPoints.md"], "Main", "images", "Summary.md", False)
+        self.assertFalse(any(item["rule"] == "link.target-exists" for item in findings))
+
     def test_pillow_reports_extension_mismatch(self) -> None:
         image = self.root / "images" / "Sample.jpg"
         Image.new("RGB", (10, 10), "white").save(image, format="PNG")
@@ -42,7 +48,7 @@ class DomainTests(unittest.TestCase):
         self.assertEqual(["en/images/Sample.jpg"], resources["images"])
         self.assertTrue(any(item["rule"] == "image.extension-matches-format" for item in findings))
 
-    def test_non_ascii_or_spaced_resource_path_is_mandatory_error(self) -> None:
+    def test_han_resource_path_is_mandatory_error(self) -> None:
         image = self.root / "images" / "中文 Image + Name.png"
         Image.new("RGB", (10, 10), "white").save(image)
         (self.root / "Main" / "Page.md").write_text("# Page\n\n![Sample](../images/中文%20Image%20%2B%20Name.png)\n", encoding="utf-8")
@@ -51,6 +57,16 @@ class DomainTests(unittest.TestCase):
         self.assertEqual("error", issue["severity"])
         self.assertTrue(issue["mandatory"])
         self.assertEqual(3, issue["line"])
+
+    def test_resource_path_allows_non_han_unicode_and_spaces(self) -> None:
+        image = self.root / "images" / "かな 이미지 é Image.png"
+        Image.new("RGB", (10, 10), "white").save(image)
+        (self.root / "Main" / "Page.md").write_text(
+            "# Page\n\n![Sample](../images/%E3%81%8B%E3%81%AA%20%EC%9D%B4%EB%AF%B8%EC%A7%80%20%C3%A9%20Image.png)\n",
+            encoding="utf-8",
+        )
+        findings, _ = inspect(self.root, "en", "en", ["Main/Page.md"], "Main", "images", "Summary.md", False)
+        self.assertFalse(any(item["rule"] == "path.resource-ascii-only" for item in findings))
 
     def test_resource_ascii_rule_checks_markdown_and_html_references_individually(self) -> None:
         image = self.root / "images" / "中文.png"
@@ -66,7 +82,7 @@ class DomainTests(unittest.TestCase):
         )
         findings, _ = inspect(self.root, "en", "en", ["Main/Page.md"], "Main", "images", "Summary.md", False)
         issues = [item for item in findings if item["rule"] == "path.resource-ascii-only"]
-        self.assertEqual([3, 5, 7, 9], [item["line"] for item in issues])
+        self.assertEqual([3, 5], [item["line"] for item in issues])
 
     def test_resource_ascii_rule_excludes_external_anchor_and_markdown_targets(self) -> None:
         (self.root / "Main" / "目标.md").write_text("# Target\n", encoding="utf-8")
