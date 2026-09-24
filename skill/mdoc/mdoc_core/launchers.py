@@ -65,9 +65,13 @@ def _cmd(title: str, details: list[str], command: str, *, delayed_refresh: bool 
         if refresh_after_success:
             lines.append('if "%MDOC_EXIT%"=="0" start "mdoc launcher refresh" cmd.exe /d /s /c "ping 127.0.0.1 -n 2 ^>nul ^& call ^"%MDOC_CMD%^" workspace launchers refresh --workspace ^"%MDOC_WORKSPACE%^" ^& echo. ^& pause"')
         lines.extend(["echo.", "echo ============================================================",
-            'if "%MDOC_EXIT%"=="0" echo [完成] 命令执行成功。',
-            'if not "%MDOC_EXIT%"=="0" echo [失败] 命令执行失败，退出码: %MDOC_EXIT%。',
-            'if not "%MDOC_EXIT%"=="0" echo 请根据上方错误编号和修复建议处理后重试。',
+            'if not "%MDOC_EXIT%"=="0" goto mdoc_failed',
+            "echo [完成] 命令执行成功。",
+            "goto mdoc_finished",
+            ":mdoc_failed",
+            "echo [失败] 命令执行失败，退出码: %MDOC_EXIT%。",
+            "echo 请根据上方错误编号和修复建议处理后重试。",
+            ":mdoc_finished",
             "echo 结束时间: %date% %time%", "echo ============================================================",
             "pause", "exit /b %MDOC_EXIT%",
         ])

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import copy
+import os
 import subprocess
 import sys
 import tempfile
@@ -12,7 +13,7 @@ from ruamel.yaml import YAML
 
 from skill.mdoc.mdoc_core.errors import MdocError
 from skill.mdoc.mdoc_core.io import relative_path
-from skill.mdoc.mdoc_core import pdf
+from skill.mdoc.mdoc_core import launchers, pdf
 from skill.mdoc.tests.support import write_yaml
 
 
@@ -289,6 +290,20 @@ class WorkspaceCliTests(unittest.TestCase):
         self.assertIn("[启动] 正在执行任务", text)
         self.assertIn("[完成] 命令执行成功", text)
         self.assertIn("[失败] 命令执行失败，退出码: %MDOC_EXIT%", text)
+        self.assertIn('if not "%MDOC_EXIT%"=="0" goto mdoc_failed', text)
+        self.assertNotIn('if "%MDOC_EXIT%"=="0" echo [完成]', text)
+
+    @unittest.skipUnless(sys.platform == "win32", "Windows CMD regression test")
+    def test_utf8_launcher_success_tail_does_not_execute_truncated_chinese_as_commands(self) -> None:
+        local_app_data = self.repository / "local-app-data"
+        mdoc = local_app_data / "mdoc" / "bin" / "mdoc.cmd"; mdoc.parent.mkdir(parents=True)
+        mdoc.write_text("@echo off\r\nexit /b 0\r\n", encoding="ascii", newline="")
+        launcher = self.repository / ".mdoc" / "launchers" / "test.cmd"; launcher.parent.mkdir(parents=True)
+        launcher.write_text(launchers._cmd("mdoc 测试", ["书册: test"], 'call "%MDOC_CMD%"').replace("pause\r\n", "rem pause\r\n"), encoding="utf-8", newline="")
+        completed = subprocess.run(["cmd.exe", "/d", "/s", "/c", str(launcher)], capture_output=True, text=True, encoding="utf-8", errors="replace", env={**os.environ, "LOCALAPPDATA": str(local_app_data)})
+        self.assertEqual(0, completed.returncode, completed.stdout + completed.stderr)
+        self.assertIn("[完成] 命令执行成功。", completed.stdout)
+        self.assertNotIn("is not recognized as an internal or external command", completed.stdout + completed.stderr)
 
     def test_workspace_rejects_invalid_page_number_position(self) -> None:
         for locale in ("zh", "en"):
