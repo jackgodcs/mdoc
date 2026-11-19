@@ -52,7 +52,7 @@ jobs:
           - check_tests.test_cli
           - check_tests.test_feedback
           - check_tests.test_maintenance
-          - check_tests.test_pdf_preview
+          - check_tests.test_pdf_preview check_tests.test_preview
           - check_tests.test_web
     runs-on: windows-latest
     steps:

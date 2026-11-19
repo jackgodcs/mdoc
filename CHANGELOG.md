@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 1.5.9 - 2026-11-19
+
+- Added repeated expand/collapse for check-report file findings while keeping at most one file expanded and selecting and locating its first finding on each expansion.
+- Added preview-only compatibility for image-only HTML containers followed by Markdown without a blank line, and image attributes missing separating whitespace, without modifying source files or PDF rendering.
+- Added preview regression tests for source-line mapping, literal code examples, and HTML safety filtering.
+
 ## 1.5.8 - 2026-09-23
 
 - Named default full-book PDF artifacts from each locale's normalized `book.json` title and workspace locale ID while preserving explicit output names and existing scoped-build naming.
