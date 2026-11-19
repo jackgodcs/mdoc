@@ -88,6 +88,37 @@ if (request.action === "versions") {
   process.stdout.write(JSON.stringify(entries));
 } else if (request.action === "render") {
   const parser = new MarkdownIt({ html: true, linkify: false, typographer: false });
+  // Preview-only compatibility; token maps still refer to the unchanged source.
+  const htmlBlock = parser.block.ruler.getRules("").find((rule) => rule.name === "html_block");
+  parser.block.ruler.before("html_block", "image_container", (state, startLine, endLine, silent) => {
+    if (state.sCount[startLine] - state.blkIndent >= 4) return false;
+    const start = state.bMarks[startLine] + state.tShift[startLine];
+    const match = state.src.slice(start, state.eMarks[endLine - 1]).match(/^<div\b[^>]*>[\s\S]*?<\/div\s*>/i);
+    if (!match || !/^<div\b[^>]*>\s*(?:<img\b(?:[^>"']|"[^"]*"|'[^']*')*>\s*)+<\/div\s*>$/i.test(match[0])) return false;
+    const last = start + match[0].length;
+    let nextLine = startLine;
+    while (nextLine < endLine && state.eMarks[nextLine] < last) nextLine++;
+    if (nextLine >= endLine || state.src.slice(last, state.eMarks[nextLine]).trim()) return false;
+    return htmlBlock(state, startLine, nextLine + 1, silent);
+  }, { alt: ["paragraph", "reference", "blockquote"] });
+  const htmlInline = parser.inline.ruler.getRules("").find((rule) => rule.name === "html_inline");
+  parser.inline.ruler.before("html_inline", "image_attributes", (state, silent) => {
+    const match = state.src.slice(state.pos).match(/^<img\b(?:[^>"']|"[^"]*"|'[^']*')*>/i);
+    if (!match) return false;
+    const normalized = match[0].replace(/("[^"]*"|'[^']*')(?=[a-z_:][\w:.-]*\s*=)/gi, "$1 ");
+    if (normalized === match[0]) return false;
+    const source = state.src, position = state.pos;
+    state.src = source.slice(0, position) + normalized + source.slice(position + match[0].length);
+    state.posMax += normalized.length - match[0].length;
+    try {
+      const accepted = htmlInline(state, silent);
+      if (accepted && !silent) state.pos -= normalized.length - match[0].length;
+      return accepted;
+    } finally {
+      state.src = source;
+      state.posMax -= normalized.length - match[0].length;
+    }
+  });
   const source = request.content ?? fs.readFileSync(request.file, "utf8");
   const tokens = parser.parse(source, {});
   const lines = [];
